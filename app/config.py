@@ -11,7 +11,16 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     
     # 数据库配置
-    DATABASE_URL: str = "sqlite:///./investment.db"
+    DB_HOST: str = "localhost"
+    DB_PORT: int = 5432
+    DB_USER: str = "postgres"
+    DB_PASSWORD: str = "postgres"
+    DB_NAME: str = "mydb"
+    
+    @property
+    def DATABASE_URL(self) -> str:
+        """构建数据库连接URL"""
+        return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
     
     # QMT配置
     QMT_HOST: str = "127.0.0.1"
@@ -21,6 +30,7 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        env_file_encoding = "utf-8"
         case_sensitive = True
 
 
