@@ -38,7 +38,11 @@
       </template>
       <el-table :data="searchResults" style="width: 100%">
         <el-table-column prop="symbol" label="代码" />
-        <el-table-column prop="name" label="名称" />
+        <el-table-column label="名称">
+          <template #default="scope">
+            {{ scope.row.name || scope.row.symbol || '--' }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作">
           <template #default="scope">
             <el-button size="small" @click="selectSymbol(scope.row.symbol)">选择</el-button>
@@ -54,12 +58,40 @@
       </template>
       <el-table :data="quotes" style="width: 100%" v-loading="quoteLoading">
         <el-table-column prop="symbol" label="代码" />
-        <el-table-column prop="name" label="名称" />
-        <el-table-column prop="last_price" label="最新价" :formatter="formatPrice" />
-        <el-table-column prop="change" label="涨跌" :formatter="formatChange" />
-        <el-table-column prop="change_percent" label="涨跌幅" :formatter="formatChangePercent" />
-        <el-table-column prop="volume" label="成交量" :formatter="formatVolume" />
-        <el-table-column prop="amount" label="成交额" :formatter="formatAmount" />
+        <el-table-column label="名称">
+          <template #default="scope">
+            {{ scope.row.name || scope.row.symbol || '--' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="最新价">
+          <template #default="scope">
+            ¥{{ formatPrice(scope.row.last_price) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="涨跌">
+          <template #default="scope">
+            <span :style="{ color: (scope.row.change || 0) >= 0 ? '#F56C6C' : '#67C23A' }">
+              {{ (scope.row.change || 0) >= 0 ? '+' : '' }}{{ formatPrice(scope.row.change || 0) }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="涨跌幅">
+          <template #default="scope">
+            <span :style="{ color: (scope.row.change_percent || scope.row.change_pct || 0) >= 0 ? '#F56C6C' : '#67C23A' }">
+              {{ (scope.row.change_percent || scope.row.change_pct || 0) >= 0 ? '+' : '' }}{{ ((scope.row.change_percent || scope.row.change_pct || 0)).toFixed(2) }}%
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="成交量">
+          <template #default="scope">
+            {{ formatVolume(scope.row.volume) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="成交额">
+          <template #default="scope">
+            {{ formatAmount(scope.row.amount) }}
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
 
@@ -69,7 +101,7 @@
         <div style="display: flex; justify-content: space-between; align-items: center">
           <span>K线图 - {{ selectedSymbol }}</span>
           <div>
-            <el-select v-model="klinePeriod" style="width: 120px; margin-right: 10px">
+            <el-select v-model="klinePeriod" style="width: 120px; margin-right: 10px" @change="fetchKline">
               <el-option label="1分钟" value="1m" />
               <el-option label="5分钟" value="5m" />
               <el-option label="15分钟" value="15m" />
@@ -89,7 +121,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick, onBeforeUnmount } from 'vue'
 import { marketApi } from '../api/market'
 import * as echarts from 'echarts'
 
@@ -152,90 +184,163 @@ const fetchKline = async () => {
   try {
     const data = await marketApi.getKline(selectedSymbol.value, klinePeriod.value, 100)
     
-    if (!klineChart) {
-      const chartDom = document.getElementById('kline-chart')
-      if (chartDom) {
-        klineChart = echarts.init(chartDom)
-      }
+    // 等待DOM更新
+    await nextTick()
+    
+    const chartDom = document.getElementById('kline-chart')
+    if (!chartDom) {
+      console.error('图表容器不存在')
+      klineLoading.value = false
+      return
     }
     
-    if (klineChart && data && data.length > 0) {
+    // 如果图表已存在，先销毁
+    if (klineChart) {
+      klineChart.dispose()
+    }
+    
+    // 初始化图表
+    klineChart = echarts.init(chartDom)
+    
+    if (data && data.length > 0) {
+      // 处理时间数据
+      const timeData = data.map(item => {
+        const time = item.time || item.date || ''
+        // 如果是完整时间戳，只取日期部分
+        if (time.includes(' ')) {
+          return time.split(' ')[0]
+        }
+        return time
+      })
+      
+      // 处理价格数据
+      const priceData = data.map(item => parseFloat(item.close || 0))
+      
       const option = {
         title: {
           text: `${selectedSymbol.value} - ${klinePeriod.value}`,
-          left: 'center'
+          left: 'center',
+          textStyle: {
+            fontSize: 16
+          }
         },
         tooltip: {
-          trigger: 'axis'
+          trigger: 'axis',
+          axisPointer: {
+            type: 'cross'
+          },
+          formatter: function(params) {
+            const param = params[0]
+            return `${param.name}<br/>${param.seriesName}: ¥${param.value.toFixed(2)}`
+          }
+        },
+        grid: {
+          left: '3%',
+          right: '4%',
+          bottom: '3%',
+          containLabel: true
         },
         xAxis: {
           type: 'category',
-          data: data.map(item => item.time || item.date)
+          boundaryGap: false,
+          data: timeData,
+          axisLabel: {
+            rotate: 45,
+            formatter: function(value) {
+              return value
+            }
+          }
         },
         yAxis: {
           type: 'value',
-          scale: true
+          scale: true,
+          axisLabel: {
+            formatter: function(value) {
+              return '¥' + value.toFixed(2)
+            }
+          }
         },
         series: [
           {
             name: '收盘价',
             type: 'line',
-            data: data.map(item => parseFloat(item.close || 0)),
-            smooth: true,
+            data: priceData,
+            smooth: false,
+            symbol: 'circle',
+            symbolSize: 4,
             itemStyle: {
               color: '#409EFF'
+            },
+            areaStyle: {
+              color: {
+                type: 'linear',
+                x: 0,
+                y: 0,
+                x2: 0,
+                y2: 1,
+                colorStops: [
+                  { offset: 0, color: 'rgba(64, 158, 255, 0.3)' },
+                  { offset: 1, color: 'rgba(64, 158, 255, 0.1)' }
+                ]
+              }
             }
           }
         ]
       }
+      
       klineChart.setOption(option)
+      
+      // 响应式调整
+      window.addEventListener('resize', () => {
+        if (klineChart) {
+          klineChart.resize()
+        }
+      })
+    } else {
+      ElMessage.warning('暂无K线数据')
     }
   } catch (error) {
     console.error('获取K线失败:', error)
-    ElMessage.error('获取K线失败')
+    ElMessage.error('获取K线失败: ' + (error.message || '未知错误'))
   } finally {
     klineLoading.value = false
   }
 }
 
-const formatPrice = (row, column, cellValue) => {
-  return `¥${parseFloat(cellValue || 0).toFixed(2)}`
+const formatPrice = (value) => {
+  return parseFloat(value || 0).toFixed(2)
 }
 
-const formatChange = (row, column, cellValue) => {
-  const value = parseFloat(cellValue || 0)
-  const color = value >= 0 ? '#F56C6C' : '#67C23A'
-  return `<span style="color: ${color}">${value >= 0 ? '+' : ''}${value.toFixed(2)}</span>`
-}
-
-const formatChangePercent = (row, column, cellValue) => {
-  const value = parseFloat(cellValue || 0)
-  const color = value >= 0 ? '#F56C6C' : '#67C23A'
-  return `<span style="color: ${color}">${value >= 0 ? '+' : ''}${value.toFixed(2)}%</span>`
-}
-
-const formatVolume = (row, column, cellValue) => {
-  const value = parseFloat(cellValue || 0)
-  if (value >= 100000000) {
-    return `${(value / 100000000).toFixed(2)}亿`
-  } else if (value >= 10000) {
-    return `${(value / 10000).toFixed(2)}万`
+const formatVolume = (value) => {
+  const num = parseFloat(value || 0)
+  if (num >= 100000000) {
+    return `${(num / 100000000).toFixed(2)}亿`
+  } else if (num >= 10000) {
+    return `${(num / 10000).toFixed(2)}万`
   }
-  return value.toFixed(0)
+  return num.toFixed(0)
 }
 
-const formatAmount = (row, column, cellValue) => {
-  const value = parseFloat(cellValue || 0)
-  if (value >= 100000000) {
-    return `¥${(value / 100000000).toFixed(2)}亿`
-  } else if (value >= 10000) {
-    return `¥${(value / 10000).toFixed(2)}万`
+const formatAmount = (value) => {
+  const num = parseFloat(value || 0)
+  if (num >= 100000000) {
+    return `¥${(num / 100000000).toFixed(2)}亿`
+  } else if (num >= 10000) {
+    return `¥${(num / 10000).toFixed(2)}万`
   }
-  return `¥${value.toFixed(2)}`
+  return `¥${num.toFixed(2)}`
 }
 
 onMounted(() => {
   // 初始化
+})
+
+onBeforeUnmount(() => {
+  // 清理图表
+  if (klineChart) {
+    klineChart.dispose()
+    klineChart = null
+  }
 })
 </script>
 

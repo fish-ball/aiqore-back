@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     QMT_PORT: int = 7709
     QMT_USER: Optional[str] = None
     QMT_PASSWORD: Optional[str] = None
+    XT_QUANT_PATH: str = r"C:\国金证券QMT交易端\userdata_mini"
+    XT_QUANT_ACCT: str = "39271919"
     
     class Config:
         env_file = ".env"

@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base
-from app.api import market, trade, analysis
+from app.api import market, trade, analysis, security, debug
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -28,6 +28,11 @@ app.add_middleware(
 app.include_router(market.router)
 app.include_router(trade.router)
 app.include_router(analysis.router)
+app.include_router(security.router)
+
+# 调试路由（仅在开发环境使用）
+if settings.DEBUG:
+    app.include_router(debug.router)
 
 
 @app.get("/")
