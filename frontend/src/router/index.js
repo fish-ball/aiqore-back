@@ -7,6 +7,7 @@ import Market from '../views/Market.vue'
 import Analysis from '../views/Analysis.vue'
 import SecurityList from '../views/SecurityList.vue'
 import SecurityDetail from '../views/SecurityDetail.vue'
+import Tasks from '../views/Tasks.vue'
 
 const routes = [
   {
@@ -52,6 +53,11 @@ const routes = [
     path: '/analysis',
     name: 'Analysis',
     component: Analysis
+  },
+  {
+    path: '/tasks',
+    name: 'Tasks',
+    component: Tasks
   }
 ]
 

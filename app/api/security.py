@@ -23,6 +23,17 @@ async def update_securities(
     """
     try:
         from app.tasks.security_tasks import update_securities_task
+        from app.utils.task_lock import check_task_lock
+        
+        # 检查任务锁
+        task_name = "update_securities"
+        is_locked, lock_message = check_task_lock(task_name)
+        
+        if is_locked:
+            raise HTTPException(
+                status_code=409,  # 409 Conflict
+                detail=lock_message or f"任务 '{task_name}' 正在运行中，请等待完成后再试"
+            )
         
         # 启动异步任务
         task = update_securities_task.delay(market)
@@ -35,6 +46,8 @@ async def update_securities(
             },
             "message": "任务已提交，正在后台处理"
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"提交更新任务失败: {e}")
         import traceback

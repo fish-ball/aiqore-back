@@ -4,6 +4,7 @@ from app.database import SessionLocal
 from app.services.security_service import security_service
 from app.models.security import Security
 from app.services.qmt_service import qmt_service
+from app.utils.task_lock import TaskLock
 from datetime import datetime
 import logging
 
@@ -18,6 +19,26 @@ def update_securities_task(self, market=None):
     Args:
         market: 市场代码，'SH' 或 'SZ'，None表示全部
     """
+    task_name = "update_securities"
+    task_lock = TaskLock(task_name, timeout=7200)  # 2小时超时
+    
+    # 尝试获取锁
+    if not task_lock.acquire():
+        error_msg = f"任务 '{task_name}' 已在运行中，无法重复执行"
+        logger.warning(error_msg)
+        self.update_state(
+            state="FAILURE",
+            meta={"error": error_msg, "status": "任务冲突"}
+        )
+        return {
+            "success": False,
+            "message": error_msg,
+            "total": 0,
+            "created": 0,
+            "updated": 0,
+            "errors": 0
+        }
+    
     db = SessionLocal()
     try:
         # 更新任务状态
@@ -216,5 +237,7 @@ def update_securities_task(self, market=None):
             "errors": 0
         }
     finally:
+        # 确保释放锁
+        task_lock.release()
         db.close()
 

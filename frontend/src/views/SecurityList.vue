@@ -418,7 +418,11 @@ const updateFromQMT = async () => {
     updating.value = false
     updateProgress.value = 0
     console.error('更新失败:', error)
-    ElMessage.error('更新失败: ' + (error.message || '未知错误'))
+    // 错误消息已经在响应拦截器中显示，这里不需要重复显示
+    // 但如果是任务冲突，已经显示为warning，这里可以不再显示
+    if (!error.message || !error.message.includes('正在运行中')) {
+      ElMessage.error('更新失败: ' + (error.message || '未知错误'))
+    }
   }
 }
 
