@@ -2,11 +2,13 @@
 from fastapi import APIRouter, HTTPException
 from app.celery_app import celery_app
 from app.config import settings
+from app.database import SessionLocal
 from app.utils.celery_utils import (
     get_task_name_from_registry,
     get_task_display_name_from_registry,
     get_task_category_from_registry
 )
+from sqlalchemy import text
 import logging
 
 router = APIRouter(prefix="/api/task", tags=["任务"])
@@ -20,12 +22,13 @@ async def get_active_tasks():
     获取所有活动任务列表
     
     返回所有正在运行、等待中或最近完成的任务
+    使用 celery-results 从数据库查询任务信息
     """
     try:
         all_task_ids = set()
+        task_name_map = {}  # 存储任务ID到任务名称的映射
         
         # 1. 获取活动任务（正在运行的任务）
-        task_name_map = {}  # 存储任务ID到任务名称的映射
         try:
             inspect = celery_app.control.inspect()
             active_tasks = inspect.active() or {}
@@ -60,46 +63,57 @@ async def get_active_tasks():
         except Exception as e:
             logger.warning(f"获取计划任务失败: {e}")
         
-        # 3. 从Redis中获取最近的任务（包括已完成的任务）
+        # 3. 从数据库中获取最近的任务（包括已完成的任务）
+        # celery-results 使用 celery_taskmeta 表存储任务结果
         try:
-            import redis
-            r = redis.Redis(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
-                password=settings.REDIS_PASSWORD,
-                db=settings.REDIS_DB,
-                decode_responses=True
-            )
-            
-            # 扫描Redis中的任务键（Celery存储格式：celery-task-meta-{task_id}）
-            cursor = 0
-            pattern = "celery-task-meta-*"
-            max_tasks = 100  # 最多获取100个最近的任务
-            
-            while len(all_task_ids) < max_tasks:
-                cursor, keys = r.scan(cursor, match=pattern, count=50)
-                for key in keys:
-                    # 提取任务ID（从键名中）
-                    if key.startswith("celery-task-meta-"):
-                        task_id = key.replace("celery-task-meta-", "")
-                        all_task_ids.add(task_id)
-                        
-                        if len(all_task_ids) >= max_tasks:
-                            break
-                if cursor == 0:
-                    break
+            db = SessionLocal()
+            try:
+                # 检查表是否存在
+                check_table = text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_name = 'celery_taskmeta'
+                    )
+                """)
+                table_exists = db.execute(check_table).scalar()
+                
+                if table_exists:
+                    # 查询最近的任务（按日期降序，最多100个）
+                    # celery-results 表结构：task_id, status, result, traceback, date_done, task_name
+                    query = text("""
+                        SELECT task_id, task_name, status, date_done
+                        FROM celery_taskmeta
+                        ORDER BY date_done DESC NULLS LAST
+                        LIMIT 100
+                    """)
+                    result = db.execute(query)
+                    
+                    for row in result:
+                        task_id = row[0]
+                        task_name = row[1]
+                        if task_id:
+                            all_task_ids.add(task_id)
+                            if task_name:
+                                task_name_map[task_id] = task_name
+            finally:
+                db.close()
         except Exception as e:
-            logger.warning(f"从Redis获取任务失败: {e}")
+            logger.warning(f"从数据库获取任务失败: {e}")
+            # 如果表不存在，可能是首次运行，celery-results 会在首次任务执行时创建表
         
         # 获取每个任务的状态
         task_list = []
         for task_id in all_task_ids:
             try:
-                # AsyncResult 对象，表示任务的结果
+                # AsyncResult 对象，表示任务的结果（现在从数据库获取）
                 result = celery_app.AsyncResult(task_id)
                 
-                # 获取任务名称（从inspect获取）
+                # 获取任务名称（优先从数据库，其次从inspect）
                 raw_task_name = task_name_map.get(task_id)
+                
+                # 如果从inspect获取不到，尝试从result中获取（celery-results扩展结果）
+                if not raw_task_name and hasattr(result, 'name'):
+                    raw_task_name = result.name
                 
                 # 从Celery任务注册表中获取规范化的任务名称（对应Task定义中的name）
                 task_name = get_task_name_from_registry(raw_task_name) if raw_task_name else None
@@ -113,7 +127,7 @@ async def get_active_tasks():
                 
                 task_info = {
                     "task_id": task_id,
-                    "state": result.state,  # 使用 result.state
+                    "state": result.state,  # 使用 result.state（从数据库获取）
                     "name": full_task_name,  # 完整任务名称
                     "display_name": display_name,  # 友好显示名称
                     "category": category
@@ -189,38 +203,70 @@ async def get_task_status(task_id: str):
         task_id: 任务ID
     """
     try:
-        # AsyncResult 对象，表示任务的结果
+        # AsyncResult 对象，表示任务的结果（现在从数据库获取）
         result = celery_app.AsyncResult(task_id)
         
         # 获取任务名称
-        # 对于单个任务查询，尝试从inspect获取任务名称
+        # 优先从数据库中获取（celery-results存储）
         raw_task_name = None
         try:
-            inspect = celery_app.control.inspect()
-            active_tasks = inspect.active() or {}
-            scheduled_tasks = inspect.scheduled() or {}
-            
-            # 从活动任务中查找
-            for worker, tasks in active_tasks.items():
-                for task in tasks:
-                    if task.get('id') == task_id:
-                        raw_task_name = task.get('name') or task.get('task')
-                        break
-                if raw_task_name:
-                    break
-            
-            # 从计划任务中查找
-            if not raw_task_name:
-                for worker, tasks in scheduled_tasks.items():
+            db = SessionLocal()
+            try:
+                # 检查表是否存在
+                check_table = text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_name = 'celery_taskmeta'
+                    )
+                """)
+                table_exists = db.execute(check_table).scalar()
+                
+                if table_exists:
+                    query = text("""
+                        SELECT task_name
+                        FROM celery_taskmeta
+                        WHERE task_id = :task_id
+                    """)
+                    row = db.execute(query, {"task_id": task_id}).fetchone()
+                    if row:
+                        raw_task_name = row[0]
+            finally:
+                db.close()
+        except Exception as e:
+            logger.debug(f"从数据库获取任务名称失败: {e}")
+        
+        # 如果数据库中没有，尝试从inspect获取（活动任务）
+        if not raw_task_name:
+            try:
+                inspect = celery_app.control.inspect()
+                active_tasks = inspect.active() or {}
+                scheduled_tasks = inspect.scheduled() or {}
+                
+                # 从活动任务中查找
+                for worker, tasks in active_tasks.items():
                     for task in tasks:
-                        request = task.get('request', {})
-                        if request.get('id') == task_id:
-                            raw_task_name = request.get('task') or request.get('name')
+                        if task.get('id') == task_id:
+                            raw_task_name = task.get('name') or task.get('task')
                             break
                     if raw_task_name:
                         break
-        except Exception as e:
-            logger.debug(f"从inspect获取任务名称失败: {e}")
+                
+                # 从计划任务中查找
+                if not raw_task_name:
+                    for worker, tasks in scheduled_tasks.items():
+                        for task in tasks:
+                            request = task.get('request', {})
+                            if request.get('id') == task_id:
+                                raw_task_name = request.get('task') or request.get('name')
+                                break
+                        if raw_task_name:
+                            break
+            except Exception as e:
+                logger.debug(f"从inspect获取任务名称失败: {e}")
+        
+        # 如果还是获取不到，尝试从result对象获取（celery-results扩展结果）
+        if not raw_task_name and hasattr(result, 'name'):
+            raw_task_name = result.name
         
         # 从Celery任务注册表中获取规范化的任务名称
         task_name = get_task_name_from_registry(raw_task_name) if raw_task_name else None

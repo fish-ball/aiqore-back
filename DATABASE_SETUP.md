@@ -65,14 +65,14 @@ DB_PORT=5432
 
 ### 验证连接
 
-#### 方法1：使用测试脚本（推荐）
+#### 方法1：使用 Python 交互式测试
 
 ```bash
-# 先安装依赖
-pip install -r requirements.txt
+# 先安装依赖（使用 UV）
+uv sync
 
-# 运行测试脚本
-python test_db_connection.py
+# 测试数据库连接
+uv run python -c "from app.database import engine; from sqlalchemy import text; conn = engine.connect(); print('数据库连接成功:', conn.execute(text('SELECT version()')).fetchone()[0])"
 ```
 
 #### 方法2：从WSL测试

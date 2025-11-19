@@ -65,7 +65,11 @@ curl -X POST "http://localhost:8000/api/security/update?market=SZ"
 #### 方法二：使用脚本
 
 ```bash
-python update_securities.py
+# 使用 API 接口更新（推荐）
+curl -X POST "http://localhost:8000/api/security/update"
+
+# 或使用 Python 脚本
+uv run python -c "from app.database import SessionLocal; from app.services.security_service import security_service; db = SessionLocal(); result = security_service.update_securities_from_qmt(db, market=None); print(result); db.close()"
 ```
 
 ### 2. 查询证券列表
@@ -174,7 +178,8 @@ CREATE TABLE securities (
 ```batch
 @echo off
 cd /d C:\Users\Alfred\app\aiqore\aiqore-back
-python update_securities.py
+REM 使用 API 接口更新（推荐）
+curl -X POST "http://localhost:8000/api/security/update"
 ```
 
 2. 在任务计划程序中设置每天执行
@@ -182,8 +187,8 @@ python update_securities.py
 ### Linux Cron
 
 ```bash
-# 每天凌晨2点更新
-0 2 * * * cd /path/to/project && python update_securities.py
+# 每天凌晨2点更新（使用 API 接口）
+0 2 * * * curl -X POST "http://localhost:8000/api/security/update"
 ```
 
 ### Python 定时任务

@@ -1,0 +1,45 @@
+[project]
+name = "aiqore-back"
+version = "0.1.0"
+description = "个人投资管理系统后端"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi==0.104.1",
+    "uvicorn[standard]==0.24.0",
+    "sqlalchemy==2.0.23",
+    "alembic==1.12.1",
+    "pydantic==2.5.0",
+    "pydantic-settings==2.1.0",
+    "python-dotenv==1.0.0",
+    "pandas==2.1.3",
+    "numpy==1.26.2",
+    "python-dateutil==2.8.2",
+    "psycopg2-binary==2.9.9",
+    "celery==5.3.4",
+    "redis==5.0.1",
+]
+
+[project.optional-dependencies]
+# QMT相关（可选，需要根据QMT官方文档安装）
+# xtquant  # 国金QMT Python SDK，请从QMT客户端安装或参考官方文档
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.uv]
+dev-dependencies = []
+
+# 配置 PyPI 索引源（使用清华大学镜像）
+[[tool.uv.index]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
+default = true
+
+[tool.uv.sources]
+# 如果需要指定特定源的包，可以在这里配置
+

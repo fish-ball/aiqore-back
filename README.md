@@ -18,13 +18,32 @@
 
 ## 快速开始
 
-### 1. 安装依赖
+### 1. 安装 UV（如果未安装）
 
-```bash
-pip install -r requirements.txt
+**Windows (PowerShell):**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-### 2. 配置环境变量
+**Linux/macOS:**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+或使用 pip:
+```bash
+pip install uv
+```
+
+### 2. 安装依赖
+
+```bash
+uv sync
+```
+
+这会自动创建虚拟环境并安装所有依赖。
+
+### 3. 配置环境变量
 
 复制 `.env.example` 为 `.env` 并填写配置：
 
@@ -32,7 +51,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-### 3. 初始化数据库
+### 4. 初始化数据库
 
 ```bash
 python init_db.py
@@ -44,9 +63,24 @@ python init_db.py
 alembic upgrade head
 ```
 
-### 4. 启动服务
+### 5. 启动服务
 
+**使用 UV（推荐）:**
 ```bash
+uv run python run.py
+```
+
+或使用批处理文件（Windows）:
+```bash
+start_server.bat
+```
+
+**传统方式（需要先激活虚拟环境）:**
+```bash
+.venv\Scripts\activate  # Windows
+# 或
+source .venv/bin/activate  # Linux/macOS
+
 python run.py
 ```
 
@@ -84,7 +118,8 @@ aiqore-back/
 │       ├── trade.py         # 交易API
 │       └── analysis.py      # 分析API
 ├── alembic/                 # 数据库迁移
-├── requirements.txt
+├── pyproject.toml          # 项目配置和依赖（UV）
+├── .python-version         # Python版本要求
 ├── .env.example
 └── README.md
 

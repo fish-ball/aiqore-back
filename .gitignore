@@ -4,9 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
 build/
 develop-eggs/
 dist/
@@ -23,6 +20,16 @@ wheels/
 .installed.cfg
 *.egg
 
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# uv
+.uv/
+# uv.lock 应该提交到版本控制以确保可重现的构建
+
 # IDE
 .vscode/
 .idea/
@@ -37,13 +44,14 @@ wheels/
 # Database
 *.db
 *.sqlite
-*.sqlite3
 
 # Logs
 *.log
-logs/
 
 # OS
 .DS_Store
 Thumbs.db
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
