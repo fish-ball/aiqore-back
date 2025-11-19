@@ -1,5 +1,5 @@
 """证券相关异步任务"""
-from app.utils.task_decorator import task
+from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.services.security_service import security_service
 from app.models.security import Security
@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@task(display_name="同步证券列表", category="证券管理", bind=True, name="update_securities")
+@celery_app.task(bind=True, name="update_securities")
 def update_securities_task(self, market=None):
     """
     同步证券列表
