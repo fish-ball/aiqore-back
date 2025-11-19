@@ -5,6 +5,8 @@ import Positions from '../views/Positions.vue'
 import Trades from '../views/Trades.vue'
 import Market from '../views/Market.vue'
 import Analysis from '../views/Analysis.vue'
+import SecurityList from '../views/SecurityList.vue'
+import SecurityDetail from '../views/SecurityDetail.vue'
 
 const routes = [
   {
@@ -35,6 +37,16 @@ const routes = [
     path: '/market',
     name: 'Market',
     component: Market
+  },
+  {
+    path: '/securities',
+    name: 'SecurityList',
+    component: SecurityList
+  },
+  {
+    path: '/security/:symbol',
+    name: 'SecurityDetail',
+    component: SecurityDetail
   },
   {
     path: '/analysis',
