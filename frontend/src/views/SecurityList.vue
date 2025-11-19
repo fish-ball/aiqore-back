@@ -19,9 +19,9 @@
             <el-button @click="handleSearch">搜索</el-button>
           </template>
         </el-input>
-        <el-button type="success" @click="updateFromQMT" :loading="updating">
+        <el-button type="success" @click="updateFromQMT" :loading="updating" :disabled="updating">
           <el-icon><Download /></el-icon>
-          从QMT更新
+          {{ updating ? (updateProgress > 0 ? `更新中 ${updateProgress}%` : '更新中...') : '从QMT更新' }}
         </el-button>
         <el-button type="primary" @click="refreshData">
           <el-icon><Refresh /></el-icon>
@@ -133,6 +133,7 @@ import { marketApi } from '../api/market'
 const router = useRouter()
 const loading = ref(false)
 const updating = ref(false)
+const updateProgress = ref(0)
 const tableData = ref([])
 const filterMarket = ref('')
 const searchKeyword = ref('')
@@ -358,23 +359,66 @@ const refreshData = () => {
 
 const updateFromQMT = async () => {
   updating.value = true
+  updateProgress.value = 0
   try {
     const result = await securityApi.update(filterMarket.value || null)
     if (result.code === 0) {
-      const data = result.data
-      ElMessage.success(
-        `更新成功！总计: ${data.total}, 新增: ${data.created}, 更新: ${data.updated}${data.errors ? `, 错误: ${data.errors}` : ''}`
-      )
-      // 更新后刷新列表
-      await fetchSecurities()
+      const taskId = result.data.task_id
+      ElMessage.info('任务已提交，正在后台处理...')
+      
+      // 轮询任务状态
+      const checkTaskStatus = async () => {
+        try {
+          const { taskApi } = await import('../api/task')
+          const statusResult = await taskApi.getStatus(taskId)
+          
+          if (statusResult.code === 0) {
+            const taskData = statusResult.data
+            
+            // 更新进度
+            if (taskData.progress !== undefined) {
+              updateProgress.value = taskData.progress
+            }
+            
+            if (taskData.state === 'SUCCESS') {
+              updating.value = false
+              updateProgress.value = 100
+              const result = taskData.result || {}
+              ElMessage.success(
+                `更新完成！总计: ${result.total || 0}, 新增: ${result.created || 0}, 更新: ${result.updated || 0}${result.errors ? `, 错误: ${result.errors}` : ''}`
+              )
+              // 更新后刷新列表
+              await fetchSecurities()
+            } else if (taskData.state === 'FAILURE') {
+              updating.value = false
+              updateProgress.value = 0
+              ElMessage.error('更新失败: ' + (taskData.error || '未知错误'))
+            } else if (taskData.state === 'PROGRESS') {
+              // 继续轮询
+              setTimeout(checkTaskStatus, 2000)
+            } else {
+              // PENDING或其他状态，继续轮询
+              setTimeout(checkTaskStatus, 1000)
+            }
+          }
+        } catch (error) {
+          console.error('查询任务状态失败:', error)
+          setTimeout(checkTaskStatus, 2000)
+        }
+      }
+      
+      // 开始轮询
+      setTimeout(checkTaskStatus, 1000)
     } else {
-      ElMessage.error(result.message || '更新失败')
+      updating.value = false
+      updateProgress.value = 0
+      ElMessage.error(result.message || '提交任务失败')
     }
   } catch (error) {
+    updating.value = false
+    updateProgress.value = 0
     console.error('更新失败:', error)
     ElMessage.error('更新失败: ' + (error.message || '未知错误'))
-  } finally {
-    updating.value = false
   }
 }
 

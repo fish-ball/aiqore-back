@@ -13,31 +13,33 @@ logger = logging.getLogger(__name__)
 
 @router.post("/update")
 async def update_securities(
-    market: Optional[str] = Query(None, description="市场代码，SH或SZ，不传则更新全部"),
-    db: Session = Depends(get_db)
+    market: Optional[str] = Query(None, description="市场代码，SH或SZ，不传则更新全部")
 ):
     """
-    从QMT更新证券基础信息
+    从QMT更新证券基础信息（异步任务）
     
     Args:
         market: 市场代码，可选
     """
     try:
-        result = security_service.update_securities_from_qmt(db, market)
-        if result["success"]:
-            return {
-                "code": 0,
-                "data": result,
-                "message": "更新成功"
-            }
-        else:
-            return {
-                "code": 1,
-                "data": result,
-                "message": result.get("message", "更新失败")
-            }
+        from app.tasks.security_tasks import update_securities_task
+        
+        # 启动异步任务
+        task = update_securities_task.delay(market)
+        
+        return {
+            "code": 0,
+            "data": {
+                "task_id": task.id,
+                "status": "PENDING"
+            },
+            "message": "任务已提交，正在后台处理"
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
+        logger.error(f"提交更新任务失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"提交任务失败: {str(e)}")
 
 
 @router.get("/list")

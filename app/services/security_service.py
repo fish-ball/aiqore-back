@@ -92,7 +92,7 @@ class SecurityService:
                                 names_map[sym] = quote.get("name")
             
             # 处理每个股票
-            for stock_data in stocks:
+            for idx, stock_data in enumerate(stocks):
                 symbol = stock_data.get("symbol")
                 if not symbol:
                     continue
