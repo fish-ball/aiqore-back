@@ -2,10 +2,12 @@
 from fastapi import APIRouter, HTTPException
 from app.celery_app import celery_app
 from app.config import settings
-from app.tasks.task_names import get_task_display_name, get_task_category
+from app.utils.celery_utils import (
+    get_task_name_from_registry,
+    get_task_display_name_from_registry,
+    get_task_category_from_registry
+)
 import logging
-from typing import List, Dict, Any
-import redis
 
 router = APIRouter(prefix="/api/task", tags=["任务"])
 
@@ -60,12 +62,13 @@ async def get_active_tasks():
         
         # 3. 从Redis中获取最近的任务（包括已完成的任务）
         try:
+            import redis
             r = redis.Redis(
                 host=settings.REDIS_HOST,
                 port=settings.REDIS_PORT,
                 password=settings.REDIS_PASSWORD,
                 db=settings.REDIS_DB,
-                decode_responses=False  # 需要二进制模式来扫描
+                decode_responses=True
             )
             
             # 扫描Redis中的任务键（Celery存储格式：celery-task-meta-{task_id}）
@@ -77,10 +80,10 @@ async def get_active_tasks():
                 cursor, keys = r.scan(cursor, match=pattern, count=50)
                 for key in keys:
                     # 提取任务ID（从键名中）
-                    key_str = key.decode('utf-8') if isinstance(key, bytes) else key
-                    if key_str.startswith("celery-task-meta-"):
-                        task_id = key_str.replace("celery-task-meta-", "")
+                    if key.startswith("celery-task-meta-"):
+                        task_id = key.replace("celery-task-meta-", "")
                         all_task_ids.add(task_id)
+                        
                         if len(all_task_ids) >= max_tasks:
                             break
                 if cursor == 0:
@@ -92,37 +95,39 @@ async def get_active_tasks():
         task_list = []
         for task_id in all_task_ids:
             try:
-                task = celery_app.AsyncResult(task_id)
+                # AsyncResult 对象，表示任务的结果
+                result = celery_app.AsyncResult(task_id)
                 
-                # 获取任务名称（优先使用从inspect获取的名称，因为更准确）
-                task_name = task_name_map.get(task_id)
-                if not task_name:
-                    if hasattr(task, 'name') and task.name:
-                        task_name = task.name
-                    elif hasattr(task, 'task') and task.task:
-                        task_name = task.task
+                # 获取任务名称（从inspect获取）
+                raw_task_name = task_name_map.get(task_id)
                 
-                # 使用任务名称映射获取友好名称
-                display_name = get_task_display_name(task_name) if task_name else "未知任务"
-                category = get_task_category(task_name) if task_name else "其他"
+                # 从Celery任务注册表中获取规范化的任务名称（对应Task定义中的name）
+                task_name = get_task_name_from_registry(raw_task_name) if raw_task_name else None
+                
+                # 从任务对象获取显示名称和分类（从装饰器传入）
+                display_name = get_task_display_name_from_registry(task_name) if task_name else "未知任务"
+                category = get_task_category_from_registry(task_name) if task_name else "其他"
+                
+                # name字段应该是完整名称（原始名称或规范化后的名称）
+                full_task_name = raw_task_name or task_name or "未知任务"
                 
                 task_info = {
                     "task_id": task_id,
-                    "state": task.state,
-                    "name": task_name or "未知任务",
-                    "display_name": display_name,
+                    "state": result.state,  # 使用 result.state
+                    "name": full_task_name,  # 完整任务名称
+                    "display_name": display_name,  # 友好显示名称
                     "category": category
                 }
                 
-                if task.state == "PENDING":
+                if result.state == "PENDING":
                     task_info.update({
                         "status": "等待中",
                         "current": 0,
                         "total": 0,
                         "progress": 0
                     })
-                elif task.state == "PROGRESS":
-                    meta = task.info or {}
+                elif result.state == "PROGRESS":
+                    meta = result.info or {}
                     current = meta.get("current", 0)
                     total = meta.get("total", 0)
                     progress = int((current / total * 100)) if total > 0 else 0
@@ -132,15 +137,16 @@ async def get_active_tasks():
                         "total": total,
                         "progress": progress
                     })
-                elif task.state == "SUCCESS":
-                    result = task.result if hasattr(task, 'result') else task.info
+                elif result.state == "SUCCESS":
+                    # 在SUCCESS状态下，result.info 是任务的返回值
+                    task_result = result.result if hasattr(result, 'result') else result.info
                     task_info.update({
                         "status": "完成",
                         "progress": 100,
-                        "result": result if isinstance(result, dict) else {}
+                        "result": task_result if isinstance(task_result, dict) else {}
                     })
-                elif task.state == "FAILURE":
-                    error_info = task.info
+                elif result.state == "FAILURE":
+                    error_info = result.info
                     task_info.update({
                         "status": "失败",
                         "error": str(error_info) if error_info else "未知错误",
@@ -148,7 +154,7 @@ async def get_active_tasks():
                     })
                 else:
                     task_info.update({
-                        "status": task.state,
+                        "status": result.state,
                         "progress": 0
                     })
                 
@@ -183,24 +189,54 @@ async def get_task_status(task_id: str):
         task_id: 任务ID
     """
     try:
-        task = celery_app.AsyncResult(task_id)
+        # AsyncResult 对象，表示任务的结果
+        result = celery_app.AsyncResult(task_id)
         
         # 获取任务名称
-        task_name = None
-        if hasattr(task, 'name') and task.name:
-            task_name = task.name
-        elif hasattr(task, 'task') and task.task:
-            task_name = task.task
+        # 对于单个任务查询，尝试从inspect获取任务名称
+        raw_task_name = None
+        try:
+            inspect = celery_app.control.inspect()
+            active_tasks = inspect.active() or {}
+            scheduled_tasks = inspect.scheduled() or {}
+            
+            # 从活动任务中查找
+            for worker, tasks in active_tasks.items():
+                for task in tasks:
+                    if task.get('id') == task_id:
+                        raw_task_name = task.get('name') or task.get('task')
+                        break
+                if raw_task_name:
+                    break
+            
+            # 从计划任务中查找
+            if not raw_task_name:
+                for worker, tasks in scheduled_tasks.items():
+                    for task in tasks:
+                        request = task.get('request', {})
+                        if request.get('id') == task_id:
+                            raw_task_name = request.get('task') or request.get('name')
+                            break
+                    if raw_task_name:
+                        break
+        except Exception as e:
+            logger.debug(f"从inspect获取任务名称失败: {e}")
         
-        # 使用任务名称映射获取友好名称
-        display_name = get_task_display_name(task_name) if task_name else "未知任务"
-        category = get_task_category(task_name) if task_name else "其他"
+        # 从Celery任务注册表中获取规范化的任务名称
+        task_name = get_task_name_from_registry(raw_task_name) if raw_task_name else None
         
-        if task.state == "PENDING":
+        # 从任务对象获取显示名称和分类（从装饰器传入）
+        display_name = get_task_display_name_from_registry(task_name) if task_name else "未知任务"
+        category = get_task_category_from_registry(task_name) if task_name else "其他"
+        
+        # name字段应该是完整名称
+        full_task_name = raw_task_name or task_name or "未知任务"
+        
+        if result.state == "PENDING":
             response = {
                 "task_id": task_id,
-                "state": task.state,
-                "name": task_name or "未知任务",
+                "state": result.state,
+                "name": full_task_name,
                 "display_name": display_name,
                 "category": category,
                 "status": "等待中",
@@ -208,15 +244,15 @@ async def get_task_status(task_id: str):
                 "total": 0,
                 "progress": 0
             }
-        elif task.state == "PROGRESS":
-            meta = task.info or {}
+        elif result.state == "PROGRESS":
+            meta = result.info or {}
             current = meta.get("current", 0)
             total = meta.get("total", 0)
             progress = int((current / total * 100)) if total > 0 else 0
             response = {
                 "task_id": task_id,
-                "state": task.state,
-                "name": task_name or "未知任务",
+                "state": result.state,
+                "name": full_task_name,
                 "display_name": display_name,
                 "category": category,
                 "status": meta.get("status", "处理中"),
@@ -224,32 +260,32 @@ async def get_task_status(task_id: str):
                 "total": total,
                 "progress": progress
             }
-        elif task.state == "SUCCESS":
-            # Celery在SUCCESS状态下，task.info直接是返回值
-            result = task.result if hasattr(task, 'result') else task.info
+        elif result.state == "SUCCESS":
+            # 在SUCCESS状态下，result.info 是任务的返回值
+            task_result = result.result if hasattr(result, 'result') else result.info
             
             # 如果任务返回的是字典，直接使用
-            if isinstance(result, dict):
-                result_data = result
+            if isinstance(task_result, dict):
+                result_data = task_result
             else:
                 result_data = {}
             
             response = {
                 "task_id": task_id,
-                "state": task.state,
-                "name": task_name or "未知任务",
+                "state": result.state,
+                "name": full_task_name,
                 "display_name": display_name,
                 "category": category,
                 "status": "完成",
                 "result": result_data,
                 "progress": 100
             }
-        elif task.state == "FAILURE":
-            error_info = task.info
+        elif result.state == "FAILURE":
+            error_info = result.info
             response = {
                 "task_id": task_id,
-                "state": task.state,
-                "name": task_name or "未知任务",
+                "state": result.state,
+                "name": full_task_name,
                 "display_name": display_name,
                 "category": category,
                 "status": "失败",
@@ -259,11 +295,11 @@ async def get_task_status(task_id: str):
         else:
             response = {
                 "task_id": task_id,
-                "state": task.state,
-                "name": task_name or "未知任务",
+                "state": result.state,
+                "name": full_task_name,
                 "display_name": display_name,
                 "category": category,
-                "status": task.state,
+                "status": result.state,
                 "progress": 0
             }
         
