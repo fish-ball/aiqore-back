@@ -43,8 +43,16 @@ def update_securities_task(self, market=None):
     
     db = SessionLocal()
     try:
-        # 更新任务状态
-        self.update_state(state="PROGRESS", meta={"current": 0, "total": 0, "status": "开始获取股票列表..."})
+        # 任务启动时立即更新状态，确保在Redis中创建任务记录
+        # 这样任务列表API就能立即看到这个任务
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "current": 0,
+                "total": 0,
+                "status": "任务已启动，开始获取股票列表..."
+            }
+        )
         
         # 获取QMT股票列表
         stocks = qmt_service.get_stock_list(market)

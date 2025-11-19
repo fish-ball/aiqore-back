@@ -50,10 +50,6 @@
             <el-icon><DataAnalysis /></el-icon>
             <span>数据分析</span>
           </el-menu-item>
-          <el-menu-item index="/tasks">
-            <el-icon><Operation /></el-icon>
-            <span>任务管理</span>
-          </el-menu-item>
         </el-menu>
       </el-aside>
       

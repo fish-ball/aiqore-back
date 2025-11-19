@@ -363,52 +363,13 @@ const updateFromQMT = async () => {
   try {
     const result = await securityApi.update(filterMarket.value || null)
     if (result.code === 0) {
-      const taskId = result.data.task_id
-      ElMessage.info('任务已提交，正在后台处理...')
-      
-      // 轮询任务状态
-      const checkTaskStatus = async () => {
-        try {
-          const { taskApi } = await import('../api/task')
-          const statusResult = await taskApi.getStatus(taskId)
-          
-          if (statusResult.code === 0) {
-            const taskData = statusResult.data
-            
-            // 更新进度
-            if (taskData.progress !== undefined) {
-              updateProgress.value = taskData.progress
-            }
-            
-            if (taskData.state === 'SUCCESS') {
-              updating.value = false
-              updateProgress.value = 100
-              const result = taskData.result || {}
-              ElMessage.success(
-                `更新完成！总计: ${result.total || 0}, 新增: ${result.created || 0}, 更新: ${result.updated || 0}${result.errors ? `, 错误: ${result.errors}` : ''}`
-              )
-              // 更新后刷新列表
-              await fetchSecurities()
-            } else if (taskData.state === 'FAILURE') {
-              updating.value = false
-              updateProgress.value = 0
-              ElMessage.error('更新失败: ' + (taskData.error || '未知错误'))
-            } else if (taskData.state === 'PROGRESS') {
-              // 继续轮询
-              setTimeout(checkTaskStatus, 2000)
-            } else {
-              // PENDING或其他状态，继续轮询
-              setTimeout(checkTaskStatus, 1000)
-            }
-          }
-        } catch (error) {
-          console.error('查询任务状态失败:', error)
-          setTimeout(checkTaskStatus, 2000)
-        }
-      }
-      
-      // 开始轮询
-      setTimeout(checkTaskStatus, 1000)
+      ElMessage.success('任务已提交，正在后台处理...')
+      // 任务在后台异步执行，稍后刷新列表
+      setTimeout(async () => {
+        await fetchSecurities()
+        updating.value = false
+        updateProgress.value = 0
+      }, 3000)
     } else {
       updating.value = false
       updateProgress.value = 0
