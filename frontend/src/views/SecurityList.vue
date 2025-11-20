@@ -2,58 +2,118 @@
   <div class="security-list">
     <div class="page-header">
       <h2>证券列表</h2>
-      <div>
-        <el-tabs v-model="activeSector" @tab-change="handleSectorChange" style="margin-bottom: 10px">
-          <el-tab-pane label="全部" name=""></el-tab-pane>
-          <el-tab-pane 
-            v-for="sector in sectors" 
-            :key="sector.name" 
-            :label="`${sector.display_name || sector.name} (${sector.security_count || 0})`" 
-            :name="sector.name"
-          ></el-tab-pane>
-        </el-tabs>
-        <el-select v-model="filterMarket" placeholder="选择市场" style="width: 120px; margin-right: 10px" @change="handleFilterChange">
-          <el-option label="全部" value="" />
-          <el-option label="上海" value="SH" />
-          <el-option label="深圳" value="SZ" />
-        </el-select>
-        <el-input
-          v-model="searchKeyword"
-          placeholder="搜索代码或名称"
-          style="width: 200px; margin-right: 10px"
-          @keyup.enter="handleSearch"
-          clearable
-        >
-          <template #append>
-            <el-button @click="handleSearch">搜索</el-button>
-          </template>
-        </el-input>
-        <el-button 
-          type="success" 
-          @click="updateFromQMT" 
-          :loading="updating" 
-          :disabled="updating"
-          v-if="!activeSector"
-        >
-          <el-icon><Download /></el-icon>
-          {{ updating ? (updateProgress > 0 ? `更新中 ${updateProgress}%` : '更新中...') : '从QMT更新' }}
-        </el-button>
-        <el-button 
-          type="success" 
-          @click="updateSectorFromQMT" 
-          :loading="updating" 
-          :disabled="updating"
-          v-if="activeSector"
-        >
-          <el-icon><Download /></el-icon>
-          {{ updating ? '同步中...' : '同步该板块' }}
-        </el-button>
-        <el-button type="primary" @click="refreshData">
-          <el-icon><Refresh /></el-icon>
-          刷新
-        </el-button>
-      </div>
     </div>
+
+    <!-- 筛选器区域 -->
+    <el-card class="filter-card">
+      <!-- 板块筛选（按分类分组，每个分类一行） -->
+      <div class="filter-row" v-if="Object.keys(sectorsByCategory).length > 0">
+        <div class="filter-label">板块：</div>
+        <div class="filter-options">
+          <el-button
+            :type="activeSector === '' ? 'primary' : 'default'"
+            :plain="activeSector !== ''"
+            size="small"
+            @click="handleSectorChange('')"
+            class="filter-btn"
+          >
+            全部
+          </el-button>
+        </div>
+      </div>
+      <template v-for="(sectorsList, category) in sectorsByCategory" :key="category">
+        <div class="filter-row">
+          <div class="filter-label">{{ category || '其他' }}：</div>
+          <div class="filter-options">
+            <el-button
+              v-for="sector in sectorsList"
+              :key="sector.name"
+              :type="activeSector === sector.name ? 'primary' : 'default'"
+              :plain="activeSector !== sector.name"
+              size="small"
+              @click="handleSectorChange(sector.name)"
+              class="filter-btn"
+            >
+              {{ sector.display_name || sector.name }}
+              <span class="sector-count">({{ sector.security_count || 0 }})</span>
+            </el-button>
+          </div>
+        </div>
+      </template>
+
+      <!-- 第二行：市场、搜索和操作按钮 -->
+      <div class="filter-row filter-row-actions">
+        <div class="filter-label">市场：</div>
+        <div class="filter-options">
+          <el-button
+            :type="filterMarket === '' ? 'primary' : 'default'"
+            :plain="filterMarket !== ''"
+            size="small"
+            @click="handleMarketChange('')"
+            class="filter-btn"
+          >
+            全部
+          </el-button>
+          <el-button
+            :type="filterMarket === 'SH' ? 'primary' : 'default'"
+            :plain="filterMarket !== 'SH'"
+            size="small"
+            @click="handleMarketChange('SH')"
+            class="filter-btn"
+          >
+            上海
+          </el-button>
+          <el-button
+            :type="filterMarket === 'SZ' ? 'primary' : 'default'"
+            :plain="filterMarket !== 'SZ'"
+            size="small"
+            @click="handleMarketChange('SZ')"
+            class="filter-btn"
+          >
+            深圳
+          </el-button>
+        </div>
+        <div class="filter-actions">
+          <el-input
+            v-model="searchKeyword"
+            placeholder="搜索代码或名称"
+            class="search-input"
+            @keyup.enter="handleSearch"
+            clearable
+          >
+            <template #append>
+              <el-button @click="handleSearch" size="small">搜索</el-button>
+            </template>
+          </el-input>
+          <el-button 
+            type="success" 
+            size="small"
+            @click="updateFromQMT" 
+            :loading="updating" 
+            :disabled="updating"
+            v-if="!activeSector"
+          >
+            <el-icon><Download /></el-icon>
+            {{ updating ? (updateProgress > 0 ? `更新中 ${updateProgress}%` : '更新中...') : '从QMT更新' }}
+          </el-button>
+          <el-button 
+            type="success" 
+            size="small"
+            @click="updateSectorFromQMT" 
+            :loading="updating" 
+            :disabled="updating"
+            v-if="activeSector"
+          >
+            <el-icon><Download /></el-icon>
+            {{ updating ? '同步中...' : '同步该板块' }}
+          </el-button>
+          <el-button type="primary" size="small" @click="refreshData">
+            <el-icon><Refresh /></el-icon>
+            刷新
+          </el-button>
+        </div>
+      </div>
+    </el-card>
 
     <el-card style="margin-top: 20px">
       <el-table
@@ -150,7 +210,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { securityApi } from '../api/security'
@@ -169,6 +229,30 @@ const tableData = ref([])
 const filterMarket = ref('')
 const searchKeyword = ref('')
 const sectors = ref([])
+
+// 按分类分组板块
+const sectorsByCategory = computed(() => {
+  const grouped = {}
+  sectors.value.forEach(sector => {
+    const category = sector.category || '其他'
+    if (!grouped[category]) {
+      grouped[category] = []
+    }
+    grouped[category].push(sector)
+  })
+  // 按分类排序
+  const categoryOrder = { '股票': 1, '基金': 2, 'ETF': 2, '债券': 3, '指数': 4, '期货': 5, '期权': 6 }
+  return Object.keys(grouped)
+    .sort((a, b) => {
+      const orderA = categoryOrder[a] || 99
+      const orderB = categoryOrder[b] || 99
+      return orderA - orderB
+    })
+    .reduce((acc, category) => {
+      acc[category] = grouped[category].sort((a, b) => (b.security_count || 0) - (a.security_count || 0))
+      return acc
+    }, {})
+})
 
 const pagination = ref({
   page: 1,
@@ -392,6 +476,15 @@ const handleSectorChange = (sectorName) => {
   fetchSecurities()
 }
 
+const handleMarketChange = (market) => {
+  filterMarket.value = market
+  pagination.value.page = 1
+  if (searchKeyword.value) {
+    searchKeyword.value = ''
+  }
+  fetchSecurities()
+}
+
 const handleFilterChange = () => {
   pagination.value.page = 1
   if (searchKeyword.value) {
@@ -489,14 +582,78 @@ onMounted(() => {
 }
 
 .page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .page-header h2 {
   margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.filter-card {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+}
+
+.filter-row {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.filter-row:last-child {
+  margin-bottom: 0;
+}
+
+.filter-row-actions {
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px solid #EBEEF5;
+}
+
+.filter-label {
+  min-width: 60px;
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+  padding-top: 6px;
+  flex-shrink: 0;
+}
+
+.filter-options {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.filter-btn {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  height: 28px;
+  border-radius: 4px;
+}
+
+.filter-btn .sector-count {
+  margin-left: 4px;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.search-input {
+  width: 240px;
 }
 
 .symbol-link {
@@ -507,6 +664,29 @@ onMounted(() => {
 
 .symbol-link:hover {
   text-decoration: underline;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .filter-row {
+    flex-direction: column;
+  }
+  
+  .filter-label {
+    margin-bottom: 8px;
+    padding-top: 0;
+  }
+  
+  .filter-actions {
+    margin-left: 0;
+    margin-top: 12px;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  
+  .search-input {
+    width: 100%;
+  }
 }
 </style>
 
