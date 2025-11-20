@@ -187,26 +187,41 @@ class SecurityService:
         
         Args:
             db: 数据库会话
-            keyword: 搜索关键词
+            keyword: 搜索关键词（支持中文、代码、拼音）
             limit: 返回数量限制
             
         Returns:
             证券列表
         """
         try:
+            keyword = keyword.strip()
+            if not keyword:
+                return []
+            
             keyword_upper = keyword.upper()
+            # 使用 ilike 进行不区分大小写的搜索，支持中文
+            # 对于中文，ilike 和 like 效果相同，但 ilike 更通用
+            conditions = []
+            
+            # 代码搜索（不区分大小写）
+            conditions.append(Security.symbol.ilike(f"%{keyword_upper}%"))
+            
+            # 名称搜索（支持中文）
+            conditions.append(Security.name.ilike(f"%{keyword}%"))
+            
+            # 拼音搜索（不区分大小写，如果pinyin字段不为空）
+            conditions.append(Security.pinyin.ilike(f"%{keyword_upper}%"))
+            
             securities = db.query(Security).filter(
                 Security.is_active == 1,
-                or_(
-                    Security.symbol.like(f"%{keyword_upper}%"),
-                    Security.name.like(f"%{keyword}%"),
-                    Security.pinyin.like(f"%{keyword_upper}%")
-                )
+                or_(*conditions)
             ).limit(limit).all()
             
             return securities
         except Exception as e:
             logger.error(f"搜索证券失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return []
     
     def get_security_by_symbol(self, db: Session, symbol: str) -> Optional[Security]:
