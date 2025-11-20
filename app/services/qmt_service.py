@@ -123,6 +123,7 @@ class QMTService:
             if not stocks:
                 logger.warning("未能获取到股票列表，可能需要手动配置或检查QMT连接")
             
+            # Python 3中字符串和pandas DataFrame默认已经是Unicode，无需编码转换
             logger.info(f"获取到 {len(stocks)} 只股票")
             return stocks
             
@@ -262,13 +263,15 @@ class QMTService:
                 return []
             
             # 转换为标准格式
+            # pandas DataFrame在Python 3中默认使用Unicode，无需编码转换
             result = []
             df = data[symbol]
             if df is not None and not df.empty:
                 for _, row in df.iterrows():
+                    time_val = row.get("time", "")
                     result.append({
-                        "time": row.get("time", ""),
-                        "date": str(row.get("time", ""))[:10] if hasattr(row.get("time", ""), "__str__") else "",
+                        "time": time_val,
+                        "date": str(time_val)[:10] if hasattr(time_val, "__str__") else "",
                         "open": float(row.get("open", 0)),
                         "high": float(row.get("high", 0)),
                         "low": float(row.get("low", 0)),
@@ -277,6 +280,7 @@ class QMTService:
                         "amount": float(row.get("amount", 0))
                     })
             
+            # pandas DataFrame在Python 3中默认使用Unicode，无需编码转换
             return result
         except Exception as e:
             logger.error(f"获取行情数据失败 {symbol}: {e}")
@@ -301,6 +305,7 @@ class QMTService:
         
         try:
             # 获取实时行情（注意：get_full_tick不返回名称）
+            # Python 3中字典的字符串值默认已经是Unicode，无需编码转换
             quotes = xtdata.get_full_tick(symbols)
             
             # 批量获取股票名称（使用get_instrument_detail）
@@ -309,6 +314,7 @@ class QMTService:
                 for symbol in symbols:
                     try:
                         detail = xtdata.get_instrument_detail(symbol)
+                        # Python 3中字典的字符串值默认已经是Unicode，无需编码转换
                         if detail and isinstance(detail, dict):
                             instrument_name = detail.get("InstrumentName", "")
                             if instrument_name:
@@ -417,6 +423,7 @@ class QMTService:
                     for symbol in matched_symbols:
                         try:
                             detail = xtdata.get_instrument_detail(symbol)
+                            # Python 3中字典的字符串值默认已经是Unicode，无需编码转换
                             if detail and isinstance(detail, dict):
                                 instrument_name = detail.get("InstrumentName", "")
                                 if instrument_name:

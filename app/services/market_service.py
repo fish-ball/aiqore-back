@@ -32,7 +32,7 @@ class MarketService:
             if quotes is None:
                 return {}
             
-            # 格式化返回数据
+            # 格式化返回数据（Python 3中字符串默认是Unicode）
             result = {}
             for symbol, quote in quotes.items():
                 # 如果QMT返回的名称为空，尝试从数据库获取
@@ -40,7 +40,7 @@ class MarketService:
                 if not name and db:
                     security = security_service.get_security_by_symbol(db, symbol)
                     if security:
-                        name = security.name
+                        name = security.name or ""
                 
                 pre_close = float(quote.get("pre_close", 0))
                 last_price = float(quote.get("last_price", 0))
@@ -167,7 +167,7 @@ class MarketService:
                         "market": security.market
                     })
             
-            # 如果数据库没有结果，从QMT搜索
+            # 如果数据库没有结果，从QMT搜索（Python 3中字符串默认是Unicode）
             if not results:
                 qmt_results = self.qmt.search_stocks(keyword)
                 for stock in qmt_results:
@@ -193,7 +193,7 @@ class MarketService:
                         batch_symbols = symbols_to_fetch_name[i:i+batch_size]
                         quotes = self.qmt.get_realtime_quote(batch_symbols)
                         if quotes:
-                            # 更新结果中的名称
+                            # 更新结果中的名称（Python 3中字符串默认是Unicode）
                             for result in results:
                                 if not result.get("name") or result["name"] == result["symbol"]:
                                     symbol = result["symbol"]

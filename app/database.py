@@ -10,17 +10,28 @@ connect_args = {}
 if "postgresql" in settings.DATABASE_URL:
     connect_args = {
         "connect_timeout": 10,
+        "client_encoding": "utf8",  # 确保使用UTF-8编码
     }
 elif "sqlite" in settings.DATABASE_URL:
     connect_args = {"check_same_thread": False}
 
+# 确保数据库URL包含编码参数（PostgreSQL）
+database_url = settings.DATABASE_URL
+if "postgresql" in database_url and "?" not in database_url:
+    database_url = f"{database_url}?client_encoding=utf8"
+elif "postgresql" in database_url and "client_encoding" not in database_url:
+    database_url = f"{database_url}&client_encoding=utf8"
+
 engine = create_engine(
-    settings.DATABASE_URL,
+    database_url,
     connect_args=connect_args,
     echo=settings.DEBUG,
     pool_pre_ping=True,  # 连接前ping，自动重连
     pool_size=5,
-    max_overflow=10
+    max_overflow=10,
+    # 确保SQLAlchemy使用UTF-8编码
+    encoding='utf-8',
+    convert_unicode=True  # 自动转换Unicode（SQLAlchemy 1.x兼容）
 )
 
 # 创建会话工厂

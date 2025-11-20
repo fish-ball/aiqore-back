@@ -54,7 +54,7 @@ def update_securities_task(self, market=None):
             }
         )
         
-        # 获取QMT股票列表
+        # 获取QMT股票列表（Python 3中字符串默认是Unicode）
         stocks = qmt_service.get_stock_list(market)
         
         if not stocks:
@@ -100,6 +100,7 @@ def update_securities_task(self, market=None):
                             for sym in symbols_batch:
                                 try:
                                     detail = xtdata.get_instrument_detail(sym)
+                                    # Python 3中字典的字符串值默认已经是Unicode，无需编码转换
                                     if detail and isinstance(detail, dict):
                                         instrument_name = detail.get("InstrumentName", "")
                                         if instrument_name:
@@ -154,6 +155,7 @@ def update_securities_task(self, market=None):
                         from xtquant import xtdata
                         if hasattr(xtdata, 'get_instrument_detail'):
                             detail = xtdata.get_instrument_detail(symbol)
+                            # Python 3中字典的字符串值默认已经是Unicode，无需编码转换
                             if detail and isinstance(detail, dict):
                                 instrument_name = detail.get("InstrumentName", "")
                                 if instrument_name:
