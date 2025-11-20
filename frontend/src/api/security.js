@@ -15,10 +15,13 @@ export const securityApi = {
     })
   },
   
-  update(market = null) {
+  update(market = null, sector = null) {
     const params = {}
     if (market) {
       params.market = market
+    }
+    if (sector) {
+      params.sector = sector
     }
     return api.post('/security/update', null, { params })
   }

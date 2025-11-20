@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import settings
 from app.database import engine, Base
-from app.api import market, trade, analysis, security, debug
+from app.api import market, trade, analysis, security, sector, debug
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -50,6 +50,7 @@ app.include_router(market.router)
 app.include_router(trade.router)
 app.include_router(analysis.router)
 app.include_router(security.router)
+app.include_router(sector.router)
 
 # 调试路由（仅在开发环境使用）
 if settings.DEBUG:

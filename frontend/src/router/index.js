@@ -6,6 +6,7 @@ import Trades from '../views/Trades.vue'
 import Analysis from '../views/Analysis.vue'
 import SecurityList from '../views/SecurityList.vue'
 import SecurityDetail from '../views/SecurityDetail.vue'
+import Sectors from '../views/Sectors.vue'
 
 const routes = [
   {
@@ -46,6 +47,11 @@ const routes = [
     path: '/analysis',
     name: 'Analysis',
     component: Analysis
+  },
+  {
+    path: '/sectors',
+    name: 'Sectors',
+    component: Sectors
   }
 ]
 

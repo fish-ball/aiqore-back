@@ -13,13 +13,15 @@ logger = logging.getLogger(__name__)
 
 @router.post("/update")
 async def update_securities(
-    market: Optional[str] = Query(None, description="市场代码，SH或SZ，不传则更新全部")
+    market: Optional[str] = Query(None, description="市场代码，SH或SZ，不传则更新全部"),
+    sector: Optional[str] = Query(None, description="板块名称，如果指定则只同步该板块的证券")
 ):
     """
     从QMT更新证券基础信息（异步任务）
     
     Args:
         market: 市场代码，可选
+        sector: 板块名称，可选
     """
     try:
         from app.tasks.security_tasks import update_securities_task
@@ -36,7 +38,7 @@ async def update_securities(
             )
         
         # 启动异步任务
-        task = update_securities_task.delay(market)
+        task = update_securities_task.delay(market, sector)
         
         return {
             "code": 0,
@@ -58,6 +60,8 @@ async def update_securities(
 @router.get("/list")
 async def get_securities(
     market: Optional[str] = Query(None, description="市场代码"),
+    sector: Optional[str] = Query(None, description="板块名称"),
+    security_type: Optional[str] = Query(None, description="证券类型"),
     limit: int = Query(100, description="返回数量限制"),
     offset: int = Query(0, description="偏移量"),
     db: Session = Depends(get_db)
@@ -67,6 +71,8 @@ async def get_securities(
     
     Args:
         market: 市场代码
+        sector: 板块名称（需要通过板块服务查询该板块的证券）
+        security_type: 证券类型
         limit: 返回数量
         offset: 偏移量
     """
@@ -75,6 +81,44 @@ async def get_securities(
         
         if market:
             query = query.filter(Security.market == market)
+        
+        if security_type:
+            query = query.filter(Security.security_type == security_type)
+        
+        # 如果指定了板块，需要通过QMT获取该板块的证券列表
+        if sector:
+            try:
+                from app.services.qmt_service import qmt_service
+                from xtquant import xtdata
+                sector_securities = xtdata.get_stock_list_in_sector(sector)
+                if sector_securities:
+                    # 过滤出该板块的证券
+                    query = query.filter(Security.symbol.in_(sector_securities))
+                else:
+                    # 如果板块没有证券，返回空列表
+                    return {
+                        "code": 0,
+                        "data": {
+                            "items": [],
+                            "total": 0,
+                            "limit": limit,
+                            "offset": offset
+                        },
+                        "message": "success"
+                    }
+            except Exception as e:
+                logger.warning(f"获取板块 '{sector}' 证券列表失败: {e}")
+                # 如果获取失败，返回空列表
+                return {
+                    "code": 0,
+                    "data": {
+                        "items": [],
+                        "total": 0,
+                        "limit": limit,
+                        "offset": offset
+                    },
+                    "message": "success"
+                }
         
         total = query.count()
         securities = query.order_by(Security.symbol).offset(offset).limit(limit).all()

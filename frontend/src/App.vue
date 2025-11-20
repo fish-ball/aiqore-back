@@ -59,6 +59,10 @@
             <el-icon><List /></el-icon>
             <span>证券列表</span>
           </el-menu-item>
+          <el-menu-item index="/sectors">
+            <el-icon><List /></el-icon>
+            <span>板块管理</span>
+          </el-menu-item>
           <el-menu-item index="/analysis">
             <el-icon><DataAnalysis /></el-icon>
             <span>数据分析</span>

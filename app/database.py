@@ -25,13 +25,11 @@ elif "postgresql" in database_url and "client_encoding" not in database_url:
 engine = create_engine(
     database_url,
     connect_args=connect_args,
-    echo=settings.DEBUG,
+    echo=False,  # 关闭SQL日志输出
     pool_pre_ping=True,  # 连接前ping，自动重连
     pool_size=5,
-    max_overflow=10,
-    # 确保SQLAlchemy使用UTF-8编码
-    encoding='utf-8',
-    convert_unicode=True  # 自动转换Unicode（SQLAlchemy 1.x兼容）
+    max_overflow=10
+    # SQLAlchemy 2.x 默认使用 UTF-8 编码，无需显式指定
 )
 
 # 创建会话工厂

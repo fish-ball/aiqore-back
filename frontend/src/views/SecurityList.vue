@@ -3,6 +3,15 @@
     <div class="page-header">
       <h2>证券列表</h2>
       <div>
+        <el-tabs v-model="activeSector" @tab-change="handleSectorChange" style="margin-bottom: 10px">
+          <el-tab-pane label="全部" name=""></el-tab-pane>
+          <el-tab-pane 
+            v-for="sector in sectors" 
+            :key="sector.name" 
+            :label="`${sector.display_name || sector.name} (${sector.security_count || 0})`" 
+            :name="sector.name"
+          ></el-tab-pane>
+        </el-tabs>
         <el-select v-model="filterMarket" placeholder="选择市场" style="width: 120px; margin-right: 10px" @change="handleFilterChange">
           <el-option label="全部" value="" />
           <el-option label="上海" value="SH" />
@@ -19,9 +28,25 @@
             <el-button @click="handleSearch">搜索</el-button>
           </template>
         </el-input>
-        <el-button type="success" @click="updateFromQMT" :loading="updating" :disabled="updating">
+        <el-button 
+          type="success" 
+          @click="updateFromQMT" 
+          :loading="updating" 
+          :disabled="updating"
+          v-if="!activeSector"
+        >
           <el-icon><Download /></el-icon>
           {{ updating ? (updateProgress > 0 ? `更新中 ${updateProgress}%` : '更新中...') : '从QMT更新' }}
+        </el-button>
+        <el-button 
+          type="success" 
+          @click="updateSectorFromQMT" 
+          :loading="updating" 
+          :disabled="updating"
+          v-if="activeSector"
+        >
+          <el-icon><Download /></el-icon>
+          {{ updating ? '同步中...' : '同步该板块' }}
         </el-button>
         <el-button type="primary" @click="refreshData">
           <el-icon><Refresh /></el-icon>
@@ -125,18 +150,25 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { securityApi } from '../api/security'
 import { marketApi } from '../api/market'
+import sectorApi from '../api/sector.js'
 
 const router = useRouter()
+const route = useRoute()
+
+// 从路由参数获取板块
+const activeSector = ref(route.query.sector || '')
 const loading = ref(false)
 const updating = ref(false)
 const updateProgress = ref(0)
 const tableData = ref([])
 const filterMarket = ref('')
 const searchKeyword = ref('')
+const sectors = ref([])
 
 const pagination = ref({
   page: 1,
@@ -199,6 +231,24 @@ const sortByAmount = (a, b) => {
   return (a.amount || 0) - (b.amount || 0)
 }
 
+// 获取板块列表
+const fetchSectors = async () => {
+  try {
+    const response = await sectorApi.getList({ is_active: 1 })
+    sectors.value = response.items || []
+    // 按分类排序，主要板块在前
+    sectors.value.sort((a, b) => {
+      const categoryOrder = { '股票': 1, '基金': 2, 'ETF': 2, '债券': 3, '指数': 4, '期货': 5, '期权': 6 }
+      const orderA = categoryOrder[a.category] || 99
+      const orderB = categoryOrder[b.category] || 99
+      if (orderA !== orderB) return orderA - orderB
+      return (b.security_count || 0) - (a.security_count || 0)
+    })
+  } catch (error) {
+    console.error('获取板块列表失败:', error)
+  }
+}
+
 const fetchSecurities = async () => {
   loading.value = true
   try {
@@ -209,6 +259,11 @@ const fetchSecurities = async () => {
     
     if (filterMarket.value) {
       params.market = filterMarket.value
+    }
+    
+    // 如果选择了板块，添加板块参数
+    if (activeSector.value) {
+      params.sector = activeSector.value
     }
     
     const response = await securityApi.getList(params)
@@ -328,6 +383,15 @@ const handleSearch = async () => {
   }
 }
 
+const handleSectorChange = (sectorName) => {
+  activeSector.value = sectorName
+  pagination.value.page = 1
+  if (searchKeyword.value) {
+    searchKeyword.value = ''
+  }
+  fetchSecurities()
+}
+
 const handleFilterChange = () => {
   pagination.value.page = 1
   if (searchKeyword.value) {
@@ -387,7 +451,34 @@ const updateFromQMT = async () => {
   }
 }
 
+const updateSectorFromQMT = async () => {
+  if (!activeSector.value) return
+  
+  updating.value = true
+  try {
+    const result = await securityApi.update(filterMarket.value || null, activeSector.value)
+    if (result.code === 0) {
+      ElMessage.success('任务已提交，正在后台处理...')
+      setTimeout(async () => {
+        await fetchSecurities()
+        await fetchSectors() // 刷新板块列表以更新证券数量
+        updating.value = false
+      }, 3000)
+    } else {
+      updating.value = false
+      ElMessage.error(result.message || '提交任务失败')
+    }
+  } catch (error) {
+    updating.value = false
+    console.error('同步板块失败:', error)
+    if (!error.message || !error.message.includes('正在运行中')) {
+      ElMessage.error('同步失败: ' + (error.message || '未知错误'))
+    }
+  }
+}
+
 onMounted(() => {
+  fetchSectors()
   fetchSecurities()
 })
 </script>

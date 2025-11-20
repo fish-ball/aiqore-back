@@ -71,13 +71,13 @@ class QMTService:
     
     def get_stock_list(self, market: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        获取股票列表
+        获取所有类型的证券列表（股票、基金、债券、期货、期权等）
         
         Args:
             market: 市场代码，'SH' 或 'SZ'，None表示全部
             
         Returns:
-            股票列表，每个元素包含 symbol, name 等信息
+            证券列表，每个元素包含 symbol, market, instrument_type 等信息
         """
         if not XT_QUANT_AVAILABLE:
             logger.error("xtquant不可用")
@@ -88,47 +88,133 @@ class QMTService:
                 return []
         
         try:
-            stocks = []
+            all_securities = []
+            seen_symbols = set()  # 用于去重
             
-            # 尝试多种方式获取股票列表
+            # 方法1: 尝试动态获取所有可用板块列表
+            sectors = []
             try:
-                # 方法1: 获取板块股票列表
-                all_stocks = xtdata.get_stock_list_in_sector("沪深A股")
-                if all_stocks:
-                    for stock in all_stocks:
-                        if isinstance(stock, str):
-                            stock_market = "SH" if stock.endswith(".SH") else "SZ"
-                            if market is None or stock_market == market:
-                                stocks.append({
-                                    "symbol": stock,
-                                    "market": stock_market
-                                })
-            except Exception as e1:
-                logger.warning(f"方法1获取股票列表失败: {e1}")
+                if hasattr(xtdata, 'get_sector_list'):
+                    all_sectors = xtdata.get_sector_list()
+                    if all_sectors:
+                        sectors = list(all_sectors)
+                        logger.info(f"动态获取到 {len(sectors)} 个板块")
+            except Exception as e:
+                logger.debug(f"动态获取板块列表失败: {e}")
+            
+            # 如果动态获取失败，使用预定义的板块列表（使用 MiniQMT 实际支持的板块名称）
+            if not sectors:
+                sectors = [
+                    "沪深A股",      # A股股票
+                    "沪深B股",      # B股股票
+                    "沪深ETF",      # 所有ETF基金（包含深市和沪市）
+                    "深市ETF",      # 深市ETF基金
+                    "沪市ETF",      # 沪市ETF基金
+                    "沪深基金",     # 所有基金（包含ETF、LOF等）
+                    "深市基金",     # 深市基金
+                    "沪市基金",     # 沪市基金
+                    "沪深转债",     # 可转换债券
+                    "沪深债券",     # 所有债券
+                    "沪市债券",     # 沪市债券
+                    "沪深指数",     # 指数
+                    "沪市指数",     # 沪市指数
+                    "创业板",       # 创业板股票
+                    "上证A股",      # 上证A股
+                    "上证B股",      # 上证B股
+                    "上证期权",     # 上证期权
+                    "上证转债",     # 上证转债
+                ]
+                logger.info(f"使用预定义板块列表，共 {len(sectors)} 个板块")
+            
+            # 方法2: 通过板块获取证券列表
+            for sector in sectors:
                 try:
-                    # 方法2: 通过下载数据获取（获取最近有交易的股票）
-                    # 这是一个备用方案，可能不完整
-                    test_symbols = ["000001.SZ", "600000.SH", "000002.SZ", "600001.SH"]
-                    for symbol in test_symbols:
-                        stock_market = "SH" if symbol.endswith(".SH") else "SZ"
-                        if market is None or stock_market == market:
-                            stocks.append({
+                    securities = xtdata.get_stock_list_in_sector(sector)
+                    if securities:
+                        for sec in securities:
+                            if isinstance(sec, str) and sec not in seen_symbols:
+                                # 判断市场
+                                if sec.endswith(".SH"):
+                                    sec_market = "SH"
+                                elif sec.endswith(".SZ"):
+                                    sec_market = "SZ"
+                                elif sec.endswith(".BJ"):
+                                    sec_market = "BJ"  # 北交所
+                                else:
+                                    sec_market = "SH"  # 默认
+                                
+                                # 根据市场过滤
+                                if market is None or sec_market == market:
+                                    all_securities.append({
+                                        "symbol": sec,
+                                        "market": sec_market,
+                                        "sector": sector
+                                    })
+                                    seen_symbols.add(sec)
+                except Exception as e:
+                    logger.debug(f"获取板块 '{sector}' 失败: {e}")
+                    continue
+            
+            # 方法3: 尝试通过 get_instrument_list 获取所有标的（如果API支持）
+            try:
+                if hasattr(xtdata, 'get_instrument_list'):
+                    # 尝试获取所有交易所的标的
+                    exchanges = ['SSE', 'SZSE', 'BSE']  # 上交所、深交所、北交所
+                    for exchange in exchanges:
+                        try:
+                            instruments = xtdata.get_instrument_list(exchange)
+                            if instruments:
+                                for inst in instruments:
+                                    if isinstance(inst, str) and inst not in seen_symbols:
+                                        if inst.endswith(".SH"):
+                                            inst_market = "SH"
+                                        elif inst.endswith(".SZ"):
+                                            inst_market = "SZ"
+                                        elif inst.endswith(".BJ"):
+                                            inst_market = "BJ"
+                                        else:
+                                            inst_market = "SH"
+                                        
+                                        if market is None or inst_market == market:
+                                            all_securities.append({
+                                                "symbol": inst,
+                                                "market": inst_market,
+                                                "sector": "全部标的"
+                                            })
+                                            seen_symbols.add(inst)
+                        except Exception as e:
+                            logger.debug(f"获取交易所 {exchange} 标的列表失败: {e}")
+                            continue
+            except Exception as e:
+                logger.debug(f"使用 get_instrument_list 失败: {e}")
+            
+            # 方法4: 如果仍然没有数据，尝试获取一些常见标的作为示例
+            if not all_securities:
+                logger.warning("未能通过板块获取证券列表，尝试备用方法...")
+                # 备用方案：尝试获取一些常见标的
+                test_symbols = [
+                    "000001.SZ", "600000.SH",  # A股
+                    "510300.SH", "159919.SZ",  # ETF
+                    "110001.SH", "127003.SZ",  # 可转债
+                ]
+                for symbol in test_symbols:
+                    if symbol not in seen_symbols:
+                        symbol_market = "SH" if symbol.endswith(".SH") else "SZ"
+                        if market is None or symbol_market == market:
+                            all_securities.append({
                                 "symbol": symbol,
-                                "market": stock_market
+                                "market": symbol_market,
+                                "sector": "示例标的"
                             })
-                except Exception as e2:
-                    logger.error(f"方法2也失败: {e2}")
+                            seen_symbols.add(symbol)
             
-            # 如果仍然没有数据，返回空列表
-            if not stocks:
-                logger.warning("未能获取到股票列表，可能需要手动配置或检查QMT连接")
-            
-            # Python 3中字符串和pandas DataFrame默认已经是Unicode，无需编码转换
-            logger.info(f"获取到 {len(stocks)} 只股票")
-            return stocks
+            logger.info(f"获取到 {len(all_securities)} 只证券（去重后）")
+            return all_securities
             
         except Exception as e:
-            logger.error(f"获取股票列表失败: {e}")
+            logger.error(f"获取证券列表失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return []
     
     def get_stock_info(self, symbol: str) -> Optional[Dict[str, Any]]:
