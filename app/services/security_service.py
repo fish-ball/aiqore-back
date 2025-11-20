@@ -10,6 +10,39 @@ from app.services.qmt_service import qmt_service
 logger = logging.getLogger(__name__)
 
 
+def generate_abbreviation(name: str) -> str:
+    """
+    根据证券名称生成字母简写
+    
+    例如：中国中免 -> ZGZM
+    
+    Args:
+        name: 证券名称（中文）
+        
+    Returns:
+        字母简写（大写）
+    """
+    try:
+        from pypinyin import lazy_pinyin, Style
+        
+        # 过滤掉非中文字符（如数字、字母、标点等）
+        chinese_chars = ''.join([c for c in name if '\u4e00' <= c <= '\u9fff'])
+        if not chinese_chars:
+            return ""
+        
+        # 获取每个字的拼音首字母
+        pinyin_list = lazy_pinyin(chinese_chars, style=Style.FIRST_LETTER)
+        # 组合成简写并转为大写
+        abbreviation = ''.join(pinyin_list).upper()
+        return abbreviation
+    except ImportError:
+        logger.warning("pypinyin未安装，无法生成字母简写")
+        return ""
+    except Exception as e:
+        logger.warning(f"生成字母简写失败: {e}")
+        return ""
+
+
 class SecurityService:
     """证券信息服务"""
     
@@ -119,11 +152,24 @@ class SecurityService:
                     
                     market_code = stock_data.get("market", "SH" if symbol.endswith(".SH") else "SZ")
                     
+                    # 生成字母简写（如果名称是中文）
+                    abbreviation = ""
+                    if name and name != symbol:
+                        abbreviation = generate_abbreviation(name)
+                    
                     if security:
                         # 更新现有记录
-                        if security.name != name or security.market != market_code:
+                        needs_update = False
+                        if security.name != name:
                             security.name = name
+                            needs_update = True
+                        if security.market != market_code:
                             security.market = market_code
+                            needs_update = True
+                        if abbreviation and security.abbreviation != abbreviation:
+                            security.abbreviation = abbreviation
+                            needs_update = True
+                        if needs_update:
                             security.updated_at = datetime.now()
                             updated_count += 1
                     else:
@@ -133,7 +179,8 @@ class SecurityService:
                             name=name,
                             market=market_code,
                             security_type="股票",
-                            is_active=1
+                            is_active=1,
+                            abbreviation=abbreviation
                         )
                         db.add(security)
                         created_count += 1
@@ -193,36 +240,28 @@ class SecurityService:
         Returns:
             证券列表
         """
-        try:
-            keyword = keyword.strip()
-            if not keyword:
-                return []
-            
-            keyword_upper = keyword.upper()
-            # 使用 ilike 进行不区分大小写的搜索，支持中文
-            # 对于中文，ilike 和 like 效果相同，但 ilike 更通用
-            conditions = []
-            
-            # 代码搜索（不区分大小写）
-            conditions.append(Security.symbol.ilike(f"%{keyword_upper}%"))
-            
-            # 名称搜索（支持中文）
-            conditions.append(Security.name.ilike(f"%{keyword}%"))
-            
-            # 拼音搜索（不区分大小写，如果pinyin字段不为空）
-            conditions.append(Security.pinyin.ilike(f"%{keyword_upper}%"))
-            
-            securities = db.query(Security).filter(
-                Security.is_active == 1,
-                or_(*conditions)
-            ).limit(limit).all()
-            
-            return securities
-        except Exception as e:
-            logger.error(f"搜索证券失败: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
+        keyword = keyword.strip()
+        if not keyword:
             return []
+        
+        keyword_upper = keyword.upper()
+        conditions = []
+        
+        # 代码搜索（不区分大小写）
+        conditions.append(Security.symbol.ilike(f"%{keyword_upper}%"))
+        
+        # 名称搜索（支持中文）
+        conditions.append(Security.name.ilike(f"%{keyword}%"))
+        
+        # 拼音搜索（不区分大小写）
+        conditions.append(Security.pinyin.ilike(f"%{keyword_upper}%"))
+        
+        securities = db.query(Security).filter(
+            Security.is_active == 1,
+            or_(*conditions)
+        ).limit(limit).all()
+        
+        return securities
     
     def get_security_by_symbol(self, db: Session, symbol: str) -> Optional[Security]:
         """

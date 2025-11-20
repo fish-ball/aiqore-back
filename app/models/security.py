@@ -18,6 +18,7 @@ class Security(Base):
     delist_date = Column(DateTime, comment="退市日期")
     is_active = Column(Integer, default=1, comment="是否有效，1-有效，0-无效")
     pinyin = Column(String(200), comment="拼音简称，用于搜索")
+    abbreviation = Column(String(50), comment="字母简写，如ZGZM（中国中免），用于快速搜索")
     description = Column(Text, comment="描述信息")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="更新时间")
@@ -28,6 +29,7 @@ class Security(Base):
         Index('idx_name', 'name'),
         Index('idx_market', 'market'),
         Index('idx_is_active', 'is_active'),
+        Index('idx_abbreviation', 'abbreviation'),
     )
     
     def __repr__(self):

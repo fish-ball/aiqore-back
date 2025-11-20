@@ -90,6 +90,7 @@ async def get_securities(
                 "security_type": sec.security_type,
                 "industry": sec.industry,
                 "is_active": sec.is_active,
+                "abbreviation": sec.abbreviation,
                 "created_at": sec.created_at.isoformat() if sec.created_at else None,
                 "updated_at": sec.updated_at.isoformat() if sec.updated_at else None
             })
@@ -123,29 +124,27 @@ async def search_securities(
         keyword: 搜索关键词
         limit: 返回数量限制
     """
-    try:
-        securities = security_service.search_securities(db, keyword, limit)
-        # 转换为字典格式
-        items = []
-        for sec in securities:
-            items.append({
-                "id": sec.id,
-                "symbol": sec.symbol,
-                "name": sec.name,
-                "market": sec.market,
-                "security_type": sec.security_type,
-                "industry": sec.industry,
-                "is_active": sec.is_active
-            })
-        
-        return {
-            "code": 0,
-            "data": items,
-            "message": "success"
-        }
-    except Exception as e:
-        logger.error(f"搜索失败: {e}")
-        raise HTTPException(status_code=500, detail=f"搜索失败: {str(e)}")
+    securities = security_service.search_securities(db, keyword, limit)
+    
+    # 转换为字典格式
+    items = []
+    for sec in securities:
+        items.append({
+            "id": sec.id,
+            "symbol": sec.symbol,
+            "name": sec.name,
+            "market": sec.market,
+            "security_type": sec.security_type,
+            "industry": sec.industry,
+            "is_active": sec.is_active,
+            "abbreviation": sec.abbreviation
+        })
+    
+    return {
+        "code": 0,
+        "data": items,
+        "message": "success"
+    }
 
 
 @router.get("/{symbol}")
@@ -176,6 +175,7 @@ async def get_security(
             "delist_date": security.delist_date.isoformat() if security.delist_date else None,
             "is_active": security.is_active,
             "pinyin": security.pinyin,
+            "abbreviation": security.abbreviation,
             "description": security.description,
             "created_at": security.created_at.isoformat() if security.created_at else None,
             "updated_at": security.updated_at.isoformat() if security.updated_at else None
