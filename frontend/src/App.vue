@@ -7,6 +7,23 @@
           AIQore - 个人投资管理系统
         </h1>
         <div class="header-actions">
+          <el-autocomplete
+            v-model="searchKeyword"
+            :fetch-suggestions="searchSecurities"
+            :trigger-on-focus="false"
+            placeholder="搜索证券代码、名称或拼音"
+            style="width: 300px; margin-right: 12px"
+            @select="handleSelectSecurity"
+            clearable
+          >
+            <template #default="{ item }">
+              <div class="search-item">
+                <span class="symbol">{{ item.symbol }}</span>
+                <span class="name">{{ item.name }}</span>
+                <span class="market">{{ item.market }}</span>
+              </div>
+            </template>
+          </el-autocomplete>
           <el-button type="primary" @click="refreshData">
             <el-icon><Refresh /></el-icon>
             刷新
@@ -38,10 +55,6 @@
             <el-icon><Document /></el-icon>
             <span>交易记录</span>
           </el-menu-item>
-          <el-menu-item index="/market">
-            <el-icon><DataLine /></el-icon>
-            <span>行情查询</span>
-          </el-menu-item>
           <el-menu-item index="/securities">
             <el-icon><List /></el-icon>
             <span>证券列表</span>
@@ -66,18 +79,56 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from './stores/account'
+import { securityApi } from './api/security'
 
 const route = useRoute()
+const router = useRouter()
 const accountStore = useAccountStore()
 
 const activeMenu = computed(() => route.path)
+const searchKeyword = ref('')
 
 const refreshData = () => {
   accountStore.fetchAccounts()
   ElMessage.success('数据已刷新')
+}
+
+// 搜索证券
+const searchSecurities = async (queryString, cb) => {
+  if (!queryString || queryString.trim().length === 0) {
+    cb([])
+    return
+  }
+  
+  try {
+    const response = await securityApi.search(queryString.trim(), 10)
+    if (response && Array.isArray(response)) {
+      // 格式化数据供 autocomplete 使用
+      const suggestions = response.map(item => ({
+        value: `${item.symbol} ${item.name}`,
+        symbol: item.symbol,
+        name: item.name,
+        market: item.market
+      }))
+      cb(suggestions)
+    } else {
+      cb([])
+    }
+  } catch (error) {
+    console.error('搜索证券失败:', error)
+    cb([])
+  }
+}
+
+// 选择证券
+const handleSelectSecurity = (item) => {
+  if (item && item.symbol) {
+    router.push(`/security/${item.symbol}`)
+    searchKeyword.value = ''
+  }
 }
 </script>
 
@@ -134,6 +185,32 @@ const refreshData = () => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.search-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.search-item .symbol {
+  font-weight: 600;
+  color: #409eff;
+  min-width: 100px;
+}
+
+.search-item .name {
+  flex: 1;
+  color: #303133;
+}
+
+.search-item .market {
+  font-size: 12px;
+  color: #909399;
+  padding: 2px 6px;
+  background-color: #f4f4f5;
+  border-radius: 2px;
 }
 </style>
 

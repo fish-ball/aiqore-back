@@ -3,7 +3,6 @@ import Dashboard from '../views/Dashboard.vue'
 import Accounts from '../views/Accounts.vue'
 import Positions from '../views/Positions.vue'
 import Trades from '../views/Trades.vue'
-import Market from '../views/Market.vue'
 import Analysis from '../views/Analysis.vue'
 import SecurityList from '../views/SecurityList.vue'
 import SecurityDetail from '../views/SecurityDetail.vue'
@@ -32,11 +31,6 @@ const routes = [
     path: '/trades',
     name: 'Trades',
     component: Trades
-  },
-  {
-    path: '/market',
-    name: 'Market',
-    component: Market
   },
   {
     path: '/securities',
