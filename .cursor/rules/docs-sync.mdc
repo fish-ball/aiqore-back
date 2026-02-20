@@ -14,6 +14,6 @@ alwaysApply: false
 - **数据库、迁移、Alembic**：更新 `docs/3-数据库与迁移.md`。
 - **前端页面、路由、构建、代理**：更新 `docs/4-前端.md`。
 - **QMT、证券/行情相关逻辑**：更新 `docs/6-QMT集成.md`。
-- **Celery 任务、Redis、异步接口**：更新 `docs/7-异步任务.md`。
+- **Celery 任务、Redis、异步接口**：更新 `docs/7-异步任务.md`；新增或修改 `app/tasks/` 下任务时，必须更新该文档中的「已实现的异步任务清单」表及对应任务小节。
 
 文档索引与维护说明见 `docs/README.md`。
