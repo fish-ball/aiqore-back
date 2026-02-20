@@ -71,7 +71,15 @@ uv run python -c "from app.database import SessionLocal; from app.services.secur
 
 ## 数据模型（证券表）
 
-主要字段：symbol、name、market、security_type、industry、list_date、delist_date、is_active、pinyin、description、created_at、updated_at。建表可通过 `init_db.py` 或 Alembic 迁移完成。
+证券采用主表 + 数据源外表 + 子表结构：
+
+- **主表 securities**：symbol、name、market、security_type、industry、list_date、delist_date、is_active、pinyin、abbreviation、description、created_at、updated_at。与具体数据源解耦。
+- **数据源外表 security_source_qmt**：存放 QMT 标识与原始数据。字段：instrument_type、exchange_id、product_id、currency_id、raw_data（get_instrument_detail 完整返回）、updated_at。同一证券可对应多种数据源（后续可加 security_source_xxx）。
+- **子表**：security_trading_rules（tick_size、lot_size、price_tick）、security_quote_snapshot（涨跌停价、昨收、最新价、成交量等）、以及按类型的 security_stock / security_fund / security_bond / security_convertible / security_option / security_future。
+
+QMT 同步时：写主表后写 security_source_qmt，再写交易规则、行情快照与对应类型子表。列表/详情 API 仅查主表；若需子表或 QMT 原始数据，可通过 ORM relationship（如 security.source_qmt、security.quote_snapshot）加载。
+
+建表与迁移见 Alembic 迁移 001、002、003，或 `init_db.py`。
 
 ## 定时更新建议
 

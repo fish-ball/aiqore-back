@@ -4,7 +4,18 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from datetime import datetime
 import logging
-from app.models.security import Security
+from app.models.security import (
+    Security,
+    SecuritySourceQmt,
+    SecurityTradingRules,
+    SecurityQuoteSnapshot,
+    SecurityStock,
+    SecurityFund,
+    SecurityBond,
+    SecurityConvertible,
+    SecurityOption,
+    SecurityFuture,
+)
 from app.services.qmt_service import qmt_service
 
 logger = logging.getLogger(__name__)
@@ -272,10 +283,7 @@ class SecurityService:
                     raw_data = detail if detail and isinstance(detail, dict) else None
                     
                     if security:
-                        # 更新现有记录
                         needs_update = False
-                        
-                        # 更新基本信息
                         if security.name != name:
                             security.name = name
                             needs_update = True
@@ -288,95 +296,10 @@ class SecurityService:
                         if abbreviation and security.abbreviation != abbreviation:
                             security.abbreviation = abbreviation
                             needs_update = True
-                        
-                        # 更新原始数据字段
-                        if security.instrument_type != instrument_type:
-                            security.instrument_type = instrument_type
-                            needs_update = True
-                        if security.exchange_id != exchange_id:
-                            security.exchange_id = exchange_id
-                            needs_update = True
-                        if security.product_id != product_id:
-                            security.product_id = product_id
-                            needs_update = True
-                        if security.currency_id != currency_id:
-                            security.currency_id = currency_id
-                            needs_update = True
-                        if security.tick_size != tick_size:
-                            security.tick_size = tick_size
-                            needs_update = True
-                        if security.lot_size != lot_size:
-                            security.lot_size = lot_size
-                            needs_update = True
-                        if security.price_tick != price_tick:
-                            security.price_tick = price_tick
-                            needs_update = True
-                        if security.upper_limit != upper_limit:
-                            security.upper_limit = upper_limit
-                            needs_update = True
-                        if security.lower_limit != lower_limit:
-                            security.lower_limit = lower_limit
-                            needs_update = True
-                        if security.pre_settlement_price != pre_settlement_price:
-                            security.pre_settlement_price = pre_settlement_price
-                            needs_update = True
-                        if security.pre_close_price != pre_close_price:
-                            security.pre_close_price = pre_close_price
-                            needs_update = True
-                        if security.open_price != open_price:
-                            security.open_price = open_price
-                            needs_update = True
-                        if security.last_price != last_price:
-                            security.last_price = last_price
-                            needs_update = True
-                        if security.volume != volume:
-                            security.volume = volume
-                            needs_update = True
-                        if security.amount != amount:
-                            security.amount = amount
-                            needs_update = True
-                        if security.open_interest != open_interest:
-                            security.open_interest = open_interest
-                            needs_update = True
-                        if security.strike_price != strike_price:
-                            security.strike_price = strike_price
-                            needs_update = True
-                        if security.expiry_date != expiry_date:
-                            security.expiry_date = expiry_date
-                            needs_update = True
-                        if security.underlying_symbol != underlying_symbol:
-                            security.underlying_symbol = underlying_symbol
-                            needs_update = True
-                        if security.conversion_ratio != conversion_ratio:
-                            security.conversion_ratio = conversion_ratio
-                            needs_update = True
-                        if security.interest_rate != interest_rate:
-                            security.interest_rate = interest_rate
-                            needs_update = True
-                        if security.maturity_date != maturity_date:
-                            security.maturity_date = maturity_date
-                            needs_update = True
-                        if security.face_value != face_value:
-                            security.face_value = face_value
-                            needs_update = True
-                        if security.fund_type != fund_type:
-                            security.fund_type = fund_type
-                            needs_update = True
-                        if security.nav != nav:
-                            security.nav = nav
-                            needs_update = True
-                        if security.accumulated_nav != accumulated_nav:
-                            security.accumulated_nav = accumulated_nav
-                            needs_update = True
-                        if security.raw_data != raw_data:
-                            security.raw_data = raw_data
-                            needs_update = True
-                        
                         if needs_update:
                             security.updated_at = datetime.now()
                             updated_count += 1
                     else:
-                        # 创建新记录
                         security = Security(
                             symbol=symbol,
                             name=name,
@@ -384,36 +307,113 @@ class SecurityService:
                             security_type=security_type,
                             is_active=1,
                             abbreviation=abbreviation,
+                        )
+                        db.add(security)
+                        db.flush()
+                        created_count += 1
+
+                    sid = security.id
+
+                    # 数据源外表 QMT
+                    source_qmt = db.query(SecuritySourceQmt).filter(SecuritySourceQmt.security_id == sid).first()
+                    if source_qmt:
+                        source_qmt.instrument_type = instrument_type
+                        source_qmt.exchange_id = exchange_id
+                        source_qmt.product_id = product_id
+                        source_qmt.currency_id = currency_id
+                        source_qmt.raw_data = raw_data
+                        source_qmt.updated_at = datetime.now()
+                    else:
+                        db.add(SecuritySourceQmt(
+                            security_id=sid,
                             instrument_type=instrument_type,
                             exchange_id=exchange_id,
                             product_id=product_id,
                             currency_id=currency_id,
-                            tick_size=tick_size if tick_size > 0 else None,
-                            lot_size=lot_size if lot_size > 0 else None,
-                            price_tick=price_tick if price_tick > 0 else None,
-                            upper_limit=upper_limit if upper_limit > 0 else None,
-                            lower_limit=lower_limit if lower_limit > 0 else None,
-                            pre_settlement_price=pre_settlement_price if pre_settlement_price > 0 else None,
-                            pre_close_price=pre_close_price if pre_close_price > 0 else None,
-                            open_price=open_price if open_price > 0 else None,
-                            last_price=last_price if last_price > 0 else None,
-                            volume=volume if volume > 0 else None,
-                            amount=amount if amount > 0 else None,
-                            open_interest=open_interest if open_interest > 0 else None,
-                            strike_price=strike_price if strike_price > 0 else None,
-                            expiry_date=expiry_date,
-                            underlying_symbol=underlying_symbol,
-                            conversion_ratio=conversion_ratio if conversion_ratio > 0 else None,
-                            interest_rate=interest_rate if interest_rate > 0 else None,
-                            maturity_date=maturity_date,
-                            face_value=face_value if face_value > 0 else None,
-                            fund_type=fund_type,
-                            nav=nav if nav > 0 else None,
-                            accumulated_nav=accumulated_nav if accumulated_nav > 0 else None,
-                            raw_data=raw_data
-                        )
-                        db.add(security)
-                        created_count += 1
+                            raw_data=raw_data,
+                        ))
+
+                    # 交易规则
+                    tr = db.query(SecurityTradingRules).filter(SecurityTradingRules.security_id == sid).first()
+                    if tr:
+                        tr.tick_size = tick_size if tick_size and tick_size > 0 else None
+                        tr.lot_size = lot_size if lot_size and lot_size > 0 else None
+                        tr.price_tick = price_tick if price_tick and price_tick > 0 else None
+                    else:
+                        db.add(SecurityTradingRules(
+                            security_id=sid,
+                            tick_size=tick_size if tick_size and tick_size > 0 else None,
+                            lot_size=lot_size if lot_size and lot_size > 0 else None,
+                            price_tick=price_tick if price_tick and price_tick > 0 else None,
+                        ))
+
+                    # 行情快照
+                    qs = db.query(SecurityQuoteSnapshot).filter(SecurityQuoteSnapshot.security_id == sid).first()
+                    if qs:
+                        qs.upper_limit = upper_limit if upper_limit and upper_limit > 0 else None
+                        qs.lower_limit = lower_limit if lower_limit and lower_limit > 0 else None
+                        qs.pre_settlement_price = pre_settlement_price if pre_settlement_price and pre_settlement_price > 0 else None
+                        qs.pre_close_price = pre_close_price if pre_close_price and pre_close_price > 0 else None
+                        qs.open_price = open_price if open_price and open_price > 0 else None
+                        qs.last_price = last_price if last_price and last_price > 0 else None
+                        qs.volume = volume if volume and volume > 0 else None
+                        qs.amount = amount if amount and amount > 0 else None
+                        qs.open_interest = open_interest if open_interest and open_interest > 0 else None
+                    else:
+                        db.add(SecurityQuoteSnapshot(
+                            security_id=sid,
+                            upper_limit=upper_limit if upper_limit and upper_limit > 0 else None,
+                            lower_limit=lower_limit if lower_limit and lower_limit > 0 else None,
+                            pre_settlement_price=pre_settlement_price if pre_settlement_price and pre_settlement_price > 0 else None,
+                            pre_close_price=pre_close_price if pre_close_price and pre_close_price > 0 else None,
+                            open_price=open_price if open_price and open_price > 0 else None,
+                            last_price=last_price if last_price and last_price > 0 else None,
+                            volume=volume if volume and volume > 0 else None,
+                            amount=amount if amount and amount > 0 else None,
+                            open_interest=open_interest if open_interest and open_interest > 0 else None,
+                        ))
+
+                    # 按类型写入扩展表
+                    if security_type == "\u80a1\u7968":  # 股票
+                        if not db.query(SecurityStock).filter(SecurityStock.security_id == sid).first():
+                            db.add(SecurityStock(security_id=sid))
+                    elif security_type == "\u57fa\u91d1":  # 基金
+                        ext = db.query(SecurityFund).filter(SecurityFund.security_id == sid).first()
+                        if ext:
+                            ext.fund_type = fund_type
+                            ext.nav = nav if nav and nav > 0 else None
+                            ext.accumulated_nav = accumulated_nav if accumulated_nav and accumulated_nav > 0 else None
+                        else:
+                            db.add(SecurityFund(security_id=sid, fund_type=fund_type, nav=nav if nav and nav > 0 else None, accumulated_nav=accumulated_nav if accumulated_nav and accumulated_nav > 0 else None))
+                    elif security_type == "\u503a\u5238":  # 债券
+                        ext = db.query(SecurityBond).filter(SecurityBond.security_id == sid).first()
+                        if ext:
+                            ext.interest_rate = interest_rate if interest_rate and interest_rate > 0 else None
+                            ext.maturity_date = maturity_date
+                            ext.face_value = face_value if face_value and face_value > 0 else None
+                        else:
+                            db.add(SecurityBond(security_id=sid, interest_rate=interest_rate if interest_rate and interest_rate > 0 else None, maturity_date=maturity_date, face_value=face_value if face_value and face_value > 0 else None))
+                    elif security_type == "\u53ef\u8f6c\u503a":  # 可转债
+                        ext = db.query(SecurityConvertible).filter(SecurityConvertible.security_id == sid).first()
+                        if ext:
+                            ext.underlying_symbol = underlying_symbol
+                            ext.conversion_ratio = conversion_ratio if conversion_ratio and conversion_ratio > 0 else None
+                        else:
+                            db.add(SecurityConvertible(security_id=sid, underlying_symbol=underlying_symbol, conversion_ratio=conversion_ratio if conversion_ratio and conversion_ratio > 0 else None))
+                    elif security_type == "\u671f\u6743":  # 期权
+                        ext = db.query(SecurityOption).filter(SecurityOption.security_id == sid).first()
+                        if ext:
+                            ext.strike_price = strike_price if strike_price and strike_price > 0 else None
+                            ext.expiry_date = expiry_date
+                            ext.underlying_symbol = underlying_symbol
+                        else:
+                            db.add(SecurityOption(security_id=sid, strike_price=strike_price if strike_price and strike_price > 0 else None, expiry_date=expiry_date, underlying_symbol=underlying_symbol))
+                    elif security_type == "\u671f\u8d27":  # 期货
+                        ext = db.query(SecurityFuture).filter(SecurityFuture.security_id == sid).first()
+                        if ext:
+                            ext.expiry_date = expiry_date
+                        else:
+                            db.add(SecurityFuture(security_id=sid, expiry_date=expiry_date))
                     
                     # 每100条提交一次，避免事务过大
                     if (created_count + updated_count) % 100 == 0:
