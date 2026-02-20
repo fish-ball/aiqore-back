@@ -26,11 +26,9 @@ def update_securities_task(self, market=None, sector=None):
     if not task_lock.acquire():
         error_msg = f"任务 '{task_name}' 已在运行中，无法重复执行"
         logger.warning(error_msg)
-        self.update_state(
-            state="FAILURE",
-            meta={"error": error_msg, "status": "任务冲突"}
-        )
-        return {
+        # 对于业务逻辑失败，使用 SUCCESS 状态但返回失败结果
+        # 这样可以避免 Celery 尝试解析异常信息格式
+        result = {
             "success": False,
             "message": error_msg,
             "total": 0,
@@ -38,6 +36,15 @@ def update_securities_task(self, market=None, sector=None):
             "updated": 0,
             "errors": 0
         }
+        # 更新为 SUCCESS 状态，但结果中包含失败信息
+        self.update_state(
+            state="SUCCESS",
+            meta={
+                "status": "任务冲突",
+                "result": result
+            }
+        )
+        return result
     
     db = SessionLocal()
     try:
@@ -68,10 +75,11 @@ def update_securities_task(self, market=None, sector=None):
                 }
             )
         else:
+            # 对于业务逻辑失败（非异常），使用 SUCCESS 状态但结果中包含失败信息
+            # 这样可以避免 Celery 尝试解析异常信息格式
             self.update_state(
-                state="FAILURE",
+                state="SUCCESS",
                 meta={
-                    "error": result.get("message", "更新失败"),
                     "status": "更新失败",
                     "result": result
                 }
@@ -82,19 +90,13 @@ def update_securities_task(self, market=None, sector=None):
     except Exception as e:
         logger.error(f"异步更新证券信息失败: {e}")
         import traceback
-        logger.error(traceback.format_exc())
-        self.update_state(
-            state="FAILURE",
-            meta={"error": str(e), "status": "更新失败"}
-        )
-        return {
-            "success": False,
-            "message": f"更新失败: {str(e)}",
-            "total": 0,
-            "created": 0,
-            "updated": 0,
-            "errors": 0
-        }
+        error_traceback = traceback.format_exc()
+        logger.error(error_traceback)
+        
+        # 对于真正的异常，直接抛出让 Celery 自动处理
+        # Celery 会自动格式化异常信息，避免格式错误
+        # 这样前端可以通过查询任务状态获取异常信息
+        raise
     finally:
         # 确保释放锁
         task_lock.release()

@@ -30,5 +30,7 @@ celery_app.conf.update(
     # 确保任务状态立即保存到后端
     task_always_eager=False,  # 异步执行
     task_store_eager_result=True,  # 即使任务失败也保存结果
+    # 修复弃用警告：启动时重试 broker 连接
+    broker_connection_retry_on_startup=True,
 )
 
