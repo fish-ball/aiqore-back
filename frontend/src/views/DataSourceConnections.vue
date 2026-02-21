@@ -80,9 +80,6 @@
         <el-form-item label="资金账号" required>
           <el-input v-model="form.xt_quant_acct" placeholder="交易/账户同步时使用，与 miniQMT 客户端登录账号一致" />
         </el-form-item>
-        <el-form-item label="密码">
-          <el-input v-model="form.password" type="password" placeholder="可选；登录在 miniQMT 客户端完成，此处仅作备注保存" show-password />
-        </el-form-item>
         <el-form-item label="设为行情源">
           <el-switch v-model="form.is_quote_source" />
         </el-form-item>
@@ -324,7 +321,6 @@ const submit = async () => {
       xt_quant_acct: isQmt ? (form.value.xt_quant_acct?.trim() || null) : null,
       description: form.value.description?.trim() || null
     }
-    if (isQmt && form.value.password) payload.password = form.value.password
     if (isEdit.value) {
       await dataSourceApi.update(form.value.id, payload)
       ElMessage.success('更新成功')

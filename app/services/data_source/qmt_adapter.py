@@ -2,8 +2,9 @@
 QMT/miniQMT 数据源适配器：直接调用 xtquant API，不依赖 QMTService。
 连接仅使用 xt_quant_path、xt_quant_acct；host/port 为预留。
 """
+from re import A
 from typing import List, Dict, Any, Optional
-import os
+from pathlib import Path
 import sys
 import time
 import logging
@@ -25,11 +26,14 @@ def _ensure_xtdata(xt_quant_path: Optional[str]) -> Any:
     path = (xt_quant_path or settings.XT_QUANT_PATH).strip() if xt_quant_path else settings.XT_QUANT_PATH
     if _xtdata is not None:
         return _xtdata
-    if path and os.path.isdir(path):
-        datadir = os.path.join(path, "datadir")
-        if os.path.isdir(datadir) and (datadir not in sys.path):
-            sys.path.insert(0, datadir)
-            _xtdata_path_loaded = datadir
+    base = Path(path) if path else None
+    if base and base.is_dir():
+        datadir = base / "datadir"
+        if datadir.is_dir():
+            datadir_str = str(datadir)
+            if datadir_str not in sys.path:
+                sys.path.insert(0, datadir_str)
+                _xtdata_path_loaded = datadir_str
     try:
         from xtquant import xtdata as _xt
         _xtdata = _xt
@@ -62,12 +66,13 @@ class QMTAdapter(SecuritiesDataSourceAdapter):
         return xtdata
 
     def test_connection(self) -> tuple[bool, str]:
-        if not self._xt_quant_path or not os.path.isdir(self._xt_quant_path):
+        base = Path(self._xt_quant_path) if self._xt_quant_path else None
+        if not base or not base.is_dir():
             return False, "xtquant 路径不存在或不可用"
         acct = (self._xt_quant_acct or "").strip()
         if acct:
-            acct_dir = os.path.join(self._xt_quant_path, acct)
-            if not os.path.isdir(acct_dir):
+            acct_dir = base / "users" / acct
+            if not acct_dir.is_dir():
                 return False, f"账号 {acct} 在配置路径下不存在对应文件夹，视作连接失败"
         try:
             xtdata = _ensure_xtdata(self._xt_quant_path)
@@ -286,7 +291,8 @@ class QMTAdapter(SecuritiesDataSourceAdapter):
 
     def get_positions(self, account_id: str) -> List[Dict[str, Any]]:
         """通过 xttrader 查询指定资金账号的股票持仓。"""
-        if not self._xt_quant_path or not os.path.isdir(self._xt_quant_path):
+        base = Path(self._xt_quant_path) if self._xt_quant_path else None
+        if not base or not base.is_dir():
             logger.warning("QMT 路径未配置或不可用，无法查询持仓")
             return []
         try:
