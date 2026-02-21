@@ -8,6 +8,7 @@ import SecurityList from '../views/SecurityList.vue'
 import SecurityDetail from '../views/SecurityDetail.vue'
 import Sectors from '../views/Sectors.vue'
 import DataSourceConnections from '../views/DataSourceConnections.vue'
+import DataSourceDebug from '../views/DataSourceDebug.vue'
 
 const routes = [
   {
@@ -58,6 +59,11 @@ const routes = [
     path: '/data-sources',
     name: 'DataSourceConnections',
     component: DataSourceConnections
+  },
+  {
+    path: '/data-sources/debug/:id',
+    name: 'DataSourceDebug',
+    component: DataSourceDebug
   }
 ]
 

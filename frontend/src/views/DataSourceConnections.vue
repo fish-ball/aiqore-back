@@ -33,9 +33,10 @@
         <el-table-column prop="updated_at" label="更新时间" width="165">
           <template #default="{ row }">{{ formatDate(row.updated_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="handleTest(row)" :loading="testingId === row.id">测试</el-button>
+            <el-button size="small" @click="goDebug(row)">调试</el-button>
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
@@ -171,9 +172,12 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { dataSourceApi } from '../api/dataSource'
+
+const router = useRouter()
 
 const loading = ref(false)
 const list = ref([])
@@ -250,6 +254,10 @@ const chooseType = (type) => {
 const openCreate = () => {
   isEdit.value = false
   typeSelectVisible.value = true
+}
+
+const goDebug = (row) => {
+  router.push({ path: '/data-sources/debug/' + row.id, query: { name: row.name, source_type: row.source_type } })
 }
 
 const handleTest = async (row) => {

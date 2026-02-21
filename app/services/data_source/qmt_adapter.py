@@ -2,7 +2,6 @@
 QMT/miniQMT 数据源适配器：直接调用 xtquant API，不依赖 QMTService。
 连接仅使用 xt_quant_path、xt_quant_acct；host/port 为预留。
 """
-from re import A
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import sys

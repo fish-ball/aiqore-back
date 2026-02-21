@@ -57,6 +57,21 @@
 | GET | /api/data-source/connections/{id} | 单条连接 |
 | PUT | /api/data-source/connections/{id} | 更新连接 |
 | DELETE | /api/data-source/connections/{id} | 删除连接 |
+| POST | /api/data-source/connections/{id}/test | 测试连接有效性（QMT 尝试连接 xtdata） |
+
+**接口调试（当前仅 miniQMT 类型连接支持）**
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | /api/data-source/connections/{id}/debug/sectors | 获取板块列表 |
+| POST | /api/data-source/connections/{id}/debug/stocks-in-sector | 获取指定板块股票，body: sector |
+| POST | /api/data-source/connections/{id}/debug/instrument-detail | 获取标的详情，body: symbol |
+| POST | /api/data-source/connections/{id}/debug/market-data | 获取 K 线，body: symbol, period, count |
+| POST | /api/data-source/connections/{id}/debug/realtime-quote | 获取实时行情，body: symbols（数组） |
+| POST | /api/data-source/connections/{id}/debug/stock-list | 获取证券列表，body: market（可选）, sector（可选） |
+| POST | /api/data-source/connections/{id}/debug/positions | 查询持仓，body: account_id |
+| POST | /api/data-source/connections/{id}/debug/account-info | 获取账户信息，body: account_id |
+| POST | /api/data-source/connections/{id}/debug/search-stocks | 按关键词搜索股票，body: keyword |
 
 ### 板块（/api/sector）
 

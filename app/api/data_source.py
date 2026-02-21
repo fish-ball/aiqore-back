@@ -168,3 +168,172 @@ async def test_connection(connection_id: int, db: Session = Depends(get_db)):
         return {"code": 0, "data": {"ok": ok, "message": msg}, "message": "success"}
     except Exception as e:
         return {"code": 0, "data": {"ok": False, "message": str(e)}, "message": "success"}
+
+
+# ---------- 接口调试（按数据源类型提供独立能力，当前仅 miniQMT） ----------
+
+
+def _require_qmt_connection(connection_id: int, db: Session) -> DataSourceConnection:
+    """获取连接并校验为 qmt 类型，否则抛 400/404。"""
+    conn = db.query(DataSourceConnection).filter(DataSourceConnection.id == connection_id).first()
+    if not conn:
+        raise HTTPException(status_code=404, detail="连接不存在")
+    if conn.source_type != "qmt":
+        raise HTTPException(status_code=400, detail="接口调试当前仅支持 miniQMT 类型数据源")
+    return conn
+
+
+class DebugStocksInSectorBody(BaseModel):
+    """按板块取股票列表"""
+    sector: str = Field(..., min_length=1, description="板块名称，如 沪深A股")
+
+
+class DebugInstrumentDetailBody(BaseModel):
+    """标的详情"""
+    symbol: str = Field(..., min_length=1, description="标的代码，如 000001.SZ")
+
+
+class DebugMarketDataBody(BaseModel):
+    """K 线数据"""
+    symbol: str = Field(..., min_length=1, description="标的代码")
+    period: str = Field("1d", description="周期：1m/1d 等")
+    count: int = Field(100, ge=1, le=2000, description="条数")
+
+
+class DebugRealtimeQuoteBody(BaseModel):
+    """实时行情"""
+    symbols: List[str] = Field(..., min_length=1, max_length=50, description="标的代码列表")
+
+
+class DebugStockListBody(BaseModel):
+    """证券列表（可选按市场、板块过滤）"""
+    market: Optional[str] = Field(None, description="市场：SH/SZ/BJ，不传为全部")
+    sector: Optional[str] = Field(None, description="板块名称，不传则返回全量/按 market 过滤")
+
+
+class DebugPositionsBody(BaseModel):
+    """持仓查询"""
+    account_id: str = Field(..., min_length=1, description="资金账号")
+
+
+class DebugAccountInfoBody(BaseModel):
+    """账户信息"""
+    account_id: str = Field(..., min_length=1, description="资金账号")
+
+
+class DebugSearchStocksBody(BaseModel):
+    """股票搜索"""
+    keyword: str = Field(..., min_length=1, description="关键词（代码或名称）")
+
+
+@router.get("/connections/{connection_id}/debug/sectors")
+async def debug_sectors(connection_id: int, db: Session = Depends(get_db)):
+    """[miniQMT] 获取板块列表"""
+    conn = _require_qmt_connection(connection_id, db)
+    adapter = get_adapter_for_connection(conn)
+    sectors = adapter.get_sector_list()
+    return {"code": 0, "data": {"sectors": sectors}, "message": "success"}
+
+
+@router.post("/connections/{connection_id}/debug/stocks-in-sector")
+async def debug_stocks_in_sector(
+    connection_id: int,
+    body: DebugStocksInSectorBody,
+    db: Session = Depends(get_db),
+):
+    """[miniQMT] 获取指定板块下的股票列表"""
+    conn = _require_qmt_connection(connection_id, db)
+    adapter = get_adapter_for_connection(conn)
+    stocks = adapter.get_stock_list_in_sector(body.sector, market=None)
+    return {"code": 0, "data": {"sector": body.sector, "stocks": stocks, "total": len(stocks)}, "message": "success"}
+
+
+@router.post("/connections/{connection_id}/debug/instrument-detail")
+async def debug_instrument_detail(
+    connection_id: int,
+    body: DebugInstrumentDetailBody,
+    db: Session = Depends(get_db),
+):
+    """[miniQMT] 获取标的详情"""
+    conn = _require_qmt_connection(connection_id, db)
+    adapter = get_adapter_for_connection(conn)
+    detail = adapter.get_instrument_detail(body.symbol)
+    return {"code": 0, "data": {"symbol": body.symbol, "detail": detail}, "message": "success"}
+
+
+@router.post("/connections/{connection_id}/debug/market-data")
+async def debug_market_data(
+    connection_id: int,
+    body: DebugMarketDataBody,
+    db: Session = Depends(get_db),
+):
+    """[miniQMT] 获取 K 线数据"""
+    conn = _require_qmt_connection(connection_id, db)
+    adapter = get_adapter_for_connection(conn)
+    rows = adapter.get_market_data(body.symbol, period=body.period, count=body.count)
+    return {"code": 0, "data": {"symbol": body.symbol, "period": body.period, "rows": rows or []}, "message": "success"}
+
+
+@router.post("/connections/{connection_id}/debug/realtime-quote")
+async def debug_realtime_quote(
+    connection_id: int,
+    body: DebugRealtimeQuoteBody,
+    db: Session = Depends(get_db),
+):
+    """[miniQMT] 获取实时行情"""
+    conn = _require_qmt_connection(connection_id, db)
+    adapter = get_adapter_for_connection(conn)
+    quotes = adapter.get_realtime_quote(body.symbols)
+    return {"code": 0, "data": {"quotes": quotes or {}}, "message": "success"}
+
+
+@router.post("/connections/{connection_id}/debug/stock-list")
+async def debug_stock_list(
+    connection_id: int,
+    body: DebugStockListBody,
+    db: Session = Depends(get_db),
+):
+    """[miniQMT] 获取证券列表（可选 market、sector 过滤）"""
+    conn = _require_qmt_connection(connection_id, db)
+    adapter = get_adapter_for_connection(conn)
+    stocks = adapter.get_stock_list(market=body.market, sector=body.sector)
+    return {"code": 0, "data": {"stocks": stocks or [], "total": len(stocks or [])}, "message": "success"}
+
+
+@router.post("/connections/{connection_id}/debug/positions")
+async def debug_positions(
+    connection_id: int,
+    body: DebugPositionsBody,
+    db: Session = Depends(get_db),
+):
+    """[miniQMT] 查询指定资金账号持仓"""
+    conn = _require_qmt_connection(connection_id, db)
+    adapter = get_adapter_for_connection(conn)
+    positions = adapter.get_positions(body.account_id)
+    return {"code": 0, "data": {"account_id": body.account_id, "positions": positions or [], "total": len(positions or [])}, "message": "success"}
+
+
+@router.post("/connections/{connection_id}/debug/account-info")
+async def debug_account_info(
+    connection_id: int,
+    body: DebugAccountInfoBody,
+    db: Session = Depends(get_db),
+):
+    """[miniQMT] 获取账户信息"""
+    conn = _require_qmt_connection(connection_id, db)
+    adapter = get_adapter_for_connection(conn)
+    info = adapter.get_account_info(body.account_id)
+    return {"code": 0, "data": {"account_id": body.account_id, "info": info}, "message": "success"}
+
+
+@router.post("/connections/{connection_id}/debug/search-stocks")
+async def debug_search_stocks(
+    connection_id: int,
+    body: DebugSearchStocksBody,
+    db: Session = Depends(get_db),
+):
+    """[miniQMT] 按关键词搜索股票"""
+    conn = _require_qmt_connection(connection_id, db)
+    adapter = get_adapter_for_connection(conn)
+    results = adapter.search_stocks(body.keyword)
+    return {"code": 0, "data": {"keyword": body.keyword, "stocks": results or [], "total": len(results or [])}, "message": "success"}
