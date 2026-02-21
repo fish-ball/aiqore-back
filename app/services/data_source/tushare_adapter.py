@@ -15,3 +15,7 @@ class TushareAdapter(SecuritiesDataSourceAdapter):
 
     def get_instrument_detail(self, symbol: str) -> Optional[Dict[str, Any]]:
         return None
+
+    def get_positions(self, account_id: str) -> List[Dict[str, Any]]:
+        """tushare 占位：不支持持仓查询，返回空列表。"""
+        return []

@@ -1,5 +1,4 @@
 """数据源连接 API：增删查改，支持 QMT 参数化与行情源/交易源角色"""
-import os
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
@@ -7,8 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.database import get_db
 from app.models.data_source_connection import DataSourceConnection
-from app.services.data_source.sync import _connection_to_config
-from app.services.qmt_service import QMTService
+from app.services.data_source.sync import get_adapter_for_connection
 
 router = APIRouter(prefix="", tags=["数据源连接"])
 
@@ -23,7 +21,7 @@ class DataSourceConnectionBase(BaseModel):
     is_active: bool = True
     is_quote_source: bool = False
     is_trading_source: bool = False
-    # QMT 专用
+    # QMT/miniQMT：连接仅用 xt_quant_path、xt_quant_acct；host/port/user/password 为预留
     host: Optional[str] = None
     port: Optional[int] = None
     user: Optional[str] = None
@@ -164,19 +162,9 @@ async def test_connection(connection_id: int, db: Session = Depends(get_db)):
     conn = db.query(DataSourceConnection).filter(DataSourceConnection.id == connection_id).first()
     if not conn:
         raise HTTPException(status_code=404, detail="连接不存在")
-    if conn.source_type == "qmt":
-        try:
-            if not conn.xt_quant_path or not os.path.isdir(conn.xt_quant_path):
-                return {"code": 0, "data": {"ok": False, "message": "xtquant 路径不存在或不可用"}, "message": "success"}
-            config = _connection_to_config(conn)
-            svc = QMTService(config)
-            ok = svc.connect()
-            svc.disconnect()
-            if ok:
-                return {"code": 0, "data": {"ok": True, "message": "连接成功"}, "message": "success"}
-            return {"code": 0, "data": {"ok": False, "message": "连接失败，请检查 xtquant 与 miniQMT 是否已启动"}, "message": "success"}
-        except Exception as e:
-            return {"code": 0, "data": {"ok": False, "message": str(e)}, "message": "success"}
-    if conn.source_type in ("joinquant", "tushare"):
-        return {"code": 0, "data": {"ok": False, "message": "该类型暂不支持连接测试"}, "message": "success"}
-    return {"code": 0, "data": {"ok": False, "message": "未知数据源类型"}, "message": "success"}
+    try:
+        adapter = get_adapter_for_connection(conn)
+        ok, msg = adapter.test_connection()
+        return {"code": 0, "data": {"ok": ok, "message": msg}, "message": "success"}
+    except Exception as e:
+        return {"code": 0, "data": {"ok": False, "message": str(e)}, "message": "success"}

@@ -5,73 +5,46 @@ from sqlalchemy import or_, func
 from datetime import datetime
 import logging
 from app.models.sector import Sector
-from app.services.qmt_service import qmt_service
+from app.services.data_source import get_default_qmt_adapter
 
 logger = logging.getLogger(__name__)
 
 
 class SectorService:
     """板块信息服务"""
-    
+
     def __init__(self):
-        self.qmt = qmt_service
-    
+        self._qmt = None
+
+    @property
+    def qmt(self):
+        """懒加载 QMT 适配器，避免启动时阻塞。"""
+        if self._qmt is None:
+            self._qmt = get_default_qmt_adapter()
+        return self._qmt
+
     def sync_sectors_from_qmt(self, db: Session) -> Dict[str, Any]:
         """
         从QMT同步板块列表到数据库
-        
+
         Args:
             db: 数据库会话
-            
+
         Returns:
             同步结果统计
         """
         try:
-            if not qmt_service.connected:
-                if not qmt_service.connect():
-                    return {
-                        "success": False,
-                        "message": "QMT连接失败",
-                        "total": 0,
-                        "created": 0,
-                        "updated": 0,
-                        "errors": 0
-                    }
-            
-            # 获取所有板块列表
-            try:
-                from xtquant import xtdata
-                if not hasattr(xtdata, 'get_sector_list'):
-                    return {
-                        "success": False,
-                        "message": "QMT不支持get_sector_list方法",
-                        "total": 0,
-                        "created": 0,
-                        "updated": 0,
-                        "errors": 0
-                    }
-                
-                sectors = xtdata.get_sector_list()
-                if not sectors:
-                    return {
-                        "success": False,
-                        "message": "未获取到板块列表",
-                        "total": 0,
-                        "created": 0,
-                        "updated": 0,
-                        "errors": 0
-                    }
-            except Exception as e:
-                logger.error(f"获取板块列表失败: {e}")
+            sectors = self.qmt.get_sector_list()
+            if not sectors:
                 return {
                     "success": False,
-                    "message": f"获取板块列表失败: {str(e)}",
+                    "message": "QMT不支持get_sector_list或未返回数据",
                     "total": 0,
                     "created": 0,
                     "updated": 0,
                     "errors": 0
                 }
-            
+
             created_count = 0
             updated_count = 0
             error_count = 0
@@ -118,7 +91,7 @@ class SectorService:
                     # 获取板块内证券数量
                     security_count = 0
                     try:
-                        securities = xtdata.get_stock_list_in_sector(sector_name)
+                        securities = self.qmt.get_stock_list_in_sector(sector_name)
                         if securities:
                             security_count = len(securities)
                     except Exception as e:

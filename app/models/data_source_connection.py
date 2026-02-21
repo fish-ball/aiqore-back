@@ -15,13 +15,13 @@ class DataSourceConnection(Base):
     is_quote_source = Column(Boolean, default=False, nullable=False, comment="是否作为行情源")
     is_trading_source = Column(Boolean, default=False, nullable=False, comment="是否作为交易驱动源")
 
-    # QMT 专用（source_type=qmt 时使用）
-    host = Column(String(255), nullable=True, comment="QMT 主机")
-    port = Column(Integer, nullable=True, comment="QMT 端口")
-    user = Column(String(100), nullable=True, comment="QMT 用户")
-    password = Column(String(255), nullable=True, comment="QMT 密码")
-    xt_quant_path = Column(String(500), nullable=True, comment="QMT xtquant 路径")
-    xt_quant_acct = Column(String(50), nullable=True, comment="QMT 资金账号")
+    # QMT/miniQMT 专用（source_type=qmt 时使用）。xtquant 本地连接仅用 xt_quant_path、xt_quant_acct；host/port/user/password 为预留
+    host = Column(String(255), nullable=True, comment="预留，miniQMT 本地连接不使用")
+    port = Column(Integer, nullable=True, comment="预留，miniQMT 本地连接不使用")
+    user = Column(String(100), nullable=True, comment="预留")
+    password = Column(String(255), nullable=True, comment="可选，登录在 miniQMT 客户端完成")
+    xt_quant_path = Column(String(500), nullable=True, comment="miniQMT userdata_mini 路径，必填")
+    xt_quant_acct = Column(String(50), nullable=True, comment="资金账号，交易/订阅时使用")
 
     # 其他数据源可存 JSON，首期可不建
     # config = Column(JSON, nullable=True, comment="类型相关扩展配置")

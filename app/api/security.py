@@ -84,8 +84,9 @@ async def get_securities(
         # 如果指定了板块，通过 QMT 服务获取该板块的证券列表（不直接依赖 xtdata）
         if sector:
             try:
-                from app.services.qmt_service import qmt_service
-                sector_list = qmt_service.get_stock_list_in_sector(sector, market=None)
+                from app.services.data_source import get_default_qmt_adapter
+                qmt = get_default_qmt_adapter()
+                sector_list = qmt.get_stock_list_in_sector(sector, market=None)
                 if sector_list:
                     symbols = [s["symbol"] for s in sector_list if s.get("symbol")]
                     if symbols:

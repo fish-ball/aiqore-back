@@ -11,14 +11,13 @@ from app.services.data_source.base import SecuritiesDataSourceAdapter
 from app.services.data_source.qmt_adapter import QMTAdapter
 from app.services.data_source.joinquant_adapter import JoinQuantAdapter
 from app.services.data_source.tushare_adapter import TushareAdapter
-from app.services.security_service import security_service
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 def _connection_to_config(conn: DataSourceConnection) -> Dict[str, Any]:
-    """将 ORM 连接转为 QMT 适配器所需 config 字典"""
+    """将 ORM 连接转为 QMT 适配器所需 config 字典。miniQMT 实际仅使用 xt_quant_path、xt_quant_acct；其余为兼容保留。"""
     return {
         "host": conn.host,
         "port": conn.port,
@@ -38,6 +37,12 @@ def _get_adapter(source_type: str, config: Optional[Dict[str, Any]]) -> Securiti
     if source_type == "tushare":
         return TushareAdapter(config)
     raise ValueError(f"不支持的 source_type: {source_type}")
+
+
+def get_adapter_for_connection(conn: DataSourceConnection) -> SecuritiesDataSourceAdapter:
+    """根据连接记录返回对应数据源适配器（用于连接测试等）。"""
+    config = _connection_to_config(conn) if conn.source_type == "qmt" else {}
+    return _get_adapter(conn.source_type, config)
 
 
 def _get_default_qmt_config() -> Dict[str, Any]:
@@ -142,4 +147,5 @@ def sync_securities(
             "sector": sec.get("sector", ""),
             "detail": detail,
         })
+    from app.services.security_service import security_service
     return security_service.update_securities_from_data(db, with_details)

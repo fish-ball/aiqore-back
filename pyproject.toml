@@ -33,8 +33,8 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
-[tool.uv]
-dev-dependencies = []
+[dependency-groups]
+dev = []
 
 # 配置 PyPI 索引源（使用清华大学镜像）
 [[tool.uv.index]]

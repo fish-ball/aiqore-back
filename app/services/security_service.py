@@ -16,7 +16,7 @@ from app.models.security import (
     SecurityOption,
     SecurityFuture,
 )
-from app.services.qmt_service import qmt_service
+from app.services.data_source import get_default_qmt_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +56,17 @@ def generate_abbreviation(name: str) -> str:
 
 class SecurityService:
     """证券信息服务"""
-    
+
     def __init__(self):
-        self.qmt = qmt_service
-    
+        self._qmt = None
+
+    @property
+    def qmt(self):
+        """懒加载 QMT 适配器，避免启动时阻塞。"""
+        if self._qmt is None:
+            self._qmt = get_default_qmt_adapter()
+        return self._qmt
+
     def _map_instrument_type_to_security_type(self, instrument_type: str, sector: str = "") -> str:
         """
         将 QMT 的 InstrumentType 映射到我们的 security_type
@@ -392,8 +399,7 @@ class SecurityService:
         sector: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        从 QMT 更新证券基础信息：通过 self.qmt 取列表与详情，再调用写库逻辑。
-        保留用于尚未走抽象层的调用（如默认单例 qmt_service）。
+        从 QMT 更新证券基础信息：通过默认 QMT 适配器（self.qmt）取列表与详情，再调用写库逻辑。
         """
         if sector:
             securities = self.qmt.get_stock_list_in_sector(sector, market)

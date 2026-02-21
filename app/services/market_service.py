@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 import pandas as pd
 from sqlalchemy.orm import Session
-from app.services.qmt_service import qmt_service
+from app.services.data_source import get_default_qmt_adapter
 from app.services.security_service import security_service
 import logging
 
@@ -12,10 +12,17 @@ logger = logging.getLogger(__name__)
 
 class MarketService:
     """行情服务"""
-    
+
     def __init__(self):
-        self.qmt = qmt_service
-    
+        self._qmt = None
+
+    @property
+    def qmt(self):
+        """懒加载 QMT 适配器，避免启动时阻塞。"""
+        if self._qmt is None:
+            self._qmt = get_default_qmt_adapter()
+        return self._qmt
+
     def get_realtime_quote(self, symbols: List[str], db: Optional[Session] = None) -> Dict[str, Dict[str, Any]]:
         """
         获取实时行情
