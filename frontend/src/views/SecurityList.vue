@@ -76,38 +76,23 @@
                 <el-button @click="handleSearch" size="small">搜索</el-button>
               </template>
             </el-input>
-            <el-select
-              v-model="selectedSourceId"
-              placeholder="数据源"
-              size="small"
-              clearable
-              style="width: 140px; margin-right: 8px"
-            >
-              <el-option label="默认连接" :value="null" />
-              <el-option
-                v-for="conn in dataSourceConnections"
-                :key="conn.id"
-                :label="conn.name"
-                :value="conn.id"
-              />
-            </el-select>
             <el-button
               type="success"
               size="small"
-              @click="updateFromQMT"
+              @click="openUpdateDialog"
               :loading="updating"
-              :disabled="updating"
+              :disabled="updating || !dataSourceStore.currentId"
               v-if="!activeSector"
             >
               <el-icon><Download /></el-icon>
-              {{ updating ? (updateProgress > 0 ? `更新中 ${updateProgress}%` : '更新中...') : '从数据源更新' }}
+              {{ updating ? '提交中...' : '从数据源更新' }}
             </el-button>
             <el-button
               type="success"
               size="small"
-              @click="updateSectorFromQMT"
+              @click="updateSectorFromDataSource"
               :loading="updating"
-              :disabled="updating"
+              :disabled="updating || !dataSourceStore.currentId"
               v-if="activeSector"
             >
               <el-icon><Download /></el-icon>
@@ -194,6 +179,31 @@
       </div>
     </el-card>
 
+    <!-- 整体从数据源更新：弹窗输入参数后下发 Celery 任务 -->
+    <el-dialog
+      v-model="updateDialogVisible"
+      title="从数据源更新证券列表"
+      width="420px"
+      @close="resetUpdateForm"
+    >
+      <el-form :model="updateForm" label-width="80px">
+        <el-form-item label="市场">
+          <el-select v-model="updateForm.market" placeholder="不限制则更新全部" clearable style="width: 100%">
+            <el-option label="全部" value="" />
+            <el-option label="上海" value="SH" />
+            <el-option label="深圳" value="SZ" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="板块">
+          <el-input v-model="updateForm.sector" placeholder="可选，指定则只同步该板块" clearable />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="updateDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="updating" @click="submitUpdateTask">提交后台更新</el-button>
+      </template>
+    </el-dialog>
+
     <el-card class="table-card">
       <el-table
         :data="tableData"
@@ -272,6 +282,20 @@
             {{ formatAmount(scope.row.amount) }}
           </template>
         </el-table-column>
+        <el-table-column label="操作" width="90" fixed="right">
+          <template #default="scope">
+            <el-button
+              type="primary"
+              link
+              size="small"
+              :loading="updatingSymbol === scope.row.symbol"
+              :disabled="!dataSourceStore.currentId"
+              @click="updateOneSecurity(scope.row)"
+            >
+              更新
+            </el-button>
+          </template>
+        </el-table-column>
       </el-table>
       
       <el-pagination
@@ -295,23 +319,24 @@ import { ElMessage } from 'element-plus'
 import { securityApi } from '../api/security'
 import { marketApi } from '../api/market'
 import sectorApi from '../api/sector.js'
-import { dataSourceApi } from '../api/dataSource'
+import { useDataSourceStore } from '../stores/dataSource'
 
 const router = useRouter()
 const route = useRoute()
+const dataSourceStore = useDataSourceStore()
 
 // 从路由参数获取板块
 const activeSector = ref(route.query.sector || '')
 const loading = ref(false)
 const updating = ref(false)
-const updateProgress = ref(0)
 const tableData = ref([])
 const filterMarket = ref('')
 const searchKeyword = ref('')
 const sectors = ref([])
 const filterPanelExpanded = ref(false)
-const dataSourceConnections = ref([])
-const selectedSourceId = ref(null)
+const updatingSymbol = ref(null)
+const updateDialogVisible = ref(false)
+const updateForm = ref({ market: '', sector: '' })
 
 // 按分类分组板块
 const sectorsByCategory = computed(() => {
@@ -641,77 +666,100 @@ const refreshData = () => {
   ElMessage.success('数据已刷新')
 }
 
-const updateFromQMT = async () => {
+const sourceType = () => dataSourceStore.currentDataSource?.source_type || 'qmt'
+const sourceId = () => dataSourceStore.currentId
+
+function resetUpdateForm() {
+  updateForm.value = { market: '', sector: '' }
+}
+
+function openUpdateDialog() {
+  if (!dataSourceStore.currentId) {
+    ElMessage.warning('请先在顶栏选择当前数据源')
+    return
+  }
+  updateForm.value = { market: filterMarket.value || '', sector: '' }
+  updateDialogVisible.value = true
+}
+
+const submitUpdateTask = async () => {
   updating.value = true
-  updateProgress.value = 0
   try {
     const result = await securityApi.update(
-      filterMarket.value || null,
-      null,
-      'qmt',
-      selectedSourceId.value ?? null
+      updateForm.value.market || null,
+      updateForm.value.sector || null,
+      sourceType(),
+      sourceId()
     )
     if (result && result.task_id) {
-      ElMessage.success('任务已提交，正在后台处理...')
-      setTimeout(async () => {
-        await fetchSecurities()
-        updating.value = false
-        updateProgress.value = 0
-      }, 3000)
-    } else {
-      updating.value = false
-      updateProgress.value = 0
+      updateDialogVisible.value = false
+      ElMessage.success('任务已提交，正在后台处理')
     }
   } catch (error) {
-    updating.value = false
-    updateProgress.value = 0
     if (!error.message || !error.message.includes('正在运行中')) {
-      ElMessage.error('更新失败: ' + (error.message || '未知错误'))
+      ElMessage.error('提交失败: ' + (error.message || '未知错误'))
     }
+  } finally {
+    updating.value = false
   }
 }
 
-const updateSectorFromQMT = async () => {
+const updateSectorFromDataSource = async () => {
   if (!activeSector.value) return
+  if (!dataSourceStore.currentId) {
+    ElMessage.warning('请先在顶栏选择当前数据源')
+    return
+  }
   updating.value = true
   try {
     const result = await securityApi.update(
       filterMarket.value || null,
       activeSector.value,
-      'qmt',
-      selectedSourceId.value ?? null
+      sourceType(),
+      sourceId()
     )
     if (result && result.task_id) {
-      ElMessage.success('任务已提交，正在后台处理...')
-      setTimeout(async () => {
-        await fetchSecurities()
-        await fetchSectors()
-        updating.value = false
-      }, 3000)
-    } else {
-      updating.value = false
+      ElMessage.success('任务已提交，正在后台处理')
+      setTimeout(() => {
+        fetchSecurities()
+        fetchSectors()
+      }, 2000)
     }
   } catch (error) {
-    updating.value = false
     if (!error.message || !error.message.includes('正在运行中')) {
       ElMessage.error('同步失败: ' + (error.message || '未知错误'))
     }
+  } finally {
+    updating.value = false
   }
 }
 
-const fetchDataSourceConnections = async () => {
+const updateOneSecurity = async (row) => {
+  if (!dataSourceStore.currentId) {
+    ElMessage.warning('请先在顶栏选择当前数据源')
+    return
+  }
+  updatingSymbol.value = row.symbol
   try {
-    const res = await dataSourceApi.getList({ source_type: 'qmt', is_active: true })
-    dataSourceConnections.value = (res && res.items) ? res.items : []
-  } catch (_) {
-    dataSourceConnections.value = []
+    await securityApi.updateOne(row.symbol, sourceType(), sourceId())
+    ElMessage.success('已更新 ' + (row.name || row.symbol))
+    const idx = tableData.value.findIndex((r) => r.symbol === row.symbol)
+    if (idx >= 0) {
+      const detail = await securityApi.getDetail(row.symbol)
+      if (detail) {
+        tableData.value[idx] = { ...tableData.value[idx], name: detail.name, market: detail.market }
+      }
+    }
+  } catch (error) {
+    ElMessage.error('更新失败: ' + (error.message || '未知错误'))
+  } finally {
+    updatingSymbol.value = null
   }
 }
 
 onMounted(() => {
   fetchSectors()
   fetchSecurities()
-  fetchDataSourceConnections()
 })
 </script>
 

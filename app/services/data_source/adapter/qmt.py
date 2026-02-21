@@ -1,6 +1,6 @@
 """
-QMT/miniQMT 数据源适配器：直接调用 xtquant API，不依赖 QMTService。
-连接仅使用 xt_quant_path、xt_quant_acct；host/port 为预留。
+QMT/miniQMT 数据源适配器：直接调用 xtquant API。
+仅依赖 config 字典（xt_quant_path、xt_quant_acct），不依赖 app/FastAPI，adapter 包可独立运行。
 """
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -9,8 +9,7 @@ import time
 import logging
 from datetime import datetime
 
-from app.services.data_source.base import SecuritiesDataSourceAdapter
-from app.config import settings
+from .base import SecuritiesDataSourceAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -20,13 +19,18 @@ _xtdata_path_loaded: Optional[str] = None
 
 
 def _ensure_xtdata(xt_quant_path: Optional[str]) -> Any:
-    """确保 xtdata 已加载；使用 config 的 xt_quant_path 加入 sys.path 后导入。"""
+    """
+    确保 xtdata 已加载；使用传入的 xt_quant_path 加入 sys.path 后导入。
+    不依赖 app.config，调用方需传入有效路径。
+    """
     global _xtdata, _xtdata_path_loaded
-    path = (xt_quant_path or settings.XT_QUANT_PATH).strip() if xt_quant_path else settings.XT_QUANT_PATH
+    path = (xt_quant_path or "").strip() or None
     if _xtdata is not None:
         return _xtdata
-    base = Path(path) if path else None
-    if base and base.is_dir():
+    if not path:
+        return None
+    base = Path(path)
+    if base.is_dir():
         datadir = base / "datadir"
         if datadir.is_dir():
             datadir_str = str(datadir)
@@ -38,7 +42,7 @@ def _ensure_xtdata(xt_quant_path: Optional[str]) -> Any:
         _xtdata = _xt
         return _xtdata
     except ImportError as e:
-        logger.warning(f"xtquant 未安装或不可用: {e}")
+        logger.warning("xtquant 未安装或不可用: %s", e)
         return None
 
 
@@ -55,8 +59,8 @@ class QMTAdapter(SecuritiesDataSourceAdapter):
 
     def __init__(self, config: Dict[str, Any]):
         self._config = config or {}
-        self._xt_quant_path = self._config.get("xt_quant_path") or settings.XT_QUANT_PATH
-        self._xt_quant_acct = self._config.get("xt_quant_acct") or settings.XT_QUANT_ACCT
+        self._xt_quant_path = self._config.get("xt_quant_path") or None
+        self._xt_quant_acct = self._config.get("xt_quant_acct") or None
 
     def _get_xtdata(self):
         xtdata = _ensure_xtdata(self._xt_quant_path)
@@ -148,7 +152,7 @@ class QMTAdapter(SecuritiesDataSourceAdapter):
                         result.append({"symbol": sec, "market": m, "sector": sector})
             return result
         except Exception as e:
-            logger.error(f"获取板块 '{sector}' 证券列表失败: {e}")
+            logger.error("获取板块 '%s' 证券列表失败: %s", sector, e)
             return []
 
     def get_instrument_detail(self, symbol: str) -> Optional[Dict[str, Any]]:
@@ -204,7 +208,7 @@ class QMTAdapter(SecuritiesDataSourceAdapter):
                     })
             return result
         except Exception as e:
-            logger.error(f"获取行情数据失败 {symbol}: {e}")
+            logger.error("获取行情数据失败 %s: %s", symbol, e)
             return None
 
     def get_realtime_quote(self, symbols: List[str]) -> Optional[Dict[str, Dict[str, Any]]]:
@@ -251,7 +255,7 @@ class QMTAdapter(SecuritiesDataSourceAdapter):
                     }
             return result
         except Exception as e:
-            logger.error(f"获取实时行情失败: {e}")
+            logger.error("获取实时行情失败: %s", e)
             return None
 
     def search_stocks(self, keyword: str) -> List[Dict[str, Any]]:
@@ -298,7 +302,7 @@ class QMTAdapter(SecuritiesDataSourceAdapter):
             from xtquant.xttrader import XtQuantTrader
             from xtquant.xttype import StockAccount
         except ImportError as e:
-            logger.warning(f"xtquant.xttrader 不可用: {e}")
+            logger.warning("xtquant.xttrader 不可用: %s", e)
             return []
         trader = XtQuantTrader(self._xt_quant_path, int(time.time()))
         try:
@@ -338,18 +342,19 @@ class QMTAdapter(SecuritiesDataSourceAdapter):
                 pass
 
 
-# 可运行连通性测试（在项目根目录执行：uv run python -m app.services.data_source.qmt_adapter）
+# 独立运行：连通性测试（不依赖 app）
+# 用法：python -m app.services.data_source.adapter.qmt [xt_quant_path] [xt_quant_acct]
 if __name__ == "__main__":
-    import sys
+    import sys as _sys
     DEFAULT_TEST_PATH = r"C:\国金证券QMT交易端\userdata_mini"
     DEFAULT_TEST_ACCT = "39271919"
-    if len(sys.argv) > 1:
-        path = sys.argv[1].strip()
-        acct = (sys.argv[2].strip() if len(sys.argv) > 2 else None) or DEFAULT_TEST_ACCT
+    if len(_sys.argv) > 1:
+        path = _sys.argv[1].strip()
+        acct = (_sys.argv[2].strip() if len(_sys.argv) > 2 else None) or DEFAULT_TEST_ACCT
         cfg = {"xt_quant_path": path, "xt_quant_acct": acct}
     else:
         cfg = {"xt_quant_path": DEFAULT_TEST_PATH, "xt_quant_acct": DEFAULT_TEST_ACCT}
     adapter = QMTAdapter(cfg)
     ok, msg = adapter.test_connection()
     print("连通性测试:", "通过" if ok else "失败", "-", msg)
-    sys.exit(0 if ok else 1)
+    _sys.exit(0 if ok else 1)

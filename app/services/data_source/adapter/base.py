@@ -1,4 +1,7 @@
-"""数据源适配器抽象基类：证券列表与标的详情"""
+"""
+数据源适配器抽象基类：证券列表与标的详情。
+本模块不依赖 app 或 FastAPI，adapter 包可独立运行/测试。
+"""
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 

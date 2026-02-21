@@ -7,6 +7,25 @@
           AIQore - 个人投资管理系统
         </h1>
         <div class="header-actions">
+          <el-select
+            :model-value="dataSourceStore.currentId"
+            placeholder="当前数据源"
+            clearable
+            filterable
+            style="width: 180px; margin-right: 12px"
+            :loading="dataSourceStore.loading"
+            @update:model-value="dataSourceStore.setCurrent"
+          >
+            <el-option
+              v-for="item in dataSourceStore.list"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            >
+              <span>{{ item.name }}</span>
+              <span class="data-source-type-tag">{{ sourceTypeLabel(item.source_type) }}</span>
+            </el-option>
+          </el-select>
           <el-autocomplete
             v-model="searchKeyword"
             :fetch-suggestions="searchSecurities"
@@ -86,15 +105,26 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from './stores/account'
+import { useDataSourceStore } from './stores/dataSource'
 import { securityApi } from './api/security'
 
 const route = useRoute()
 const router = useRouter()
 const accountStore = useAccountStore()
+const dataSourceStore = useDataSourceStore()
+
+function sourceTypeLabel(sourceType) {
+  const map = { qmt: 'QMT', joinquant: '聚宽', tushare: 'Tushare' }
+  return map[sourceType] || sourceType || ''
+}
+
+onMounted(() => {
+  dataSourceStore.fetchList()
+})
 
 const activeMenu = computed(() => route.path)
 const searchKeyword = ref('')
@@ -219,6 +249,12 @@ const handleSelectSecurity = (item) => {
   padding: 2px 6px;
   background-color: #f4f4f5;
   border-radius: 2px;
+}
+
+.data-source-type-tag {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #909399;
 }
 </style>
 

@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Query
 from typing import List
 import logging
-from app.services.data_source.qmt_adapter import _ensure_xtdata
+from app.services.data_source.adapter.qmt import _ensure_xtdata
 from app.config import settings
 
 router = APIRouter(prefix="/api/debug", tags=["调试"])

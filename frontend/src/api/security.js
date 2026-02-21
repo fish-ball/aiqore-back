@@ -21,6 +21,13 @@ export const securityApi = {
     if (sector) params.sector = sector
     if (sourceId != null) params.source_id = sourceId
     return api.post('/security/update', null, { params })
+  },
+
+  /** 从数据源更新单个证券（同步） */
+  updateOne(symbol, sourceType = 'qmt', sourceId = null) {
+    const params = { symbol, source_type: sourceType }
+    if (sourceId != null) params.source_id = sourceId
+    return api.post('/security/update-one', null, { params })
   }
 }
 

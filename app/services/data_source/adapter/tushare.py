@@ -1,7 +1,7 @@
-"""tushare 数据源适配器（未实现，返回空）"""
+"""tushare 数据源适配器（未实现，返回空）。不依赖 app/FastAPI。"""
 from typing import List, Dict, Any, Optional
 
-from app.services.data_source.base import SecuritiesDataSourceAdapter
+from .base import SecuritiesDataSourceAdapter
 
 
 class TushareAdapter(SecuritiesDataSourceAdapter):

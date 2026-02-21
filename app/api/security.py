@@ -53,6 +53,29 @@ async def update_securities(
         raise HTTPException(status_code=500, detail=f"提交任务失败: {str(e)}")
 
 
+@router.post("/update-one")
+async def update_single_security(
+    symbol: str = Query(..., description="证券代码，如 000001.SZ 或 000001"),
+    source_type: Optional[str] = Query("qmt", description="数据源类型"),
+    source_id: Optional[int] = Query(None, description="数据源连接 id，不传则使用默认连接"),
+    db: Session = Depends(get_db),
+):
+    """
+    从数据源更新单个证券基础信息（同步执行，适用于列表行内更新）
+    """
+    try:
+        from app.services.data_source.sync import sync_single_security
+        result = sync_single_security(db, symbol=symbol, source_type=source_type or "qmt", source_id=source_id)
+        if result.get("success"):
+            return {"code": 0, "data": result, "message": "更新成功"}
+        return {"code": 1, "data": result, "message": result.get("message", "更新失败")}
+    except Exception as e:
+        logger.error(f"更新单证券失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/list")
 async def get_securities(
     market: Optional[str] = Query(None, description="市场代码"),
