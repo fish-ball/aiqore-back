@@ -7,6 +7,7 @@ import Analysis from '../views/Analysis.vue'
 import SecurityList from '../views/SecurityList.vue'
 import SecurityDetail from '../views/SecurityDetail.vue'
 import Sectors from '../views/Sectors.vue'
+import DataSourceConnections from '../views/DataSourceConnections.vue'
 
 const routes = [
   {
@@ -52,6 +53,11 @@ const routes = [
     path: '/sectors',
     name: 'Sectors',
     component: Sectors
+  },
+  {
+    path: '/data-sources',
+    name: 'DataSourceConnections',
+    component: DataSourceConnections
   }
 ]
 

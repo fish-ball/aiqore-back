@@ -1,0 +1,59 @@
+---
+description: 预防 FastAPI 路由冲突，避免新接口因匹配顺序或路径参数导致不生效
+globs: app/main.py, app/api/**/*.py
+alwaysApply: false
+---
+
+# 路由冲突预防
+
+新增或修改 API 路由时，必须遵守以下约定，避免因路由匹配顺序或路径参数吞掉字面路径导致接口 404 或不生效。
+
+## 背景
+
+- FastAPI/Starlette 按**注册顺序**匹配路由，**先匹配到的先生效**。
+- 带**路径参数**的路由（如 `/{id}`、`/{symbol}`）会匹配任意单段路径；若写在字面路径（如 `/list`、`/search`）前面，则请求 `/list` 会被 `/{id}` 匹配为 `id="list"`，导致列表接口不生效。
+
+## 必须遵守
+
+1. **字面路径优先于路径参数**  
+   同一 router 内：所有**字面路径**（如 `/list`、`/search`、`/sync`、`/statistics`、`/quote`、`/connections`）必须在**带路径参数**的路由（如 `/{id}`、`/{symbol}`、`/{sector_name}`、`/connections/{connection_id}`）**之前**声明。
+
+2. **同一资源下：集合在前、单体在后**  
+   - 列表/集合类：`/list`、`/search`、`/statistics` 等写在前面。  
+   - 按 ID/名称 的单体：`/{id}`、`/{symbol}`、`/connections/{connection_id}` 等写在后面。
+
+3. **新增路由前检查同 router 内已有路由**  
+   - 若新增字面路径（如 `/ping`、`/export`），放在该 router 中**所有** `/{param}` 或 `/{param}/...` 之前。  
+   - 若新增带参数路径，放在该 router 末尾或至少在所有字面路径之后。
+
+4. **main.py 中 include_router 顺序**  
+   若某 router 既有字面路径又有路径参数，其注册顺序已满足上面 1～3 即可；main 中先后顺序一般无冲突，但同一 prefix 下不要重复注册同一 path。
+
+## 推荐约定
+
+- **资源命名**：列表用 `/list` 或明确名词（如 `/connections`），单体用 `/{id}` 或 `/resources/{id}`，避免用易与 path 参数混淆的单词（如 `list` 作为 path 参数名时与字面 `/list` 冲突）。
+- **前缀统一**：API 使用统一前缀（如 `/api/xxx`），在 `include_router(..., prefix="/api/xxx")` 中体现；router 内部 path 与 prefix 拼接后不应与其它 router 重叠（如两个 router 都挂 `/api/data-source` 会冲突）。
+
+## 示例（正确顺序）
+
+```python
+# 正确：字面路径在前
+@router.get("/list")
+async def list_items(): ...
+
+@router.get("/search")
+async def search(): ...
+
+@router.get("/connections/{connection_id}")  # 路径参数在后
+async def get_connection(connection_id: int): ...
+```
+
+```python
+# 错误：路径参数在前会吞掉 /list
+@router.get("/{symbol}")   # 会匹配 /list，导致 list 接口永远不命中
+async def get_by_symbol(symbol: str): ...
+@router.get("/list")
+async def list_items(): ...
+```
+
+遵守本规则可避免再次出现“接口已实现但返回 404”的路由冲突问题。

@@ -1,0 +1,28 @@
+---
+description: 行情数据与交易驱动必须经数据源抽象层维护，保持多数据源架构稳定
+globs: app/services/**/*.py, app/api/market.py, app/api/trade.py, app/api/security.py, app/tasks/**/*.py
+alwaysApply: false
+---
+
+# 数据源抽象层约束
+
+涉及**行情数据**（实时行情、K 线、证券列表、板块等）与**交易驱动**（下单、账户同步、持仓同步等）的代码，必须遵守以下约定，以保持多数据源架构稳定。
+
+## 必须遵守
+
+1. **经抽象层访问**：业务逻辑（如 `security_service`、`market_service`、`trade_service`、`sector_service`）不得直接依赖具体数据源（如 `xtquant`/`qmt_service` 单例）。应通过数据源抽象层（如 `app/services/data_source/`）提供的接口或统一入口获取数据。
+2. **连接参数化**：使用 QMT 等需连接的数据源时，应从连接配置（如 `data_source_connections` 模型）或任务/API 传入的 `source_type`、`source_id` 解析出连接实例，不得在业务层写死配置或单例。
+3. **新增数据源**：新增聚宽、tushare 等数据源时，在抽象层增加对应适配器并实现统一接口，由统一入口根据 `source_type` 路由到该适配器；不在业务层散落 `if 聚宽 / if tushare` 分支。
+4. **行情源与交易源**：需要“当前行情源”“当前交易驱动源”时，从连接配置中按 `is_quote_source`、`is_trading_source` 等字段或统一配置解析，不写死为某一实现。
+
+## 禁止
+
+- 在 `security_service`、`market_service`、`trade_service`、`sector_service` 或 API 中直接 `import xtdata` 或直接调用 `qmt_service` 的底层方法（除非抽象层内部实现）。
+- 在异步任务中直接调用“从某数据源拉数据并写库”的具象方法；任务应调用抽象层入口并传入 `source_type`、`source_id` 等参数。
+
+## 参考结构
+
+- 抽象层入口：如 `sync_securities(db, source_type, source_id, market, sector)`；行情/交易能力由对应适配器按连接配置提供。
+- 连接配置：`data_source_connections` 表及 CRUD API；QMT 连接使用表内配置而非仅环境变量。
+
+遵守本规则可确保后续扩展多数据源、切换行情/交易源时，无需改动业务层，架构保持稳定。

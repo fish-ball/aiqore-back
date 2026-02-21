@@ -98,6 +98,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import sectorApi from '../api/sector.js'
+import { securityApi } from '../api/security'
 
 const router = useRouter()
 
@@ -146,23 +147,15 @@ const syncSectorSecurities = async (sectorName) => {
     await ElMessageBox.confirm(`确定要同步板块 "${sectorName}" 的证券吗？`, '确认同步', {
       type: 'warning'
     })
-    
-    // 调用证券更新API，传入板块参数
-    const response = await fetch('/api/security/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sector: sectorName })
-    })
-    
-    const result = await response.json()
-    if (result.code === 0) {
+    const result = await securityApi.update(null, sectorName, 'qmt', null)
+    if (result && result.task_id) {
       ElMessage.success('同步任务已提交，请查看任务列表')
     } else {
-      ElMessage.error(result.message || '提交同步任务失败')
+      ElMessage.error('提交同步任务失败')
     }
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('提交同步任务失败: ' + error.message)
+      ElMessage.error('提交同步任务失败: ' + (error.message || ''))
     }
   }
 }

@@ -43,10 +43,20 @@
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | /api/security/update | 更新证券信息（可异步，query: market=SH|SZ） |
-| GET | /api/security/list | 证券列表，query: market, limit, offset |
+| POST | /api/security/update | 从数据源更新证券（异步），query: market, sector, source_type=qmt, source_id（可选） |
+| GET | /api/security/list | 证券列表，query: market, sector, limit, offset |
 | GET | /api/security/search | 搜索证券，query: keyword, limit |
 | GET | /api/security/{symbol} | 证券详情 |
+
+### 数据源连接（/api/data-source）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | /api/data-source/list | 连接列表，query: source_type, is_active |
+| POST | /api/data-source/connections | 新建连接（body: name, source_type, QMT 字段等） |
+| GET | /api/data-source/connections/{id} | 单条连接 |
+| PUT | /api/data-source/connections/{id} | 更新连接 |
+| DELETE | /api/data-source/connections/{id} | 删除连接 |
 
 ### 板块（/api/sector）
 
@@ -101,10 +111,11 @@ curl "http://localhost:8000/api/market/quote?symbols=000001.SZ,600000.SH"
 curl "http://localhost:8000/api/analysis/account/1/summary"
 ```
 
-### 提交证券更新任务（异步）
+### 提交证券更新任务（异步，经数据源抽象层）
 
 ```bash
 curl -X POST "http://localhost:8000/api/security/update?market=SH"
+# 可选: sector=板块名, source_type=qmt, source_id=连接ID（不传则用默认连接）
 # 返回 task_id，使用 GET /api/task/{task_id} 查询进度
 ```
 

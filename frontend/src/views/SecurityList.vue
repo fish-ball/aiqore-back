@@ -76,6 +76,21 @@
                 <el-button @click="handleSearch" size="small">搜索</el-button>
               </template>
             </el-input>
+            <el-select
+              v-model="selectedSourceId"
+              placeholder="数据源"
+              size="small"
+              clearable
+              style="width: 140px; margin-right: 8px"
+            >
+              <el-option label="默认连接" :value="null" />
+              <el-option
+                v-for="conn in dataSourceConnections"
+                :key="conn.id"
+                :label="conn.name"
+                :value="conn.id"
+              />
+            </el-select>
             <el-button
               type="success"
               size="small"
@@ -85,7 +100,7 @@
               v-if="!activeSector"
             >
               <el-icon><Download /></el-icon>
-              {{ updating ? (updateProgress > 0 ? `更新中 ${updateProgress}%` : '更新中...') : '从QMT更新' }}
+              {{ updating ? (updateProgress > 0 ? `更新中 ${updateProgress}%` : '更新中...') : '从数据源更新' }}
             </el-button>
             <el-button
               type="success"
@@ -280,6 +295,7 @@ import { ElMessage } from 'element-plus'
 import { securityApi } from '../api/security'
 import { marketApi } from '../api/market'
 import sectorApi from '../api/sector.js'
+import { dataSourceApi } from '../api/dataSource'
 
 const router = useRouter()
 const route = useRoute()
@@ -293,8 +309,9 @@ const tableData = ref([])
 const filterMarket = ref('')
 const searchKeyword = ref('')
 const sectors = ref([])
-// 筛选面板折叠状态，默认未展开
 const filterPanelExpanded = ref(false)
+const dataSourceConnections = ref([])
+const selectedSourceId = ref(null)
 
 // 按分类分组板块
 const sectorsByCategory = computed(() => {
@@ -628,10 +645,14 @@ const updateFromQMT = async () => {
   updating.value = true
   updateProgress.value = 0
   try {
-    const result = await securityApi.update(filterMarket.value || null)
-    if (result.code === 0) {
+    const result = await securityApi.update(
+      filterMarket.value || null,
+      null,
+      'qmt',
+      selectedSourceId.value ?? null
+    )
+    if (result && result.task_id) {
       ElMessage.success('任务已提交，正在后台处理...')
-      // 任务在后台异步执行，稍后刷新列表
       setTimeout(async () => {
         await fetchSecurities()
         updating.value = false
@@ -640,14 +661,10 @@ const updateFromQMT = async () => {
     } else {
       updating.value = false
       updateProgress.value = 0
-      ElMessage.error(result.message || '提交任务失败')
     }
   } catch (error) {
     updating.value = false
     updateProgress.value = 0
-    console.error('更新失败:', error)
-    // 错误消息已经在响应拦截器中显示，这里不需要重复显示
-    // 但如果是任务冲突，已经显示为warning，这里可以不再显示
     if (!error.message || !error.message.includes('正在运行中')) {
       ElMessage.error('更新失败: ' + (error.message || '未知错误'))
     }
@@ -656,33 +673,45 @@ const updateFromQMT = async () => {
 
 const updateSectorFromQMT = async () => {
   if (!activeSector.value) return
-  
   updating.value = true
   try {
-    const result = await securityApi.update(filterMarket.value || null, activeSector.value)
-    if (result.code === 0) {
+    const result = await securityApi.update(
+      filterMarket.value || null,
+      activeSector.value,
+      'qmt',
+      selectedSourceId.value ?? null
+    )
+    if (result && result.task_id) {
       ElMessage.success('任务已提交，正在后台处理...')
       setTimeout(async () => {
         await fetchSecurities()
-        await fetchSectors() // 刷新板块列表以更新证券数量
+        await fetchSectors()
         updating.value = false
       }, 3000)
     } else {
       updating.value = false
-      ElMessage.error(result.message || '提交任务失败')
     }
   } catch (error) {
     updating.value = false
-    console.error('同步板块失败:', error)
     if (!error.message || !error.message.includes('正在运行中')) {
       ElMessage.error('同步失败: ' + (error.message || '未知错误'))
     }
   }
 }
 
+const fetchDataSourceConnections = async () => {
+  try {
+    const res = await dataSourceApi.getList({ source_type: 'qmt', is_active: true })
+    dataSourceConnections.value = (res && res.items) ? res.items : []
+  } catch (_) {
+    dataSourceConnections.value = []
+  }
+}
+
 onMounted(() => {
   fetchSectors()
   fetchSecurities()
+  fetchDataSourceConnections()
 })
 </script>
 

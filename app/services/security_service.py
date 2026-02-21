@@ -148,95 +148,25 @@ class SecurityService:
         except Exception:
             return None
     
-    def update_securities_from_qmt(
-        self, 
-        db: Session, 
-        market: Optional[str] = None,
-        sector: Optional[str] = None
+    def update_securities_from_data(
+        self,
+        db: Session,
+        securities: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """
-        从QMT更新证券基础信息（支持所有类型的标的）
-        
-        Args:
-            db: 数据库会话
-            market: 市场代码，'SH' 或 'SZ'，None表示全部
-            sector: 板块名称，如果指定则只同步该板块的证券
-            
-        Returns:
-            更新结果统计
+        将已获取的证券列表及详情写入数据库（不依赖具体数据源，供抽象层调用）。
+        每项须含 symbol、market、sector、detail（detail 可为 None）。
         """
+        created_count = 0
+        updated_count = 0
+        error_count = 0
         try:
-            # 如果指定了板块，只获取该板块的证券
-            if sector:
-                try:
-                    from xtquant import xtdata
-                    sector_securities = xtdata.get_stock_list_in_sector(sector)
-                    if not sector_securities:
-                        return {
-                            "success": False,
-                            "message": f"板块 '{sector}' 未获取到证券列表",
-                            "total": 0,
-                            "created": 0,
-                            "updated": 0,
-                            "errors": 0
-                        }
-                    # 转换为统一格式
-                    securities = []
-                    for symbol in sector_securities:
-                        if isinstance(symbol, str):
-                            sec_market = "SH" if symbol.endswith(".SH") else "SZ" if symbol.endswith(".SZ") else "BJ" if symbol.endswith(".BJ") else "SH"
-                            if market is None or sec_market == market:
-                                securities.append({
-                                    "symbol": symbol,
-                                    "market": sec_market,
-                                    "sector": sector
-                                })
-                except Exception as e:
-                    logger.error(f"获取板块 '{sector}' 证券列表失败: {e}")
-                    return {
-                        "success": False,
-                        "message": f"获取板块 '{sector}' 证券列表失败: {str(e)}",
-                        "total": 0,
-                        "created": 0,
-                        "updated": 0,
-                        "errors": 0
-                    }
-            else:
-                # 获取所有类型的证券列表
-                securities = self.qmt.get_stock_list(market)
-            
-            if not securities:
-                return {
-                    "success": False,
-                    "message": "未获取到证券列表，请检查QMT连接",
-                    "total": 0,
-                    "created": 0,
-                    "updated": 0,
-                    "errors": 0
-                }
-            
-            logger.info(f"开始更新证券信息，共 {len(securities)} 只证券")
-            
-            created_count = 0
-            updated_count = 0
-            error_count = 0
-            
-            # 处理每个证券
-            for idx, sec_data in enumerate(securities):
+            for sec_data in securities:
                 symbol = sec_data.get("symbol")
                 if not symbol:
                     continue
-                
+                detail = sec_data.get("detail")
                 try:
-                    # 获取标的详细信息
-                    detail = None
-                    try:
-                        from xtquant import xtdata
-                        if hasattr(xtdata, 'get_instrument_detail'):
-                            detail = xtdata.get_instrument_detail(symbol)
-                    except Exception as e:
-                        logger.debug(f"获取 {symbol} 详细信息失败: {e}")
-                    
                     # 查询是否已存在
                     security = db.query(Security).filter(Security.symbol == symbol).first()
                     
@@ -454,7 +384,54 @@ class SecurityService:
                 "updated": 0,
                 "errors": 0
             }
-    
+
+    def update_securities_from_qmt(
+        self,
+        db: Session,
+        market: Optional[str] = None,
+        sector: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        从 QMT 更新证券基础信息：通过 self.qmt 取列表与详情，再调用写库逻辑。
+        保留用于尚未走抽象层的调用（如默认单例 qmt_service）。
+        """
+        if sector:
+            securities = self.qmt.get_stock_list_in_sector(sector, market)
+            if not securities:
+                return {
+                    "success": False,
+                    "message": f"板块 '{sector}' 未获取到证券列表",
+                    "total": 0,
+                    "created": 0,
+                    "updated": 0,
+                    "errors": 0,
+                }
+        else:
+            securities = self.qmt.get_stock_list(market)
+        if not securities:
+            return {
+                "success": False,
+                "message": "未获取到证券列表，请检查QMT连接",
+                "total": 0,
+                "created": 0,
+                "updated": 0,
+                "errors": 0,
+            }
+        logger.info(f"开始更新证券信息，共 {len(securities)} 只证券")
+        with_details = []
+        for sec in securities:
+            symbol = sec.get("symbol")
+            if not symbol:
+                continue
+            detail = self.qmt.get_instrument_detail(symbol)
+            with_details.append({
+                "symbol": symbol,
+                "market": sec.get("market", "SH" if symbol.endswith(".SH") else "SZ"),
+                "sector": sec.get("sector", ""),
+                "detail": detail,
+            })
+        return self.update_securities_from_data(db, with_details)
+
     def search_securities(
         self, 
         db: Session, 

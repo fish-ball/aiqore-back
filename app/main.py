@@ -1,10 +1,12 @@
 """FastAPI主应用"""
-from fastapi import FastAPI, Request, Response
+from typing import Optional
+from fastapi import FastAPI, Request, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from sqlalchemy.orm import Session
 from app.config import settings
-from app.database import engine, Base
-from app.api import market, trade, analysis, security, sector, debug
+from app.database import engine, Base, get_db
+from app.api import market, trade, analysis, security, sector, debug, data_source
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -51,6 +53,7 @@ app.include_router(trade.router)
 app.include_router(analysis.router)
 app.include_router(security.router)
 app.include_router(sector.router)
+app.include_router(data_source.router, prefix="/api/data-source")
 
 # 调试路由（仅在开发环境使用）
 if settings.DEBUG:
@@ -72,3 +75,18 @@ async def health():
     """健康检查"""
     return {"status": "ok"}
 
+
+@app.get("/api/data-source/ping")
+async def data_source_ping():
+    """数据源模块连通性探测"""
+    return {"ok": True, "message": "data-source router reachable"}
+
+
+@app.get("/api/data-source/list")
+async def data_source_list_route(
+    source_type: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    db: Session = Depends(get_db),
+):
+    """数据源连接列表（与 data_source 模块逻辑一致，确保路由一定注册）"""
+    return await data_source.list_connections(source_type=source_type, is_active=is_active, db=db)

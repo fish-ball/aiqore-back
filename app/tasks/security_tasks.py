@@ -1,7 +1,7 @@
 """证券相关异步任务"""
 from app.celery_app import celery_app
 from app.database import SessionLocal
-from app.services.security_service import security_service
+from app.services.data_source import sync_securities
 from app.utils.task_lock import TaskLock
 import logging
 
@@ -9,15 +9,15 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(bind=True, name="update_securities")
-def update_securities_task(self, market=None, sector=None):
+def update_securities_task(self, market=None, sector=None, source_type="qmt", source_id=None):
     """
-    同步证券列表
-    
-    异步更新证券基础信息任务
-    
+    同步证券列表（经数据源抽象层，支持指定数据源）
+
     Args:
         market: 市场代码，'SH' 或 'SZ'，None表示全部
         sector: 板块名称，如果指定则只同步该板块的证券
+        source_type: 数据源类型，默认 qmt
+        source_id: 数据源连接 id，可选，不传则用默认连接
     """
     task_name = "update_securities"
     task_lock = TaskLock(task_name, timeout=7200)  # 2小时超时
@@ -59,9 +59,8 @@ def update_securities_task(self, market=None, sector=None):
             }
         )
         
-        # 直接调用 security_service 的更新方法
-        # 该方法已经支持所有类型的标的和完整的原始数据保存
-        result = security_service.update_securities_from_qmt(db, market, sector)
+        # 经数据源抽象层同步（按 source_type/source_id 选择连接）
+        result = sync_securities(db, source_type=source_type, source_id=source_id, market=market, sector=sector)
         
         # 更新最终状态
         if result.get("success"):

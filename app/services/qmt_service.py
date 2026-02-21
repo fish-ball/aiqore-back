@@ -28,15 +28,23 @@ except ImportError as e:
 
 
 class QMTService:
-    """国金QMT服务"""
-    
-    def __init__(self):
-        self.host = settings.QMT_HOST
-        self.port = settings.QMT_PORT
-        self.user = settings.QMT_USER
-        self.password = settings.QMT_PASSWORD
-        self.xt_quant_path = settings.XT_QUANT_PATH
-        self.xt_quant_acct = settings.XT_QUANT_ACCT
+    """国金QMT服务，支持从 config 字典参数化构造（用于数据源抽象层）"""
+
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        if config:
+            self.host = config.get("host") or settings.QMT_HOST
+            self.port = int(config.get("port") or settings.QMT_PORT)
+            self.user = config.get("user") or settings.QMT_USER
+            self.password = config.get("password") or settings.QMT_PASSWORD
+            self.xt_quant_path = config.get("xt_quant_path") or settings.XT_QUANT_PATH
+            self.xt_quant_acct = config.get("xt_quant_acct") or settings.XT_QUANT_ACCT
+        else:
+            self.host = settings.QMT_HOST
+            self.port = settings.QMT_PORT
+            self.user = settings.QMT_USER
+            self.password = settings.QMT_PASSWORD
+            self.xt_quant_path = settings.XT_QUANT_PATH
+            self.xt_quant_acct = settings.XT_QUANT_ACCT
         self.connected = False
         self._client = None
     
@@ -216,7 +224,48 @@ class QMTService:
             import traceback
             logger.error(traceback.format_exc())
             return []
-    
+
+    def get_stock_list_in_sector(self, sector: str, market: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        获取指定板块的证券列表（供数据源抽象层与 security 列表 sector 过滤使用）
+        """
+        if not XT_QUANT_AVAILABLE:
+            logger.error("xtquant不可用")
+            return []
+        if not self.connected:
+            if not self.connect():
+                return []
+        try:
+            securities = xtdata.get_stock_list_in_sector(sector)
+            if not securities:
+                return []
+            result = []
+            for sec in securities:
+                if isinstance(sec, str):
+                    sec_market = "SH" if sec.endswith(".SH") else "SZ" if sec.endswith(".SZ") else "BJ" if sec.endswith(".BJ") else "SH"
+                    if market is None or sec_market == market:
+                        result.append({"symbol": sec, "market": sec_market, "sector": sector})
+            return result
+        except Exception as e:
+            logger.error(f"获取板块 '{sector}' 证券列表失败: {e}")
+            return []
+
+    def get_instrument_detail(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        获取标的详细信息（供数据源抽象层与证券同步写库使用）
+        """
+        if not XT_QUANT_AVAILABLE:
+            return None
+        if not self.connected:
+            if not self.connect():
+                return None
+        try:
+            if hasattr(xtdata, "get_instrument_detail"):
+                return xtdata.get_instrument_detail(symbol)
+        except Exception as e:
+            logger.debug(f"获取 {symbol} 详细信息失败: {e}")
+        return None
+
     def get_stock_info(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
         获取股票基础信息

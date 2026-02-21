@@ -15,14 +15,11 @@ export const securityApi = {
     })
   },
   
-  update(market = null, sector = null) {
-    const params = {}
-    if (market) {
-      params.market = market
-    }
-    if (sector) {
-      params.sector = sector
-    }
+  update(market = null, sector = null, sourceType = 'qmt', sourceId = null) {
+    const params = { source_type: sourceType }
+    if (market) params.market = market
+    if (sector) params.sector = sector
+    if (sourceId != null) params.source_id = sourceId
     return api.post('/security/update', null, { params })
   }
 }

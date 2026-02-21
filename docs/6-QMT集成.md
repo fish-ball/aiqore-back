@@ -20,9 +20,13 @@
 
 ## 配置
 
-### 环境变量
+### 数据源连接（推荐）
 
-在 `.env` 中配置（或使用 `app/config.py` 默认值）：
+在「数据源连接」管理页（前端 `/data-sources`）或通过 `GET/POST /api/data-source/connections` 增删改 QMT 连接，可配置 host、port、user、password、xt_quant_path、xt_quant_acct，并可将某连接设为「行情源」或「交易驱动源」。证券同步任务可指定 `source_id` 使用某条连接；不指定时使用默认连接（表中第一条启用 QMT 或环境变量回退）。
+
+### 环境变量（默认/回退）
+
+当无可用数据源连接记录时，使用 `.env` 或 `app/config.py` 默认值：
 
 ```env
 XT_QUANT_PATH=C:\国金证券QMT交易端\userdata_mini
@@ -42,15 +46,16 @@ XT_QUANT_ACCT=39271919
 **通过 API（推荐）：**
 
 ```bash
-# 全部市场
+# 全部市场（使用默认数据源连接）
 curl -X POST "http://localhost:8000/api/security/update"
 
-# 指定市场
+# 指定市场、板块或数据源连接
 curl -X POST "http://localhost:8000/api/security/update?market=SH"
-curl -X POST "http://localhost:8000/api/security/update?market=SZ"
+curl -X POST "http://localhost:8000/api/security/update?sector=沪深A股"
+curl -X POST "http://localhost:8000/api/security/update?source_type=qmt&source_id=1"
 ```
 
-接口可能返回任务 ID（异步），使用 `GET /api/task/{task_id}` 查询进度。前端「从 QMT 更新」即调用此接口并轮询状态。
+接口返回任务 ID（异步），使用 `GET /api/task/{task_id}` 查询进度。前端「从数据源更新」可先选择数据源连接再提交。
 
 **脚本方式：**
 

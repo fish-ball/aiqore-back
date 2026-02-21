@@ -14,31 +14,27 @@ logger = logging.getLogger(__name__)
 @router.post("/update")
 async def update_securities(
     market: Optional[str] = Query(None, description="市场代码，SH或SZ，不传则更新全部"),
-    sector: Optional[str] = Query(None, description="板块名称，如果指定则只同步该板块的证券")
+    sector: Optional[str] = Query(None, description="板块名称，如果指定则只同步该板块的证券"),
+    source_type: Optional[str] = Query("qmt", description="数据源类型，默认 qmt"),
+    source_id: Optional[int] = Query(None, description="数据源连接 id，不传则使用默认连接"),
 ):
     """
-    从QMT更新证券基础信息（异步任务）
-    
-    Args:
-        market: 市场代码，可选
-        sector: 板块名称，可选
+    从数据源更新证券基础信息（异步任务，经抽象层，可指定数据源连接）
     """
     try:
         from app.tasks.security_tasks import update_securities_task
         from app.utils.task_lock import check_task_lock
-        
-        # 检查任务锁
+
         task_name = "update_securities"
         is_locked, lock_message = check_task_lock(task_name)
-        
+
         if is_locked:
             raise HTTPException(
-                status_code=409,  # 409 Conflict
+                status_code=409,
                 detail=lock_message or f"任务 '{task_name}' 正在运行中，请等待完成后再试"
             )
-        
-        # 启动异步任务
-        task = update_securities_task.delay(market, sector)
+
+        task = update_securities_task.delay(market, sector, source_type or "qmt", source_id)
         
         return {
             "code": 0,
@@ -85,38 +81,32 @@ async def get_securities(
         if security_type:
             query = query.filter(Security.security_type == security_type)
         
-        # 如果指定了板块，需要通过QMT获取该板块的证券列表
+        # 如果指定了板块，通过 QMT 服务获取该板块的证券列表（不直接依赖 xtdata）
         if sector:
             try:
                 from app.services.qmt_service import qmt_service
-                from xtquant import xtdata
-                sector_securities = xtdata.get_stock_list_in_sector(sector)
-                if sector_securities:
-                    # 过滤出该板块的证券
-                    query = query.filter(Security.symbol.in_(sector_securities))
+                sector_list = qmt_service.get_stock_list_in_sector(sector, market=None)
+                if sector_list:
+                    symbols = [s["symbol"] for s in sector_list if s.get("symbol")]
+                    if symbols:
+                        query = query.filter(Security.symbol.in_(symbols))
+                    else:
+                        return {
+                            "code": 0,
+                            "data": {"items": [], "total": 0, "limit": limit, "offset": offset},
+                            "message": "success"
+                        }
                 else:
-                    # 如果板块没有证券，返回空列表
                     return {
                         "code": 0,
-                        "data": {
-                            "items": [],
-                            "total": 0,
-                            "limit": limit,
-                            "offset": offset
-                        },
+                        "data": {"items": [], "total": 0, "limit": limit, "offset": offset},
                         "message": "success"
                     }
             except Exception as e:
                 logger.warning(f"获取板块 '{sector}' 证券列表失败: {e}")
-                # 如果获取失败，返回空列表
                 return {
                     "code": 0,
-                    "data": {
-                        "items": [],
-                        "total": 0,
-                        "limit": limit,
-                        "offset": offset
-                    },
+                    "data": {"items": [], "total": 0, "limit": limit, "offset": offset},
                     "message": "success"
                 }
         
