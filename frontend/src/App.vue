@@ -93,7 +93,7 @@
         </el-menu>
       </el-aside>
       
-      <el-main class="app-main">
+      <el-main class="app-main" :class="{ 'app-main--full': isSecurityDetailPage }">
         <router-view v-slot="{ Component }">
           <transition name="fade" mode="out-in">
             <component :is="Component" />
@@ -127,6 +127,7 @@ onMounted(() => {
 })
 
 const activeMenu = computed(() => route.path)
+const isSecurityDetailPage = computed(() => route.name === 'SecurityDetail' && !!route.params.symbol)
 const searchKeyword = ref('')
 
 const refreshData = () => {
@@ -213,6 +214,21 @@ const handleSelectSecurity = (item) => {
   padding: 20px;
   background-color: #f5f7fa;
   overflow-y: auto;
+}
+
+.app-main.app-main--full {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app-main.app-main--full > * {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .fade-enter-active,
