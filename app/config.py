@@ -1,6 +1,10 @@
 """应用配置管理"""
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import Optional
+
+# 项目根目录：app 包上一级
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
@@ -9,6 +13,9 @@ class Settings(BaseSettings):
     # 应用配置
     APP_NAME: str = "个人投资系统"
     DEBUG: bool = True
+    
+    # 证券数据本地缓存根目录；为空时使用项目根目录下的 data
+    DATA_ROOT: Optional[str] = None
     
     # 数据库配置
     DB_HOST: str = "localhost"
@@ -21,6 +28,13 @@ class Settings(BaseSettings):
     def DATABASE_URL(self) -> str:
         """构建数据库连接URL"""
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+    
+    @property
+    def DATA_ROOT_PATH(self) -> Path:
+        """证券数据本地缓存根目录；DATA_ROOT 为空时使用项目根目录下的 data"""
+        if self.DATA_ROOT:
+            return Path(self.DATA_ROOT).resolve()
+        return _PROJECT_ROOT / "data"
     
     # QMT配置
     QMT_HOST: str = "127.0.0.1"

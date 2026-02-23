@@ -12,6 +12,12 @@
           <el-radio-button value="both">双侧</el-radio-button>
           <el-radio-button value="right">右栏</el-radio-button>
         </el-radio-group>
+        <el-button size="small" :loading="updateDataLoading" @click="triggerUpdateData">
+          更新数据
+        </el-button>
+        <el-button size="small" @click="refreshCharts">
+          刷新
+        </el-button>
         <el-button size="small" @click="goBack">
           <el-icon><ArrowLeft /></el-icon>
           返回
@@ -139,7 +145,10 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { securityApi } from '../api/security'
 import { marketApi } from '../api/market'
+import { useDataSourceStore } from '../stores/dataSource'
 import * as echarts from 'echarts'
+
+const dataSourceStore = useDataSourceStore()
 
 // 行情页黑底白字图表主题（与现有行情软件风格一致）
 const CHART_DARK = {
@@ -166,6 +175,7 @@ const quote = ref({
   change_percent: 0
 })
 const quoteLoading = ref(false)
+const updateDataLoading = ref(false)
 
 // 布局：left=仅左栏 both=双侧 right=仅右栏
 const layoutMode = ref('both')
@@ -364,8 +374,8 @@ function calcMACD(data, short = 12, long = 26, mid = 9) {
 function buildKlineOption(rawData) {
   if (!rawData || rawData.length === 0) return null
   const times = rawData.map(item => {
-    const t = item.time || item.date || ''
-    return t.includes(' ') ? t.slice(0, 16) : t
+    const t = item.time || item.timestamp || item.date || ''
+    return (typeof t === 'string' && t.includes(' ')) ? t.slice(0, 16) : String(t).slice(0, 10)
   })
   const o = rawData.map(x => parseFloat(x.open || 0))
   const c = rawData.map(x => parseFloat(x.close || 0))
@@ -406,8 +416,8 @@ function buildKlineOption(rawData) {
 function buildSubOption(rawData, type) {
   if (!rawData || rawData.length === 0) return null
   const times = rawData.map(item => {
-    const t = item.time || item.date || ''
-    return t.includes(' ') ? t.slice(0, 16) : t
+    const t = item.time || item.timestamp || item.date || ''
+    return (typeof t === 'string' && t.includes(' ')) ? t.slice(0, 16) : String(t).slice(0, 10)
   })
   const grid = { left: '3%', right: '4%', bottom: '3%', top: '8%', containLabel: true }
   const xAxis = { type: 'category', data: times, boundaryGap: true, axisLabel: { rotate: 45 } }
@@ -489,6 +499,7 @@ function buildSubOption(rawData, type) {
 async function fetchKlineForTab(period, count = 250) {
   if (!symbol.value) return []
   try {
+    // 不传 start_date/end_date，后端返回全部 K 线，由前端控制显示范围
     const res = await marketApi.getKline(symbol.value, period, count)
     return Array.isArray(res) ? res : []
   } catch (e) {
@@ -668,6 +679,38 @@ function startResize(e) {
 
 function goBack() {
   router.back()
+}
+
+async function triggerUpdateData() {
+  if (!symbol.value) return
+  const sourceType = dataSourceStore.currentDataSource?.source_type || 'qmt'
+  const sourceId = dataSourceStore.currentId ?? null
+  if (dataSourceStore.list?.length > 0 && !dataSourceStore.currentId) {
+    ElMessage.warning('请先在顶栏选择数据源')
+    return
+  }
+  updateDataLoading.value = true
+  try {
+    const res = await securityApi.updateData(symbol.value, sourceType, sourceId)
+    if (res?.hint) {
+      ElMessage.warning(res.hint)
+    } else if (res && (res.daily != null || res.weekly != null || res.monthly != null || res.ticks_dates != null)) {
+      ElMessage.success('数据已更新')
+      await refreshCharts()
+    }
+  } catch (e) {
+    ElMessage.error(e?.message || '更新数据失败')
+  } finally {
+    updateDataLoading.value = false
+  }
+}
+
+function refreshCharts() {
+  if (chartTab.value === 'intraday') loadIntraday()
+  else if (chartTab.value === 'day') loadDayKline()
+  else if (chartTab.value === 'week') loadWeekKline()
+  else if (chartTab.value === 'month') loadMonthKline()
+  fetchQuote()
 }
 
 onMounted(async () => {

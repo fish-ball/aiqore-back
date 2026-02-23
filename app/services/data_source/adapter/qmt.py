@@ -46,6 +46,50 @@ def _ensure_xtdata(xt_quant_path: Optional[str]) -> Any:
         return None
 
 
+def _to_xtdata_time(s: Optional[str]) -> Optional[str]:
+    """
+    将 YYYY-MM-DD HH:MM:SS 或 YYYY-MM-DD 转为 xtdata 所需格式 YYYYMMDD 或 YYYYMMDDhhmmss。
+    xtdata 文档：start_time/end_time 为 8 位日期或 YYYYMMDDhhmmss，不接受带横杠和空格的格式。
+    """
+    if not s or not isinstance(s, str):
+        return s
+    s = s.strip()
+    if not s:
+        return s
+    # 去掉空格和横杠，得到连续数字
+    digits = "".join(c for c in s if c.isdigit())
+    if len(digits) >= 14:
+        return digits[:14]
+    if len(digits) >= 8:
+        return digits[:8]
+    return s
+
+
+def _to_xtdata_period(period: str) -> str:
+    """将上层 period 1d/1w/1M 转为 xtdata 周期：1d/1w/1mon。"""
+    if period == "1M":
+        return "1mon"
+    return period
+
+
+def _rows_from_symbol_df(df) -> List[Dict[str, Any]]:
+    """从「单标的 DataFrame」（每行一个时间点）转为 [ {time, date, open, high, low, close, volume, amount}, ... ]"""
+    result = []
+    for _, row in df.iterrows():
+        time_val = row.get("time", "")
+        result.append({
+            "time": time_val,
+            "date": str(time_val)[:10] if hasattr(time_val, "__str__") else "",
+            "open": float(row.get("open", 0)),
+            "high": float(row.get("high", 0)),
+            "low": float(row.get("low", 0)),
+            "close": float(row.get("close", 0)),
+            "volume": int(row.get("volume", row.get("vol", 0))),
+            "amount": float(row.get("amount", 0)),
+        })
+    return result
+
+
 # 预定义板块（与原 qmt_service 一致）
 DEFAULT_SECTORS = [
     "沪深A股", "沪深B股", "沪深ETF", "深市ETF", "沪市ETF", "沪深基金", "深市基金", "沪市基金",
@@ -184,32 +228,95 @@ class QMTAdapter(SecuritiesDataSourceAdapter):
         end_time: Optional[str] = None,
     ) -> Optional[List[Dict[str, Any]]]:
         xtdata = self._get_xtdata()
+        # xtdata 要求 start_time/end_time 为 YYYYMMDD 或 YYYYMMDDhhmmss；月线周期为 1mon
+        st = _to_xtdata_time(start_time)
+        et = _to_xtdata_time(end_time)
+        xt_period = _to_xtdata_period(period)
         try:
+            # xtdata 文档：获取前需先确保本地有数据，用 download_history_data 补充
+            if hasattr(xtdata, "download_history_data"):
+                try:
+                    xtdata.download_history_data(
+                        symbol, period=xt_period,
+                        start_time=st or "", end_time=et or "",
+                    )
+                except Exception as dl_e:
+                    logger.warning("download_history_data 失败（继续尝试获取）: %s", dl_e)
             data = xtdata.get_market_data(
-                stock_list=[symbol], period=period, count=count,
-                start_time=start_time, end_time=end_time,
+                stock_list=[symbol], period=xt_period, count=count,
+                start_time=st or "", end_time=et or "",
             )
-            if not data or symbol not in data:
+            if not data:
+                logger.debug("get_market_data 无数据: symbol=%s period=%s start=%s end=%s", symbol, xt_period, st, et)
                 return []
+            # 兼容两种返回：1) 部分版本 dict[symbol]=DataFrame；2) 官方文档 dict[field]=DataFrame(index=stock_list, columns=time_list)
+            if symbol in data:
+                df = data[symbol]
+                if df is not None and not df.empty:
+                    return _rows_from_symbol_df(df)
+            # 按官方文档：key 为字段名 (time, open, high, low, close, volume, amount)
+            time_df = data.get("time")
+            if time_df is None or not hasattr(time_df, "loc"):
+                logger.debug("get_market_data 无 time 字段: symbol=%s data_keys=%s", symbol, list(data.keys()) if isinstance(data, dict) else type(data))
+                return []
+            if symbol not in time_df.index:
+                logger.debug("get_market_data 无该标的: symbol=%s period=%s index_sample=%s", symbol, xt_period, list(time_df.index)[:5] if hasattr(time_df.index, "__iter__") else None)
+                return []
+            time_series = time_df.loc[symbol]
             result = []
-            df = data[symbol]
-            if df is not None and not df.empty:
-                for _, row in df.iterrows():
-                    time_val = row.get("time", "")
-                    result.append({
-                        "time": time_val,
-                        "date": str(time_val)[:10] if hasattr(time_val, "__str__") else "",
-                        "open": float(row.get("open", 0)),
-                        "high": float(row.get("high", 0)),
-                        "low": float(row.get("low", 0)),
-                        "close": float(row.get("close", 0)),
-                        "volume": int(row.get("volume", 0)),
-                        "amount": float(row.get("amount", 0)),
-                    })
+            for t_idx, time_val in time_series.items():
+                def _v(field: str, default=0):
+                    d = data.get(field)
+                    if d is None or symbol not in d.index: return default
+                    try:
+                        return d.loc[symbol, t_idx]
+                    except Exception:
+                        return default
+                # xtdata 返回 time 为 int 毫秒时间戳、date 可能为秒时间戳字符串；cache 层会统一归一化为 YYYY-MM-DD / YYYY-MM-DD HH:mm:ss
+                result.append({
+                    "time": time_val,
+                    "date": str(time_val)[:10] if hasattr(time_val, "__str__") else (t_idx[:10] if isinstance(t_idx, str) else ""),
+                    "open": float(_v("open", 0)),
+                    "high": float(_v("high", 0)),
+                    "low": float(_v("low", 0)),
+                    "close": float(_v("close", 0)),
+                    "volume": int(_v("volume", _v("vol", 0))),
+                    "amount": float(_v("amount", 0)),
+                })
             return result
         except Exception as e:
             logger.error("获取行情数据失败 %s: %s", symbol, e)
             return None
+
+    def get_ticks(self, symbol: str, trade_date: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        按交易日拉取分时数据。使用 1 分钟 K 线作为分时代理。
+        trade_date 为 YYYYMMDD 或 YYYY-MM-DD。
+        """
+        trade_date_flat = trade_date.replace("-", "")[:8]
+        if len(trade_date_flat) != 8:
+            return []
+        start_time = f"{trade_date_flat[:4]}-{trade_date_flat[4:6]}-{trade_date_flat[6:8]} 00:00:00"
+        end_time = f"{trade_date_flat[:4]}-{trade_date_flat[4:6]}-{trade_date_flat[6:8]} 23:59:59"
+        raw = self.get_market_data(symbol, period="1m", count=500, start_time=start_time, end_time=end_time)
+        if not raw:
+            return []
+        result = []
+        for item in raw:
+            time_val = item.get("time", "")
+            time_str = time_val.strftime("%Y-%m-%d %H:%M:%S") if hasattr(time_val, "strftime") else str(time_val)
+            date_str = time_str[:10] if len(time_str) >= 10 else ""
+            result.append({
+                "time": time_str,
+                "date": date_str,
+                "open": float(item.get("open", 0)),
+                "high": float(item.get("high", 0)),
+                "low": float(item.get("low", 0)),
+                "close": float(item.get("close", 0)),
+                "volume": int(item.get("volume", 0)),
+                "amount": float(item.get("amount", 0)),
+            })
+        return result
 
     def get_realtime_quote(self, symbols: List[str]) -> Optional[Dict[str, Dict[str, Any]]]:
         xtdata = self._get_xtdata()

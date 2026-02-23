@@ -45,6 +45,9 @@ ENV/
 *.db
 *.sqlite
 
+# 证券数据本地缓存
+data/
+
 # Logs
 *.log
 

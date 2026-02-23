@@ -32,6 +32,27 @@ class SecuritiesDataSourceAdapter(ABC):
         """
         pass
 
+    def get_market_data(
+        self,
+        symbol: str,
+        period: str = "1d",
+        count: int = 100,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """
+        K 线原始数据。period: 1d/1w/1M 等；start_time/end_time 格式 YYYY-MM-DD HH:MM:SS。
+        不支持的数据源返回 None（子类可覆盖实现）。
+        """
+        return None
+
+    def get_ticks(self, symbol: str, trade_date: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        按交易日拉取分时数据。trade_date 为 YYYYMMDD 或 YYYY-MM-DD。
+        不支持的数据源返回 None（子类可覆盖实现）。
+        """
+        return None
+
     def test_connection(self) -> tuple[bool, str]:
         """测试连接是否可用。子类可覆盖；默认返回不支持。"""
         return False, "该类型暂不支持连接测试"

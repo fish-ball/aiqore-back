@@ -20,6 +20,8 @@ dependencies = [
     "redis==5.0.1",
     "xtquant>=250516.1.1",
     "pypinyin==0.51.0",
+    "pyarrow>=14.0.0",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]

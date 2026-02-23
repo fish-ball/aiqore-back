@@ -1,0 +1,12 @@
+---
+description: API 请求传参约定
+globs: app/api/**/*.py, frontend/src/api/**/*.js
+alwaysApply: false
+---
+
+# API 请求传参约定
+
+- **GET 请求**：参数统一使用 **Query**（URL 查询参数）。
+- **非 GET 请求**（POST、PUT、PATCH、DELETE）：参数统一使用 **Body JSON**，不使用 Query 传业务参数；路径参数（如 `/resources/{id}`）除外。
+
+不要做「既支持 Query 又支持 Body」的冗余设计；前后端调用需一致使用上述方式。
