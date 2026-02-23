@@ -24,5 +24,6 @@ alwaysApply: false
 
 - 抽象层入口：如 `sync_securities(db, source_type, source_id, market, sector)`；行情/交易能力由对应适配器按连接配置提供。
 - 连接配置：`data_source_connections` 表及 CRUD API；QMT 连接使用表内配置而非仅环境变量。
+- K 线接口：适配器实现 **get_klines_data**（非 get_market_data），返回格式见规则 `kline-format.mdc`（time=UNIX 毫秒整数，共 11 字段）；cache 层以此格式落盘 parquet 与加载。
 
 遵守本规则可确保后续扩展多数据源、切换行情/交易源时，无需改动业务层，架构保持稳定。

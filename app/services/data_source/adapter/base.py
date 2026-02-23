@@ -32,7 +32,7 @@ class SecuritiesDataSourceAdapter(ABC):
         """
         pass
 
-    def get_market_data(
+    def get_klines_data(
         self,
         symbol: str,
         period: str = "1d",
@@ -41,8 +41,9 @@ class SecuritiesDataSourceAdapter(ABC):
         end_time: Optional[str] = None,
     ) -> Optional[List[Dict[str, Any]]]:
         """
-        K 线原始数据。period: 1d/1w/1M 等；start_time/end_time 格式 YYYY-MM-DD HH:MM:SS。
-        不支持的数据源返回 None（子类可覆盖实现）。
+        K 线数据（与 ticks 区分）。period: 1d/1w/1M 等；start_time/end_time 格式 YYYY-MM-DD HH:MM:SS。
+        返回格式须归一化：每行为 dict，字段 time(UNIX 毫秒时间戳整数)、open、high、low、close、
+        volume、amount、settle、openInterest、preClose、suspendFlag。不支持的数据源返回 None。
         """
         return None
 

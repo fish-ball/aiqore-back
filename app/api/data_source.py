@@ -270,7 +270,7 @@ async def debug_market_data(
     """[miniQMT] 获取 K 线数据"""
     conn = _require_qmt_connection(connection_id, db)
     adapter = get_adapter_for_connection(conn)
-    rows = adapter.get_market_data(body.symbol, period=body.period, count=body.count)
+    rows = adapter.get_klines_data(body.symbol, period=body.period, count=body.count)
     return {"code": 0, "data": {"symbol": body.symbol, "period": body.period, "rows": rows or []}, "message": "success"}
 
 

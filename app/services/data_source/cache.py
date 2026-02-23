@@ -21,8 +21,9 @@ SECURITY_TYPE_TO_DIR: Dict[str, str] = {
 }
 DEFAULT_TYPE_DIR = "stock"
 
-# K 线 parquet 列名（与数据源一致，原样存储）
-KLINE_COLUMNS = ["time", "date", "open", "high", "low", "close", "volume", "amount"]
+# K 线 parquet 列名：与 kline_schema 一致；adapter 子类在 get_klines_data 内完成格式转换，此处仅作列约定
+from app.services.data_source.kline_schema import KLINE_ROW_FIELDS
+KLINE_COLUMNS = KLINE_ROW_FIELDS
 
 logger = logging.getLogger(__name__)
 
@@ -106,26 +107,8 @@ def write_meta(security_dir: Path, meta_dict: Dict[str, Any], merge: bool = True
         logger.warning("写入 metadata 失败 %s: %s", meta_path, e)
 
 
-def _ensure_kline_row(item: Dict[str, Any]) -> Dict[str, Any]:
-    """将单条 K 线转为标准列，time/date 原样透传，仅保证 OHLCV 为数值。"""
-    time_val = item.get("time")
-    date_val = item.get("date")
-    if date_val is None and time_val is not None:
-        date_val = time_val
-    return {
-        "time": time_val,
-        "date": date_val,
-        "open": float(item.get("open", 0)),
-        "high": float(item.get("high", 0)),
-        "low": float(item.get("low", 0)),
-        "close": float(item.get("close", 0)),
-        "volume": int(item.get("volume", 0)),
-        "amount": float(item.get("amount", 0)),
-    }
-
-
 def _read_parquet_kline(path: Path) -> List[Dict[str, Any]]:
-    """读取 K 线 parquet，原样返回。无 date 列时用 time 列补一列 date 供合并用。"""
+    """读取 K 线 parquet，仅保证列与 KLINE_COLUMNS 一致（缺列补 0），adapter 外不做格式整理。"""
     if not path.is_file():
         return []
     try:
@@ -133,47 +116,59 @@ def _read_parquet_kline(path: Path) -> List[Dict[str, Any]]:
         df = pd.read_parquet(path)
         if df is None or df.empty:
             return []
-        if "date" not in df.columns and "time" in df.columns:
-            df["date"] = df["time"]
+        for col in KLINE_COLUMNS:
+            if col not in df.columns:
+                df[col] = 0
+        df = df[KLINE_COLUMNS]
         return df.to_dict("records")
     except Exception as e:
         logger.warning("读取 parquet 失败 %s: %s", path, e)
         return []
 
 
-def get_dates_from_daily_parquet(security_type: Optional[str], symbol: str) -> List[Any]:
-    """从日线 parquet 读取已有交易日列表，用于按 meta 补全分时。返回排序后的 date 列表（原样，可为 int 或 str）。"""
+def _time_ms_to_date_str(time_ms: Any) -> Optional[str]:
+    """UNIX 毫秒时间戳 -> YYYY-MM-DD。"""
+    if time_ms is None:
+        return None
+    try:
+        t = int(float(time_ms)) / 1000
+        return datetime.fromtimestamp(t).strftime("%Y-%m-%d")
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def get_dates_from_daily_parquet(security_type: Optional[str], symbol: str) -> List[str]:
+    """从日线 parquet 按 time 列推导已有交易日列表，用于按 meta 补全分时。返回排序后的 YYYY-MM-DD 列表。"""
     security_dir = get_security_dir(security_type, symbol)
     path = get_daily_path(security_dir)
     rows = _read_parquet_kline(path)
-    dates = sorted(set(r.get("date") for r in rows if r.get("date") is not None))
+    dates = sorted(set(d for r in rows for d in [_time_ms_to_date_str(r.get("time"))] if d is not None))
     return dates
 
 
 def _write_parquet_kline(path: Path, rows: List[Dict[str, Any]]) -> None:
-    """写入 K 线 parquet，time/date 及 OHLCV 原样存储。"""
+    """写入 K 线 parquet，仅写入 KLINE_COLUMNS；行数据由 adapter 或合并结果提供，不再做格式整理。"""
     if not rows:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         import pandas as pd
-        df = pd.DataFrame(rows)
+        out = [{col: r.get(col, 0) for col in KLINE_COLUMNS} for r in rows]
+        df = pd.DataFrame(out, columns=KLINE_COLUMNS)
         df.to_parquet(path, index=False)
     except Exception as e:
         logger.warning("写入 parquet 失败 %s: %s", path, e)
 
 
 def _merge_kline_rows(existing: List[Dict[str, Any]], new: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """按 date 合并、去重，保留新数据同 date 覆盖旧，再按 date 排序。"""
+    """按 time（UNIX 毫秒）合并、去重，保留新数据同 time 覆盖旧，再按 time 排序；仅取 KLINE_COLUMNS。"""
     import pandas as pd
     if not existing and not new:
         return []
-    all_rows = existing + new
-    df = pd.DataFrame(all_rows)
-    if "date" not in df.columns and "time" in df.columns:
-        df["date"] = df["time"]
-    df = df.drop_duplicates(subset=["date"], keep="last")
-    df = df.sort_values("date").reset_index(drop=True)
+    all_rows = [{col: r.get(col, 0) for col in KLINE_COLUMNS} for r in existing + new]
+    df = pd.DataFrame(all_rows, columns=KLINE_COLUMNS)
+    df = df.drop_duplicates(subset=["time"], keep="last")
+    df = df.sort_values("time").reset_index(drop=True)
     return df.to_dict("records")
 
 
@@ -234,18 +229,14 @@ def _compute_missing_ranges(
 
 
 def _filter_rows_by_date(rows: List[Dict[str, Any]], start_date: Optional[str], end_date: Optional[str]) -> List[Dict[str, Any]]:
-    """按 date 过滤行；date/time 原样可能为 int 或 str，仅在与 start/end 比较时做最小可比较处理。"""
+    """按 time（UNIX 毫秒）推导日期，与 start_date/end_date（YYYY-MM-DD）比较过滤。"""
     if not start_date and not end_date:
         return rows
     out = []
     for r in rows:
-        d = r.get("date") or r.get("time")
-        if d is None:
+        d_compare = _time_ms_to_date_str(r.get("time"))
+        if d_compare is None:
             continue
-        if isinstance(d, (int, float)):
-            d_compare = datetime.fromtimestamp(d / 1000).strftime("%Y-%m-%d")
-        else:
-            d_compare = str(d)[:10]
         if start_date and d_compare < start_date:
             continue
         if end_date and d_compare > end_date:
@@ -280,7 +271,7 @@ def get_daily(
 ) -> List[Dict[str, Any]]:
     """
     获取日线：先读 meta，若不 force 且缓存已覆盖则从 parquet 返回；否则拉取缺失区间，合并写 parquet，更新 meta。
-    adapter 需实现 get_market_data(symbol, period, count, start_time, end_time)。
+    adapter 需实现 get_klines_data(symbol, period, count, start_time, end_time)，返回格式见 kline_schema。
     """
     return _get_kline(security_type, symbol, "1d", start_date, end_date, force_update=force_update, adapter=adapter)
 
@@ -370,24 +361,23 @@ def _get_kline(
     existing = _read_parquet_kline(path)
     all_new: List[Dict[str, Any]] = []
 
-    if adapter and hasattr(adapter, "get_market_data") and ranges_to_fetch:
+    if adapter and hasattr(adapter, "get_klines_data") and ranges_to_fetch:
         for r_start, r_end in ranges_to_fetch:
             if not r_start and not r_end:
                 continue
             st = f"{r_start} 00:00:00" if r_start else None
             et = f"{r_end} 23:59:59" if r_end else None
             count = 5000
-            raw = adapter.get_market_data(symbol, period=period, count=count, start_time=st, end_time=et)
+            raw = adapter.get_klines_data(symbol, period=period, count=count, start_time=st, end_time=et)
             if raw:
-                for item in raw:
-                    all_new.append(_ensure_kline_row(item))
+                all_new.extend(raw)
 
     merged = _merge_kline_rows(existing, all_new)
     if merged:
         _write_parquet_kline(path, merged)
-        dates = [r.get("date") for r in merged if r.get("date")]
+        dates = [_time_ms_to_date_str(r.get("time")) for r in merged if r.get("time") is not None]
+        dates = sorted(set(dates) - {None})
         if dates:
-            dates.sort()
             new_type_meta = {
                 "start_date": dates[0],
                 "end_date": dates[-1],

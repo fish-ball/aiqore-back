@@ -103,7 +103,7 @@ class MarketService:
             if end_date:
                 end_time = f"{end_date} 23:59:59"
             
-            data = self.qmt.get_market_data(symbol, period, count, start_time, end_time)
+            data = self.qmt.get_klines_data(symbol, period, count, start_time, end_time)
             if data is None:
                 return []
             
