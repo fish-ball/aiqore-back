@@ -82,6 +82,70 @@ async def get_kline(
     return {"code": 0, "data": data, "message": "success"}
 
 
+def _ticks_to_jsonable(rows: list) -> list:
+    """将 tick 列表中的 numpy/pandas 类型转为 Python 原生类型，便于 JSON 序列化。"""
+    import numpy as np
+    result = []
+    for rec in rows:
+        if not isinstance(rec, dict):
+            continue
+        out = {}
+        for k, v in rec.items():
+            if v is None:
+                out[k] = None
+            elif isinstance(v, np.ndarray):
+                out[k] = [_scalar_to_native(x) for x in v]
+            elif isinstance(v, list):
+                out[k] = [_scalar_to_native(x) for x in v]
+            elif hasattr(v, "item") and getattr(v, "ndim", 0) == 0:
+                out[k] = v.item()
+            else:
+                out[k] = _scalar_to_native(v)
+        result.append(out)
+    return result
+
+
+def _scalar_to_native(x):
+    """单个值转为 Python 原生类型（仅处理标量，不处理数组）。"""
+    import numpy as np
+    if x is None:
+        return None
+    if isinstance(x, np.ndarray):
+        return [_scalar_to_native(y) for y in x]
+    if hasattr(x, "item") and getattr(x, "ndim", 0) == 0:
+        return x.item()
+    if isinstance(x, (np.integer, np.int64, np.int32)):
+        return int(x)
+    if isinstance(x, (np.floating, np.float64, np.float32)):
+        return float(x)
+    return x
+
+
+@router.get("/ticks")
+async def get_ticks(
+    symbol: str = Query(..., description="证券代码"),
+    trade_date: str = Query(..., description="交易日，格式：YYYY-MM-DD 或 YYYYMMDD"),
+    force_update: bool = Query(False, description="是否从数据源拉取并更新本地 parquet"),
+    db: Session = Depends(get_db),
+):
+    """
+    获取指定交易日的分笔数据，原样返回 tick 列表（每项含 time、lastClose、amount 等）。
+    用于分时图等展示；数据来自 cache，与 get_ticks_data 落盘格式一致。
+    """
+    from app.services.data_source.cache import get_ticks as cache_get_ticks
+    from app.services.data_source import get_default_qmt_adapter
+    from app.services.security_service import security_service
+
+    security_type = "股票"
+    sec = security_service.get_security_by_symbol(db, symbol)
+    if sec and sec.security_type:
+        security_type = sec.security_type
+    adapter = get_default_qmt_adapter()
+    data = cache_get_ticks(security_type, symbol, trade_date, force_update=force_update, adapter=adapter)
+    data = _ticks_to_jsonable(data)
+    return {"code": 0, "data": data, "message": "success"}
+
+
 @router.get("/search")
 async def search_stocks(
     keyword: str = Query(..., description="搜索关键词"),

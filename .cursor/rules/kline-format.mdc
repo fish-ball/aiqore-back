@@ -30,8 +30,8 @@ K 线数据与 ticks 数据区分：adapter 层提供 **get_klines_data**（非 
 
 1. **adapter**：实现 `get_klines_data(...)`，在子类内部根据上游格式（如 xtquant 的 DataFrame/字段结构）直接转换为上述 11 字段后返回；time 为 int（毫秒），缺失字段用 0。不得在 adapter 外再做 normalize 等格式整理。
 2. **cache**：对 K 线的整理、落盘（parquet）、加载均以 11 字段为基准；合并/去重以 **time** 为主键；按日期过滤时从 time（毫秒）推导 YYYY-MM-DD。不调用 normalize/_ensure_kline_row，假定 adapter 已返回标准格式。
-3. **schema**：`app/services/data_source/kline_schema.py` 仅保留 `KLINE_ROW_FIELDS` 列名约定，不提供归一化函数；转换逻辑由各 adapter 针对上游格式直接实现。
+3. **schema**：`app/services/data_source/data_schema.py` 保留 `KLINE_ROW_FIELDS` 列名约定，不提供归一化函数；转换逻辑由各 adapter 针对上游格式直接实现。分笔（tick）格式见同模块 `TICK_DF_COLUMNS`、`TICK_DF_DTYPES`，adapter 实现 `get_ticks_data` 返回对应 DataFrame。
 
 ## 范围说明
 
-本规则仅约束 **K 线数据**；ticks 数据格式与接口后续另行约定。
+本规则约束 **K 线数据**；ticks 分笔数据格式与接口见 `data_schema.TICK_DF_*` 及 adapter 的 `get_ticks_data`。

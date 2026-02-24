@@ -3,7 +3,7 @@
 本模块不依赖 app 或 FastAPI，adapter 包可独立运行/测试。
 """
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 
 class SecuritiesDataSourceAdapter(ABC):
@@ -47,10 +47,10 @@ class SecuritiesDataSourceAdapter(ABC):
         """
         return None
 
-    def get_ticks(self, symbol: str, trade_date: str) -> Optional[List[Dict[str, Any]]]:
+    def get_ticks_data(self, symbol: str, trade_date: str) -> Optional[Any]:
         """
-        按交易日拉取分时数据。trade_date 为 YYYYMMDD 或 YYYY-MM-DD。
-        不支持的数据源返回 None（子类可覆盖实现）。
+        按交易日拉取分笔数据。trade_date 为 YYYYMMDD 或 YYYY-MM-DD。
+        返回值为 pandas DataFrame，列与类型见 data_schema.TICK_DF_*；不支持的数据源返回 None。
         """
         return None
 

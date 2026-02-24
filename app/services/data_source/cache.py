@@ -21,8 +21,8 @@ SECURITY_TYPE_TO_DIR: Dict[str, str] = {
 }
 DEFAULT_TYPE_DIR = "stock"
 
-# K 线 parquet 列名：与 kline_schema 一致；adapter 子类在 get_klines_data 内完成格式转换，此处仅作列约定
-from app.services.data_source.kline_schema import KLINE_ROW_FIELDS
+# K 线 parquet 列名：与 data_schema 一致；adapter 子类在 get_klines_data 内完成格式转换，此处仅作列约定
+from app.services.data_source.data_schema import KLINE_ROW_FIELDS
 KLINE_COLUMNS = KLINE_ROW_FIELDS
 
 logger = logging.getLogger(__name__)
@@ -271,7 +271,7 @@ def get_daily(
 ) -> List[Dict[str, Any]]:
     """
     获取日线：先读 meta，若不 force 且缓存已覆盖则从 parquet 返回；否则拉取缺失区间，合并写 parquet，更新 meta。
-    adapter 需实现 get_klines_data(symbol, period, count, start_time, end_time)，返回格式见 kline_schema。
+    adapter 需实现 get_klines_data(symbol, period, count, start_time, end_time)，返回格式见 data_schema。
     """
     return _get_kline(security_type, symbol, "1d", start_date, end_date, force_update=force_update, adapter=adapter)
 
@@ -401,8 +401,9 @@ def get_ticks(
     adapter: Any = None,
 ) -> List[Dict[str, Any]]:
     """
-    获取分时：trade_date 为 YYYYMMDD、YYYY-MM-DD 或 int/float（毫秒时间戳）。
-    若本地已有 ticks/YYYYMMDD.parquet 且非 force 则直接读；否则调 adapter.get_ticks 写入并更新 meta。
+    获取分笔：trade_date 为 YYYYMMDD、YYYY-MM-DD 或 int/float（毫秒时间戳）。
+    若本地已有 ticks/YYYYMMDD.parquet 且非 force 则直接读；否则调 adapter.get_ticks_data 写入并更新 meta。
+    返回 list of dict（每行一条），字段与 data_schema.TICK_DF_* 一致。
     """
     if isinstance(trade_date, (int, float)):
         trade_date = datetime.fromtimestamp(trade_date / 1000).strftime("%Y-%m-%d")
@@ -420,31 +421,39 @@ def get_ticks(
             if df is not None and not df.empty:
                 return df.to_dict("records")
         except Exception as e:
-            logger.warning("读取分时 parquet 失败 %s: %s", ticks_path, e)
+            logger.warning("读取分笔 parquet 失败 %s: %s", ticks_path, e)
 
     rows: List[Dict[str, Any]] = []
-    if adapter and hasattr(adapter, "get_ticks"):
-        raw = adapter.get_ticks(symbol, trade_date)
-        if raw:
-            rows = raw
-
-    if rows:
-        get_ticks_dir(security_dir).mkdir(parents=True, exist_ok=True)
-        try:
-            import pandas as pd
-            df = pd.DataFrame(rows)
-            df.to_parquet(ticks_path, index=False)
-        except Exception as e:
-            logger.warning("写入分时 parquet 失败 %s: %s", ticks_path, e)
-        meta = read_meta(security_dir)
-        ticks_meta = meta.get("ticks") or {}
-        dates_list = list(ticks_meta.get("dates") or [])
-        if trade_date_flat not in dates_list:
-            dates_list.append(trade_date_flat)
-            dates_list.sort()
-        ticks_meta["dates"] = dates_list
-        ticks_meta["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        meta["ticks"] = ticks_meta
-        write_meta(security_dir, meta, merge=True)
+    if adapter and hasattr(adapter, "get_ticks_data"):
+        raw = adapter.get_ticks_data(symbol, trade_date)
+        if raw is not None:
+            try:
+                import pandas as pd
+                if isinstance(raw, pd.DataFrame) and not raw.empty:
+                    get_ticks_dir(security_dir).mkdir(parents=True, exist_ok=True)
+                    raw.to_parquet(ticks_path, index=False)
+                    rows = raw.to_dict("records")
+                    meta = read_meta(security_dir)
+                    ticks_meta = meta.get("ticks") or {}
+                    date_min = ticks_meta.get("date_min")
+                    date_max = ticks_meta.get("date_max")
+                    if date_min is None or date_max is None:
+                        dates_list = list(ticks_meta.get("dates") or [])
+                        if dates_list:
+                            date_min = date_min or min(dates_list)
+                            date_max = date_max or max(dates_list)
+                    date_min = date_min or trade_date_flat
+                    date_max = date_max or trade_date_flat
+                    if trade_date_flat < date_min:
+                        date_min = trade_date_flat
+                    if trade_date_flat > date_max:
+                        date_max = trade_date_flat
+                    ticks_meta["date_min"] = date_min
+                    ticks_meta["date_max"] = date_max
+                    ticks_meta["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    meta["ticks"] = ticks_meta
+                    write_meta(security_dir, meta, merge=True)
+            except Exception as e:
+                logger.warning("写入分笔 parquet 失败 %s: %s", ticks_path, e)
 
     return rows

@@ -18,7 +18,17 @@ export const marketApi = {
       }
     })
   },
-  
+
+  getTicks(symbol, tradeDate, forceUpdate = false) {
+    return api.get('/market/ticks', {
+      params: {
+        symbol,
+        trade_date: tradeDate,
+        force_update: forceUpdate
+      }
+    })
+  },
+
   searchStocks(keyword) {
     return api.get('/market/search', {
       params: { keyword }

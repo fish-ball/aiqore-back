@@ -957,11 +957,11 @@ async function loadMonthKline() {
   }
 }
 
-// 分时：用当日 1m 近似，无则占位
+// 分时：请求 ticks 接口原样数据，按整分钟聚合后渲染（价格取分钟最后 lastClose，成交量取分钟内 amount 累加）
 async function loadIntraday() {
   try {
     const today = new Date().toISOString().slice(0, 10)
-    const data = await marketApi.getKline(symbol.value, '1m', 240, today, today)
+    const data = await marketApi.getTicks(symbol.value, today)
     const list = Array.isArray(data) ? data : []
     await nextTick()
     const priceDom = intradayChartRef.value
@@ -971,7 +971,7 @@ async function loadIntraday() {
       if (!intradayChart) intradayChart = echarts.init(priceDom)
       intradayChart.setOption({
         ...CHART_DARK,
-        title: { text: '分时 - 暂无数据（待接口：分时或当日 1m）', left: 'center', textStyle: { color: CHART_DARK.textStyle.color } },
+        title: { text: '分时 - 暂无数据', left: 'center', textStyle: { color: CHART_DARK.textStyle.color } },
         xAxis: { type: 'category', data: [], axisLine: CHART_DARK.axisLine, axisLabel: CHART_DARK.axisLabel },
         yAxis: { type: 'value' },
         series: [{ type: 'line', data: [] }]
@@ -986,16 +986,54 @@ async function loadIntraday() {
       }, true)
       return
     }
-    const times = list.map(item => (item.time || item.date || '').slice(11, 16))
-    const prices = list.map(item => parseFloat(item.close || 0))
-    const preClose = quote.value.pre_close || list[0]?.close || 0
+    // openInt: 12=集合竞价C, 13=连续交易T。按分钟聚合且区分 12/13；集合竞价无 lastPrice 时用 askPrice[0] 或 bidPrice[0]（买一/卖一）
+    const OPENINT_CALL_AUCTION = 12
+    const OPENINT_CONTINUOUS = 13
+    const minuteMap = new Map()
+    for (const item of list) {
+      const t = item.time != null ? Number(item.time) : NaN
+      if (Number.isNaN(t)) continue
+      const openInt = item.openInt != null ? parseInt(item.openInt, 10) : 13
+      if (openInt !== OPENINT_CALL_AUCTION && openInt !== OPENINT_CONTINUOUS) continue
+      const minuteKey = Math.floor(t / 60000)
+      const tickvol = parseInt(item.tickvol ?? 0, 10) || 0
+      let price
+      if (openInt === OPENINT_CALL_AUCTION) {
+        const ask = Array.isArray(item.askPrice) ? item.askPrice[0] : null
+        const bid = Array.isArray(item.bidPrice) ? item.bidPrice[0] : null
+        price = parseFloat(ask ?? bid ?? item.lastPrice ?? item.close ?? 0)
+      } else {
+        price = parseFloat(item.lastPrice ?? item.close ?? 0)
+      }
+      if (!minuteMap.has(minuteKey)) {
+        minuteMap.set(minuteKey, { 12: null, 13: null })
+      }
+      const row = minuteMap.get(minuteKey)
+      if (!row[openInt]) row[openInt] = { time: t, price, tickvol }
+      else {
+        row[openInt].time = t
+        row[openInt].price = price
+        row[openInt].tickvol += tickvol
+      }
+    }
+    const sorted = Array.from(minuteMap.entries()).sort((a, b) => a[0] - b[0])
+    const times = sorted.map(([k]) => {
+      const d = new Date(k * 60000)
+      return d.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false })
+    })
+    const pricesCallAuction = sorted.map(([, v]) => (v[OPENINT_CALL_AUCTION] ? v[OPENINT_CALL_AUCTION].price : null))
+    const pricesContinuous = sorted.map(([, v]) => (v[OPENINT_CONTINUOUS] ? v[OPENINT_CONTINUOUS].price : null))
+    const volsCallAuction = sorted.map(([, v]) => (v[OPENINT_CALL_AUCTION] ? v[OPENINT_CALL_AUCTION].tickvol : 0))
+    const volsContinuous = sorted.map(([, v]) => (v[OPENINT_CONTINUOUS] ? v[OPENINT_CONTINUOUS].tickvol : 0))
+    const preClose = quote.value.pre_close ?? list[0]?.lastClose ?? list[0]?.close ?? 0
     const avgPrices = []
     let sum = 0
-    for (let i = 0; i < prices.length; i++) {
-      sum += prices[i]
-      avgPrices.push((sum / (i + 1)).toFixed(2))
+    let n = 0
+    for (let i = 0; i < pricesContinuous.length; i++) {
+      const p = pricesContinuous[i]
+      if (p != null) { sum += p; n++ }
+      avgPrices.push(n > 0 ? (sum / n).toFixed(2) : null)
     }
-    const vols = list.map(item => parseInt(item.volume || 0, 10))
     if (!intradayChart) intradayChart = echarts.init(priceDom)
     intradayChart.setOption({
       ...CHART_DARK,
@@ -1004,8 +1042,9 @@ async function loadIntraday() {
       xAxis: { type: 'category', data: times, boundaryGap: false, axisLine: CHART_DARK.axisLine, axisLabel: CHART_DARK.axisLabel, splitLine: { show: false } },
       yAxis: { type: 'value', scale: true, axisLabel: { formatter: v => v.toFixed(2), ...CHART_DARK.axisLabel }, axisLine: CHART_DARK.axisLine, splitLine: CHART_DARK.splitLine },
       series: [
-        { name: '价格', type: 'line', data: prices, smooth: false, symbol: 'none', lineStyle: { width: 2, color: '#5c9eed' } },
-        { name: '均价', type: 'line', data: avgPrices, smooth: false, symbol: 'none', lineStyle: { width: 1, color: '#ffc107' } }
+        { name: '集合竞价', type: 'line', data: pricesCallAuction, smooth: false, symbol: 'none', connectNulls: false, lineStyle: { width: 2, color: '#9e9e9e' } },
+        { name: '连续交易', type: 'line', data: pricesContinuous, smooth: false, symbol: 'none', connectNulls: false, lineStyle: { width: 2, color: '#5c9eed' } },
+        { name: '均价', type: 'line', data: avgPrices, smooth: false, symbol: 'none', connectNulls: true, lineStyle: { width: 1, color: '#ffc107' } }
       ]
     }, true)
     if (!intradayVolChart) intradayVolChart = echarts.init(volDom)
@@ -1015,7 +1054,10 @@ async function loadIntraday() {
       grid: { left: '3%', right: '4%', bottom: '3%', top: '8%', containLabel: true },
       xAxis: { type: 'category', data: times, boundaryGap: true, axisLine: CHART_DARK.axisLine, axisLabel: CHART_DARK.axisLabel },
       yAxis: { type: 'value', axisLine: CHART_DARK.axisLine, axisLabel: CHART_DARK.axisLabel, splitLine: CHART_DARK.splitLine },
-      series: [{ name: '量', type: 'bar', data: vols, itemStyle: { color: '#5c9eed' } }]
+      series: [
+        { name: '集合竞价量', type: 'bar', stack: 'vol', data: volsCallAuction, itemStyle: { color: '#9e9e9e' } },
+        { name: '连续交易量', type: 'bar', stack: 'vol', data: volsContinuous, itemStyle: { color: '#5c9eed' } }
+      ]
     }, true)
   } catch (e) {
     console.error('分时加载失败:', e)
