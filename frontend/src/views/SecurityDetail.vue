@@ -27,23 +27,24 @@
 
     <!-- 主区域：可拖拽左右分栏 -->
     <div class="main-area">
-      <!-- 左侧面板：行情 -->
+      <!-- 左侧面板：行情（K线在上、技术指标在下，中间可拖拽） -->
       <div
         v-show="layoutMode !== 'right'"
+        ref="panelLeftRef"
         class="panel-left"
         :style="{ width: layoutMode === 'left' ? '100%' : leftPanelWidthPx }"
       >
-        <el-tabs v-model="chartTab" class="chart-tabs">
+        <div class="panel-left-inner">
+          <el-tabs v-model="chartTab" class="chart-tabs">
           <el-tab-pane label="分时" name="intraday">
             <div class="intraday-wrap">
               <div class="intraday-charts">
                 <div class="chart-half chart-price">
                   <div ref="intradayChartRef" class="chart-dom"></div>
-                  <!-- 待接口：分时或当日 1m 数据 -->
                 </div>
-                <div class="chart-half chart-volume">
+                <div class="resizer-kline" @mousedown="startResizeVertical"> </div>
+                <div class="chart-half chart-volume" :style="{ height: leftPanelBottomHeight + 'px' }">
                   <div ref="intradayVolRef" class="chart-dom"></div>
-                  <!-- 第一步仅支持分时量；无则占位 -->
                 </div>
               </div>
               <div class="intraday-side">
@@ -64,7 +65,28 @@
           </el-tab-pane>
           <el-tab-pane label="日K" name="day">
             <div class="kline-wrap">
-              <div ref="klineChartRef" class="chart-dom kline-chart-dom"></div>
+              <div class="kline-data-panel kline-data-panel-top">
+                <div class="kline-data-row1">
+                  <span class="kline-data-item">日期 {{ displayKlineOHLC.date }}</span>
+                  <span class="kline-data-item">开盘 {{ displayKlineOHLC.open }}</span>
+                  <span class="kline-data-item">收盘 {{ displayKlineOHLC.close }}</span>
+                  <span class="kline-data-item">最高 {{ displayKlineOHLC.high }}</span>
+                  <span class="kline-data-item">最低 {{ displayKlineOHLC.low }}</span>
+                </div>
+                <div class="kline-data-row2">
+                  <span class="kline-data-item">MA5 {{ displayKlineOHLC.ma5 }}</span>
+                  <span class="kline-data-item">MA10 {{ displayKlineOHLC.ma10 }}</span>
+                  <span class="kline-data-item">MA20 {{ displayKlineOHLC.ma20 }}</span>
+                  <span class="kline-data-item">MA30 {{ displayKlineOHLC.ma30 }}</span>
+                  <span class="kline-data-item">MA60 {{ displayKlineOHLC.ma60 }}</span>
+                  <span class="kline-data-item">MA120 {{ displayKlineOHLC.ma120 }}</span>
+                  <span class="kline-data-item">MA250 {{ displayKlineOHLC.ma250 }}</span>
+                </div>
+              </div>
+              <div class="kline-main-area">
+                <div ref="klineChartRef" class="chart-dom kline-chart-dom"></div>
+              </div>
+              <div class="resizer-kline" @mousedown="startResizeVertical"> </div>
               <div class="kline-indicator">
                 <el-radio-group v-model="klineIndicator" size="small" @change="updateKlineIndicator">
                   <el-radio-button value="volume">成交量</el-radio-button>
@@ -74,12 +96,37 @@
                   <el-radio-button value="macd">MACD</el-radio-button>
                 </el-radio-group>
               </div>
-              <div ref="klineSubRef" class="chart-dom kline-sub-dom"></div>
+              <div class="kline-data-panel kline-data-panel-sub">
+                <span class="kline-data-item">日期 {{ displaySubIndicator.date }}</span>
+                <span class="kline-data-item">{{ displaySubIndicator.text }}</span>
+              </div>
+              <div ref="klineSubRef" class="chart-dom kline-sub-dom" :style="{ height: leftPanelBottomHeight + 'px' }"></div>
             </div>
           </el-tab-pane>
           <el-tab-pane label="周K" name="week">
             <div class="kline-wrap">
-              <div ref="klineWeekChartRef" class="chart-dom kline-chart-dom"></div>
+              <div class="kline-data-panel kline-data-panel-top">
+                <div class="kline-data-row1">
+                  <span class="kline-data-item">日期 {{ displayKlineOHLC.date }}</span>
+                  <span class="kline-data-item">开盘 {{ displayKlineOHLC.open }}</span>
+                  <span class="kline-data-item">收盘 {{ displayKlineOHLC.close }}</span>
+                  <span class="kline-data-item">最高 {{ displayKlineOHLC.high }}</span>
+                  <span class="kline-data-item">最低 {{ displayKlineOHLC.low }}</span>
+                </div>
+                <div class="kline-data-row2">
+                  <span class="kline-data-item">MA5 {{ displayKlineOHLC.ma5 }}</span>
+                  <span class="kline-data-item">MA10 {{ displayKlineOHLC.ma10 }}</span>
+                  <span class="kline-data-item">MA20 {{ displayKlineOHLC.ma20 }}</span>
+                  <span class="kline-data-item">MA30 {{ displayKlineOHLC.ma30 }}</span>
+                  <span class="kline-data-item">MA60 {{ displayKlineOHLC.ma60 }}</span>
+                  <span class="kline-data-item">MA120 {{ displayKlineOHLC.ma120 }}</span>
+                  <span class="kline-data-item">MA250 {{ displayKlineOHLC.ma250 }}</span>
+                </div>
+              </div>
+              <div class="kline-main-area">
+                <div ref="klineWeekChartRef" class="chart-dom kline-chart-dom"></div>
+              </div>
+              <div class="resizer-kline" @mousedown="startResizeVertical"> </div>
               <div class="kline-indicator">
                 <el-radio-group v-model="klineWeekIndicator" size="small" @change="updateKlineWeekIndicator">
                   <el-radio-button value="volume">成交量</el-radio-button>
@@ -89,12 +136,37 @@
                   <el-radio-button value="macd">MACD</el-radio-button>
                 </el-radio-group>
               </div>
-              <div ref="klineWeekSubRef" class="chart-dom kline-sub-dom"></div>
+              <div class="kline-data-panel kline-data-panel-sub">
+                <span class="kline-data-item">日期 {{ displaySubIndicator.date }}</span>
+                <span class="kline-data-item">{{ displaySubIndicator.text }}</span>
+              </div>
+              <div ref="klineWeekSubRef" class="chart-dom kline-sub-dom" :style="{ height: leftPanelBottomHeight + 'px' }"></div>
             </div>
           </el-tab-pane>
           <el-tab-pane label="月K" name="month">
             <div class="kline-wrap">
-              <div ref="klineMonthChartRef" class="chart-dom kline-chart-dom"></div>
+              <div class="kline-data-panel kline-data-panel-top">
+                <div class="kline-data-row1">
+                  <span class="kline-data-item">日期 {{ displayKlineOHLC.date }}</span>
+                  <span class="kline-data-item">开盘 {{ displayKlineOHLC.open }}</span>
+                  <span class="kline-data-item">收盘 {{ displayKlineOHLC.close }}</span>
+                  <span class="kline-data-item">最高 {{ displayKlineOHLC.high }}</span>
+                  <span class="kline-data-item">最低 {{ displayKlineOHLC.low }}</span>
+                </div>
+                <div class="kline-data-row2">
+                  <span class="kline-data-item">MA5 {{ displayKlineOHLC.ma5 }}</span>
+                  <span class="kline-data-item">MA10 {{ displayKlineOHLC.ma10 }}</span>
+                  <span class="kline-data-item">MA20 {{ displayKlineOHLC.ma20 }}</span>
+                  <span class="kline-data-item">MA30 {{ displayKlineOHLC.ma30 }}</span>
+                  <span class="kline-data-item">MA60 {{ displayKlineOHLC.ma60 }}</span>
+                  <span class="kline-data-item">MA120 {{ displayKlineOHLC.ma120 }}</span>
+                  <span class="kline-data-item">MA250 {{ displayKlineOHLC.ma250 }}</span>
+                </div>
+              </div>
+              <div class="kline-main-area">
+                <div ref="klineMonthChartRef" class="chart-dom kline-chart-dom"></div>
+              </div>
+              <div class="resizer-kline" @mousedown="startResizeVertical"> </div>
               <div class="kline-indicator">
                 <el-radio-group v-model="klineMonthIndicator" size="small" @change="updateKlineMonthIndicator">
                   <el-radio-button value="volume">成交量</el-radio-button>
@@ -104,10 +176,15 @@
                   <el-radio-button value="macd">MACD</el-radio-button>
                 </el-radio-group>
               </div>
-              <div ref="klineMonthSubRef" class="chart-dom kline-sub-dom"></div>
+              <div class="kline-data-panel kline-data-panel-sub">
+                <span class="kline-data-item">日期 {{ displaySubIndicator.date }}</span>
+                <span class="kline-data-item">{{ displaySubIndicator.text }}</span>
+              </div>
+              <div ref="klineMonthSubRef" class="chart-dom kline-sub-dom" :style="{ height: leftPanelBottomHeight + 'px' }"></div>
             </div>
           </el-tab-pane>
-        </el-tabs>
+          </el-tabs>
+        </div>
       </div>
 
       <!-- 可拖拽分割条（仅双侧时显示） -->
@@ -139,7 +216,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
@@ -149,6 +226,11 @@ import { useDataSourceStore } from '../stores/dataSource'
 import * as echarts from 'echarts'
 
 const dataSourceStore = useDataSourceStore()
+
+// localStorage 键名：证券详情页左右切分宽度、左侧上下切分底部高度
+const STORAGE_LEFT_PANEL_WIDTH = 'security-detail-left-panel-width'
+const STORAGE_LEFT_PANEL_BOTTOM_HEIGHT = 'security-detail-left-panel-bottom-height'
+const DEFAULT_LEFT_PANEL_BOTTOM_HEIGHT = 280
 
 // 行情页黑底白字图表主题（与现有行情软件风格一致）
 const CHART_DARK = {
@@ -179,10 +261,35 @@ const updateDataLoading = ref(false)
 
 // 布局：left=仅左栏 both=双侧 right=仅右栏
 const layoutMode = ref('both')
-// 左侧面板宽度（像素），双侧时有效
-const leftPanelWidth = ref(0)
-const leftPanelWidthPx = ref('60%')
+// 左侧面板宽度（像素），双侧时有效；从 localStorage 恢复
+function getInitialLeftPanelWidth() {
+  try {
+    const v = localStorage.getItem(STORAGE_LEFT_PANEL_WIDTH)
+    if (v != null) {
+      const n = parseInt(v, 10)
+      if (Number.isFinite(n) && n >= 200) return n
+    }
+  } catch (_) {}
+  return undefined
+}
+const leftPanelWidth = ref(getInitialLeftPanelWidth() ?? 0)
+const leftPanelWidthPx = ref(
+  leftPanelWidth.value ? `${leftPanelWidth.value}px` : '60%'
+)
+// 左侧上下切分：底部区域高度（px），从 localStorage 恢复，默认 280
+function getInitialLeftPanelBottomHeight() {
+  try {
+    const v = localStorage.getItem(STORAGE_LEFT_PANEL_BOTTOM_HEIGHT)
+    if (v != null) {
+      const n = parseInt(v, 10)
+      if (Number.isFinite(n) && n >= 80) return n
+    }
+  } catch (_) {}
+  return DEFAULT_LEFT_PANEL_BOTTOM_HEIGHT
+}
+const leftPanelBottomHeight = ref(getInitialLeftPanelBottomHeight())
 let resizing = false
+let resizingVertical = false
 
 // 分时 / 日K / 周K / 月K
 const chartTab = ref('intraday')
@@ -194,6 +301,9 @@ const klineWeekChartRef = ref(null)
 const klineWeekSubRef = ref(null)
 const klineMonthChartRef = ref(null)
 const klineMonthSubRef = ref(null)
+const panelLeftRef = ref(null)
+// K 线主图 hover 时的数据索引，null 表示显示最新一根
+const klineHoverIndex = ref(null)
 
 const klineIndicator = ref('volume')
 const klineWeekIndicator = ref('volume')
@@ -203,6 +313,8 @@ const klineData = ref([])
 const klineWeekData = ref([])
 const klineMonthData = ref([])
 const klineLoading = ref(false)
+// 预计算缓存：按 tab 存 MA 与副图指标，点击图例时 O(1) 取值
+const klineCache = ref({ day: null, week: null, month: null })
 
 let intradayChart = null
 let intradayVolChart = null
@@ -222,6 +334,67 @@ const fiveLevelPlaceholder = ref([
 ])
 
 const f10ActiveNames = ref(['read', 'finance'])
+
+// 当前 K 线主图展示的数据（点击时为该根，否则为最新一根）；含日期与全部 MA，优先用缓存 O(1)
+const displayKlineOHLC = computed(() => {
+  const tab = chartTab.value
+  const data = tab === 'day' ? klineData.value : tab === 'week' ? klineWeekData.value : klineMonthData.value
+  const cache = tab === 'day' ? klineCache.value?.day : tab === 'week' ? klineCache.value?.week : klineCache.value?.month
+  if (!data || data.length === 0) {
+    return { date: '', open: '--', close: '--', high: '--', low: '--', ma5: '--', ma10: '--', ma20: '--', ma30: '--', ma60: '--', ma120: '--', ma250: '--' }
+  }
+  const idx = klineHoverIndex.value != null ? Math.max(0, Math.min(klineHoverIndex.value, data.length - 1)) : data.length - 1
+  const bar = data[idx]
+  const t = bar.time ?? bar.timestamp ?? bar.date ?? ''
+  const v = (arr, i) => (arr && arr[i] !== undefined ? (arr[i] === '-' ? '--' : arr[i]) : '--')
+  const ma = cache?.ma
+  return {
+    date: formatKlineTimeForAxis(t),
+    open: formatPrice(bar.open),
+    close: formatPrice(bar.close),
+    high: formatPrice(bar.high),
+    low: formatPrice(bar.low),
+    ma5: ma ? v(ma.ma5, idx) : v(calcMA(data, 5), idx),
+    ma10: ma ? v(ma.ma10, idx) : v(calcMA(data, 10), idx),
+    ma20: ma ? v(ma.ma20, idx) : v(calcMA(data, 20), idx),
+    ma30: ma ? v(ma.ma30, idx) : v(calcMA(data, 30), idx),
+    ma60: ma ? v(ma.ma60, idx) : v(calcMA(data, 60), idx),
+    ma120: ma ? v(ma.ma120, idx) : v(calcMA(data, 120), idx),
+    ma250: ma ? v(ma.ma250, idx) : v(calcMA(data, 250), idx)
+  }
+})
+
+// 当前副图指标展示的数据（与主图同索引）；优先用缓存 O(1)
+const displaySubIndicator = computed(() => {
+  const tab = chartTab.value
+  const ind = tab === 'day' ? klineIndicator.value : tab === 'week' ? klineWeekIndicator.value : klineMonthIndicator.value
+  const data = tab === 'day' ? klineData.value : tab === 'week' ? klineWeekData.value : klineMonthData.value
+  const sub = tab === 'day' ? klineCache.value?.day?.sub : tab === 'week' ? klineCache.value?.week?.sub : klineCache.value?.month?.sub
+  if (!data || data.length === 0) return { date: '', text: '--' }
+  const idx = klineHoverIndex.value != null ? Math.max(0, Math.min(klineHoverIndex.value, data.length - 1)) : data.length - 1
+  const date = formatKlineTimeForAxis(data[idx].time ?? data[idx].timestamp ?? data[idx].date ?? '')
+  if (ind === 'volume') {
+    const vol = parseInt(data[idx].volume || 0, 10)
+    return { date, text: `成交量 ${formatVolume(vol)}` }
+  }
+  if (ind === 'amount') {
+    const amt = parseFloat(data[idx].amount || 0)
+    return { date, text: `成交额 ${formatAmount(amt)}` }
+  }
+  if (ind === 'kdj') {
+    const { k, d, j } = sub?.kdj ?? calcKDJ(data)
+    return { date, text: `K: ${k[idx]}  D: ${d[idx]}  J: ${j[idx]}` }
+  }
+  if (ind === 'rsi') {
+    const rsi = sub?.rsi ?? calcRSI(data)
+    return { date, text: `RSI: ${rsi[idx]}` }
+  }
+  if (ind === 'macd') {
+    const { dif, dea, macd } = sub?.macd ?? calcMACD(data)
+    return { date, text: `DIF: ${dif[idx]}  DEA: ${dea[idx]}  MACD: ${macd[idx]}` }
+  }
+  return { date, text: '--' }
+})
 
 function formatPrice(value) {
   return parseFloat(value || 0).toFixed(2)
@@ -244,6 +417,32 @@ function formatAmount(value) {
   if (num >= 10000) return `¥${(num / 10000).toFixed(2)}万`
   return `¥${num.toFixed(2)}`
 }
+
+// 将 K 线时间字段（UNIX 秒/毫秒或日期字符串）转为横轴显示日期 YYYY-MM-DD
+function formatKlineTimeForAxis(t) {
+  if (t == null || t === '') return ''
+  if (typeof t === 'string') {
+    if (t.includes(' ')) return t.slice(0, 16)
+    if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10)
+    const n = parseInt(t, 10)
+    if (Number.isFinite(n)) t = n
+  }
+  if (typeof t === 'number') {
+    const ms = t < 1e12 ? t * 1000 : t
+    const d = new Date(ms)
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
+  return String(t).slice(0, 10)
+}
+
+// 上下图统一 grid：约 10px 留白避免文字被裁切，y 轴宽度固定（左侧多 20px 给标签）
+const GRID_LEFT = 82
+const GRID_RIGHT = 22
+const GRID_BOTTOM = 14
+const GRID_TOP = 14
 
 function getPriceColor(lastPrice, preClose) {
   if (lastPrice > preClose) return '#F56C6C'
@@ -292,20 +491,33 @@ function calcMA(data, period) {
   return result
 }
 
-// KDJ
+// KDJ，O(n)：滑动窗口用单调队列（索引前移不 shift）求区间 min/max
 function calcKDJ(data, n = 9, m1 = 3, m2 = 3) {
   const k = [], d = [], j = []
   let kNum = 50, dNum = 50
+  const lowArr = data.map(x => parseFloat(x.low) || 0)
+  const highArr = data.map(x => parseFloat(x.high) || 0)
+  const qMin = []
+  const qMax = []
+  let minHead = 0
+  let maxHead = 0
   for (let i = 0; i < data.length; i++) {
+    const left = i - n + 1
+    while (minHead < qMin.length && qMin[minHead] < left) minHead++
+    while (maxHead < qMax.length && qMax[maxHead] < left) maxHead++
+    while (qMin.length > minHead && lowArr[qMin[qMin.length - 1]] >= lowArr[i]) qMin.pop()
+    qMin.push(i)
+    while (qMax.length > maxHead && highArr[qMax[qMax.length - 1]] <= highArr[i]) qMax.pop()
+    qMax.push(i)
     if (i < n - 1) {
       k.push('-')
       d.push('-')
       j.push('-')
       continue
     }
-    const low = Math.min(...data.slice(i - n + 1, i + 1).map(x => x.low))
-    const high = Math.max(...data.slice(i - n + 1, i + 1).map(x => x.high))
-    const close = data[i].close
+    const low = lowArr[qMin[minHead]]
+    const high = highArr[qMax[maxHead]]
+    const close = parseFloat(data[i].close) || 0
     const rsv = high === low ? 0 : ((close - low) / (high - low)) * 100
     kNum = i === n - 1 ? 50 : (2 / 3) * kNum + (1 / 3) * rsv
     dNum = i === n - 1 ? 50 : (2 / 3) * dNum + (1 / 3) * kNum
@@ -371,11 +583,11 @@ function calcMACD(data, short = 12, long = 26, mid = 9) {
   return { dif, dea, macd }
 }
 
-function buildKlineOption(rawData) {
+function buildKlineOption(rawData, maCache) {
   if (!rawData || rawData.length === 0) return null
   const times = rawData.map(item => {
-    const t = item.time || item.timestamp || item.date || ''
-    return (typeof t === 'string' && t.includes(' ')) ? t.slice(0, 16) : String(t).slice(0, 10)
+    const t = item.time ?? item.timestamp ?? item.date ?? ''
+    return formatKlineTimeForAxis(t)
   })
   const o = rawData.map(x => parseFloat(x.open || 0))
   const c = rawData.map(x => parseFloat(x.close || 0))
@@ -383,13 +595,13 @@ function buildKlineOption(rawData) {
   const h = rawData.map(x => parseFloat(x.high || 0))
   const candleData = rawData.map((_, i) => [o[i], c[i], l[i], h[i]])
 
-  const ma5 = calcMA(rawData, 5)
-  const ma10 = calcMA(rawData, 10)
-  const ma20 = calcMA(rawData, 20)
-  const ma30 = calcMA(rawData, 30)
-  const ma60 = calcMA(rawData, 60)
-  const ma120 = calcMA(rawData, 120)
-  const ma250 = calcMA(rawData, 250)
+  const ma5 = maCache?.ma5 ?? calcMA(rawData, 5)
+  const ma10 = maCache?.ma10 ?? calcMA(rawData, 10)
+  const ma20 = maCache?.ma20 ?? calcMA(rawData, 20)
+  const ma30 = maCache?.ma30 ?? calcMA(rawData, 30)
+  const ma60 = maCache?.ma60 ?? calcMA(rawData, 60)
+  const ma120 = maCache?.ma120 ?? calcMA(rawData, 120)
+  const ma250 = maCache?.ma250 ?? calcMA(rawData, 250)
 
   const series = [
     { name: 'K线', type: 'candlestick', data: candleData, itemStyle: { color: '#ef5350', borderColor: '#ef5350', color0: '#26a69a', borderColor0: '#26a69a' } },
@@ -405,57 +617,81 @@ function buildKlineOption(rawData) {
   return {
     ...CHART_DARK,
     animation: false,
-    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
-    grid: { left: '3%', right: '4%', bottom: '3%', top: '8%', containLabel: true },
-    xAxis: { type: 'category', data: times, boundaryGap: true, axisLabel: { rotate: 45, ...CHART_DARK.axisLabel }, axisLine: CHART_DARK.axisLine, splitLine: { show: false } },
-    yAxis: { type: 'value', scale: true, axisLabel: { formatter: v => '¥' + v.toFixed(2), ...CHART_DARK.axisLabel }, axisLine: CHART_DARK.axisLine, splitLine: CHART_DARK.splitLine },
+    tooltip: {
+      show: true,
+      trigger: 'axis',
+      formatter: () => '',
+      axisPointer: { type: 'cross', lineStyle: { color: '#ffeb3b', type: 'solid', width: 1 } }
+    },
+    grid: { left: GRID_LEFT, right: GRID_RIGHT, bottom: GRID_BOTTOM, top: GRID_TOP, containLabel: false },
+    graphic: [
+      { id: HOVER_CROSS_V_ID, type: 'line', invisible: true, shape: { x1: 0, y1: 0, x2: 0, y2: 0 }, lineStyle: { type: 'dashed', color: '#fff', width: 1 } },
+      { id: HOVER_CROSS_H_ID, type: 'line', invisible: true, shape: { x1: 0, y1: 0, x2: 0, y2: 0 }, lineStyle: { type: 'dashed', color: '#fff', width: 1 } }
+    ],
+    xAxis: {
+      type: 'category',
+      data: times,
+      boundaryGap: true,
+      axisLabel: { show: false },
+      axisLine: CHART_DARK.axisLine,
+      splitLine: { show: false }
+    },
+    yAxis: { type: 'value', scale: true, min: 'dataMin', max: 'dataMax', axisLabel: { formatter: v => v.toFixed(2), ...CHART_DARK.axisLabel }, axisLine: CHART_DARK.axisLine, splitLine: CHART_DARK.splitLine },
     series
   }
 }
 
-function buildSubOption(rawData, type) {
+function buildSubOption(rawData, type, subCache) {
   if (!rawData || rawData.length === 0) return null
   const times = rawData.map(item => {
-    const t = item.time || item.timestamp || item.date || ''
-    return (typeof t === 'string' && t.includes(' ')) ? t.slice(0, 16) : String(t).slice(0, 10)
+    const t = item.time ?? item.timestamp ?? item.date ?? ''
+    return formatKlineTimeForAxis(t)
   })
-  const grid = { left: '3%', right: '4%', bottom: '3%', top: '8%', containLabel: true }
-  const xAxis = { type: 'category', data: times, boundaryGap: true, axisLabel: { rotate: 45 } }
+  const grid = { left: GRID_LEFT, right: GRID_RIGHT, bottom: GRID_BOTTOM, top: GRID_TOP, containLabel: false }
+  const xAxis = {
+    type: 'category',
+    data: times,
+    boundaryGap: true,
+    axisLabel: { show: false },
+    axisLine: CHART_DARK.axisLine,
+    splitLine: { show: false }
+  }
 
+  const xAxisMerged = xAxis
   const axisCommon = { axisLine: CHART_DARK.axisLine, splitLine: CHART_DARK.splitLine, axisLabel: CHART_DARK.axisLabel }
   if (type === 'volume') {
-    const vol = rawData.map(x => parseInt(x.volume || 0, 10))
-    const colors = rawData.map((x, i) => (i > 0 && x.close >= rawData[i - 1].close ? '#ef5350' : '#26a69a'))
+    const vol = subCache?.volume?.data ?? rawData.map(x => parseInt(x.volume || 0, 10))
+    const colors = subCache?.volume?.colors ?? rawData.map((x, i) => (i > 0 && x.close >= rawData[i - 1].close ? '#ef5350' : '#26a69a'))
     return {
       ...CHART_DARK,
       animation: false,
-      tooltip: { trigger: 'axis' },
+      tooltip: { show: true, trigger: 'axis', formatter: () => '', axisPointer: { type: 'cross' } },
       grid,
-      xAxis: { ...xAxis, ...axisCommon },
+      xAxis: xAxisMerged,
       yAxis: { type: 'value', ...axisCommon, axisLabel: { formatter: v => formatVolume(v), ...CHART_DARK.axisLabel } },
       series: [{ name: '成交量', type: 'bar', data: vol, itemStyle: { color: (params) => colors[params.dataIndex] } }]
     }
   }
   if (type === 'amount') {
-    const amount = rawData.map(x => parseFloat(x.amount || 0))
+    const amount = subCache?.amount?.data ?? rawData.map(x => parseFloat(x.amount || 0))
     return {
       ...CHART_DARK,
       animation: false,
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      tooltip: { show: true, trigger: 'axis', formatter: () => '', axisPointer: { type: 'cross' } },
       grid,
-      xAxis: { ...xAxis, ...axisCommon },
+      xAxis: xAxisMerged,
       yAxis: { type: 'value', ...axisCommon, axisLabel: { formatter: v => (v >= 1e8 ? (v / 1e8).toFixed(1) + '亿' : (v / 1e4).toFixed(0) + '万'), ...CHART_DARK.axisLabel } },
       series: [{ name: '成交额', type: 'bar', data: amount, itemStyle: { color: '#5c9eed' } }]
     }
   }
   if (type === 'kdj') {
-    const { k, d, j } = calcKDJ(rawData)
+    const { k, d, j } = subCache?.kdj ?? calcKDJ(rawData)
     return {
       ...CHART_DARK,
       animation: false,
-      tooltip: { trigger: 'axis' },
+      tooltip: { show: true, trigger: 'axis', formatter: () => '', axisPointer: { type: 'cross' } },
       grid,
-      xAxis: { ...xAxis, ...axisCommon },
+      xAxis: xAxisMerged,
       yAxis: { type: 'value', min: 0, max: 100, ...axisCommon },
       series: [
         { name: 'K', type: 'line', data: k, smooth: false, symbol: 'none' },
@@ -465,26 +701,26 @@ function buildSubOption(rawData, type) {
     }
   }
   if (type === 'rsi') {
-    const rsi = calcRSI(rawData)
+    const rsi = subCache?.rsi ?? calcRSI(rawData)
     return {
       ...CHART_DARK,
       animation: false,
-      tooltip: { trigger: 'axis' },
+      tooltip: { show: true, trigger: 'axis', formatter: () => '', axisPointer: { type: 'cross' } },
       grid,
-      xAxis: { ...xAxis, ...axisCommon },
+      xAxis: xAxisMerged,
       yAxis: { type: 'value', min: 0, max: 100, ...axisCommon },
       series: [{ name: 'RSI', type: 'line', data: rsi, smooth: false, symbol: 'none' }]
     }
   }
   if (type === 'macd') {
-    const { dif, dea, macd } = calcMACD(rawData)
+    const { dif, dea, macd } = subCache?.macd ?? calcMACD(rawData)
     const barColors = macd.map((v, i) => (v !== '-' && parseFloat(v) >= 0 ? '#ef5350' : '#26a69a'))
     return {
       ...CHART_DARK,
       animation: false,
-      tooltip: { trigger: 'axis' },
+      tooltip: { show: true, trigger: 'axis', formatter: () => '', axisPointer: { type: 'cross' } },
       grid,
-      xAxis: { ...xAxis, ...axisCommon },
+      xAxis: xAxisMerged,
       yAxis: { type: 'value', ...axisCommon },
       series: [
         { name: 'DIF', type: 'line', data: dif, smooth: false, symbol: 'none' },
@@ -508,22 +744,157 @@ async function fetchKlineForTab(period, count = 250) {
   }
 }
 
-function renderKline(chartDom, subDom, rawData, indicator) {
+function buildKlineCache(data) {
+  if (!data || data.length === 0) return null
+  const vol = data.map(x => parseInt(x.volume || 0, 10))
+  const volColors = data.map((x, i) => (i > 0 && parseFloat(x.close) >= parseFloat(data[i - 1].close) ? '#ef5350' : '#26a69a'))
+  const amount = data.map(x => parseFloat(x.amount || 0))
+  return {
+    ma: {
+      ma5: calcMA(data, 5),
+      ma10: calcMA(data, 10),
+      ma20: calcMA(data, 20),
+      ma30: calcMA(data, 30),
+      ma60: calcMA(data, 60),
+      ma120: calcMA(data, 120),
+      ma250: calcMA(data, 250)
+    },
+    sub: {
+      volume: { data: vol, colors: volColors },
+      amount: { data: amount },
+      kdj: calcKDJ(data),
+// 仅主图显示十字线，副图不显示以减轻重绘
+      rsi: calcRSI(data),
+      macd: calcMACD(data)
+    }
+// 仅主图显示十字线，副图不显示以减轻重绘
+// 主图十字线：hover 为白色虚线十字，点击锚定为黄色实线十字
+  }
+}
+
+const HOVER_CROSS_V_ID = 'klineHoverCrossV'
+const HOVER_CROSS_H_ID = 'klineHoverCrossH'
+
+function updateHoverCross(mainChart, dataIndex, yPixel, visible) {
+  if (!mainChart || !mainChart.setOption) return
+  if (!visible || dataIndex == null) {
+    mainChart.setOption({
+      graphic: [
+        { id: HOVER_CROSS_V_ID, invisible: true },
+        { id: HOVER_CROSS_H_ID, invisible: true }
+      ]
+    })
+    return
+  }
+  const point = mainChart.convertToPixel({ seriesIndex: 0 }, [dataIndex, 0])
+  if (point == null || !Array.isArray(point)) return
+  const x = point[0]
+  const w = mainChart.getWidth()
+  const h = mainChart.getHeight()
+  const y = yPixel != null ? yPixel : point[1]
+  mainChart.setOption({
+    graphic: [
+      { id: HOVER_CROSS_V_ID, shape: { x1: x, y1: 0, x2: x, y2: h }, invisible: false },
+      { id: HOVER_CROSS_H_ID, shape: { x1: 0, y1: y, x2: w, y2: y }, invisible: false }
+    ]
+  })
+}
+
+function syncCrosshair(mainChart, subChart, dataIndex) {
+  if (mainChart && mainChart.dispatchAction) {
+    mainChart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex })
+  }
+  if (subChart && subChart.dispatchAction) {
+    subChart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex })
+  }
+}
+
+function hideCrosshair(mainChart, subChart) {
+  if (mainChart && mainChart.setOption) {
+    updateHoverCross(mainChart, null, null, false)
+  }
+  if (mainChart && mainChart.dispatchAction) {
+    mainChart.dispatchAction({ type: 'hideTip' })
+  }
+  if (subChart && subChart.dispatchAction) {
+    subChart.dispatchAction({ type: 'hideTip' })
+  }
+}
+
+function bindKlineHover(mainChart, subChart, dataLen) {
+  let lastDataIndex = -1
+  let lastHoverIndex = -1
+  function setSelected(dataIndex) {
+    if (dataIndex < 0 || dataIndex >= dataLen) return
+    if (dataIndex === lastDataIndex) return
+    lastDataIndex = dataIndex
+    klineHoverIndex.value = dataIndex
+    updateHoverCross(mainChart, null, null, false)
+    syncCrosshair(mainChart, subChart, dataIndex)
+  }
+  function clearSelected() {
+    if (lastDataIndex === -1) return
+    lastDataIndex = -1
+    klineHoverIndex.value = null
+    hideCrosshair(mainChart, subChart)
+  }
+  if (mainChart && mainChart.getZr) {
+    const zr = mainChart.getZr()
+    zr.off('click')
+    zr.off('mousemove')
+    zr.off('mouseout')
+    zr.on('click', (e) => {
+      const result = mainChart.convertFromPixel({ seriesIndex: 0 }, [e.offsetX, e.offsetY])
+      if (result != null && Array.isArray(result) && result.length >= 1) {
+        setSelected(Math.round(result[0]))
+      }
+    })
+    zr.on('mousemove', (e) => {
+      if (lastDataIndex >= 0) return
+      const result = mainChart.convertFromPixel({ seriesIndex: 0 }, [e.offsetX, e.offsetY])
+      if (result != null && Array.isArray(result) && result.length >= 1) {
+        const idx = Math.round(result[0])
+        if (idx >= 0 && idx < dataLen && idx !== lastHoverIndex) {
+          lastHoverIndex = idx
+          updateHoverCross(mainChart, idx, e.offsetY, true)
+        }
+      }
+    })
+    zr.on('mouseout', () => {
+      lastHoverIndex = -1
+      updateHoverCross(mainChart, null, null, false)
+    })
+  }
+  if (subChart && subChart.getZr) {
+    const zr = subChart.getZr()
+    zr.off('click')
+    zr.on('click', (e) => {
+      const result = subChart.convertFromPixel({ seriesIndex: 0 }, [e.offsetX, e.offsetY])
+      if (result != null && Array.isArray(result) && result.length >= 1) {
+        setSelected(Math.round(result[0]))
+      }
+    })
+  }
+}
+
+function renderKline(chartDom, subDom, rawData, indicator, tabCache) {
   if (!chartDom || !rawData.length) return
   const mainChart = echarts.getInstanceByDom(chartDom) || echarts.init(chartDom)
-  const opt = buildKlineOption(rawData)
+  const opt = buildKlineOption(rawData, tabCache?.ma)
   if (opt) mainChart.setOption(opt, true)
+  let subChart = null
   if (subDom && rawData.length) {
-    const subChart = echarts.getInstanceByDom(subDom) || echarts.init(subDom)
-    const subOpt = buildSubOption(rawData, indicator)
+    subChart = echarts.getInstanceByDom(subDom) || echarts.init(subDom)
+    const subOpt = buildSubOption(rawData, indicator, tabCache?.sub)
     if (subOpt) subChart.setOption(subOpt, true)
   }
+  bindKlineHover(mainChart, subChart, rawData.length)
 }
 
 function updateKlineIndicator() {
   if (klineSubRef.value && klineData.value.length) {
     const subChart = echarts.getInstanceByDom(klineSubRef.value) || echarts.init(klineSubRef.value)
-    const opt = buildSubOption(klineData.value, klineIndicator.value)
+    const opt = buildSubOption(klineData.value, klineIndicator.value, klineCache.value?.day?.sub ?? null)
     if (opt) subChart.setOption(opt, true)
   }
 }
@@ -531,7 +902,7 @@ function updateKlineIndicator() {
 function updateKlineWeekIndicator() {
   if (klineWeekSubRef.value && klineWeekData.value.length) {
     const subChart = echarts.getInstanceByDom(klineWeekSubRef.value) || echarts.init(klineWeekSubRef.value)
-    const opt = buildSubOption(klineWeekData.value, klineWeekIndicator.value)
+    const opt = buildSubOption(klineWeekData.value, klineWeekIndicator.value, klineCache.value?.week?.sub ?? null)
     if (opt) subChart.setOption(opt, true)
   }
 }
@@ -539,7 +910,7 @@ function updateKlineWeekIndicator() {
 function updateKlineMonthIndicator() {
   if (klineMonthSubRef.value && klineMonthData.value.length) {
     const subChart = echarts.getInstanceByDom(klineMonthSubRef.value) || echarts.init(klineMonthSubRef.value)
-    const opt = buildSubOption(klineMonthData.value, klineMonthIndicator.value)
+    const opt = buildSubOption(klineMonthData.value, klineMonthIndicator.value, klineCache.value?.month?.sub ?? null)
     if (opt) subChart.setOption(opt, true)
   }
 }
@@ -549,8 +920,9 @@ async function loadDayKline() {
   try {
     const data = await fetchKlineForTab('1d', 250)
     klineData.value = data
+    klineCache.value = { ...klineCache.value, day: buildKlineCache(data) }
     await nextTick()
-    renderKline(klineChartRef.value, klineSubRef.value, data, klineIndicator.value)
+    renderKline(klineChartRef.value, klineSubRef.value, data, klineIndicator.value, klineCache.value?.day ?? null)
     nextTick(() => resizeCharts())
   } finally {
     klineLoading.value = false
@@ -562,8 +934,9 @@ async function loadWeekKline() {
   try {
     const data = await fetchKlineForTab('1w', 250)
     klineWeekData.value = data
+    klineCache.value = { ...klineCache.value, week: buildKlineCache(data) }
     await nextTick()
-    renderKline(klineWeekChartRef.value, klineWeekSubRef.value, data, klineWeekIndicator.value)
+    renderKline(klineWeekChartRef.value, klineWeekSubRef.value, data, klineWeekIndicator.value, klineCache.value?.week ?? null)
     nextTick(() => resizeCharts())
   } finally {
     klineLoading.value = false
@@ -575,8 +948,9 @@ async function loadMonthKline() {
   try {
     const data = await fetchKlineForTab('1M', 250)
     klineMonthData.value = data
+    klineCache.value = { ...klineCache.value, month: buildKlineCache(data) }
     await nextTick()
-    renderKline(klineMonthChartRef.value, klineMonthSubRef.value, data, klineMonthIndicator.value)
+    renderKline(klineMonthChartRef.value, klineMonthSubRef.value, data, klineMonthIndicator.value, klineCache.value?.month ?? null)
     nextTick(() => resizeCharts())
   } finally {
     klineLoading.value = false
@@ -649,13 +1023,14 @@ async function loadIntraday() {
 }
 
 watch(chartTab, (name) => {
+  klineHoverIndex.value = null
   if (name === 'day') loadDayKline()
   else if (name === 'week') loadWeekKline()
   else if (name === 'month') loadMonthKline()
   else if (name === 'intraday') loadIntraday()
 })
 
-// 拖拽调整左侧宽度
+// 拖拽调整左侧宽度（结束时写入 localStorage）
 function startResize(e) {
   resizing = true
   const startX = e.clientX
@@ -672,6 +1047,34 @@ function startResize(e) {
     resizing = false
     document.removeEventListener('mousemove', move)
     document.removeEventListener('mouseup', up)
+    try {
+      localStorage.setItem(STORAGE_LEFT_PANEL_WIDTH, String(leftPanelWidth.value))
+    } catch (_) {}
+  }
+  document.addEventListener('mousemove', move)
+  document.addEventListener('mouseup', up)
+}
+
+// 拖拽调整左侧上下切分（技术指标区高度，结束时写入 localStorage；拖拽过程中实时 resize 图表）
+function startResizeVertical(e) {
+  resizingVertical = true
+  const startY = e.clientY
+  const startH = leftPanelBottomHeight.value
+  function move(ev) {
+    if (!resizingVertical) return
+    const dy = startY - ev.clientY
+    const h = Math.max(80, Math.min(600, startH + dy))
+    leftPanelBottomHeight.value = h
+    nextTick(resizeChartsThrottled)
+  }
+  function up() {
+    resizingVertical = false
+    document.removeEventListener('mousemove', move)
+    document.removeEventListener('mouseup', up)
+    try {
+      localStorage.setItem(STORAGE_LEFT_PANEL_BOTTOM_HEIGHT, String(leftPanelBottomHeight.value))
+    } catch (_) {}
+    nextTick(resizeChartsThrottled)
   }
   document.addEventListener('mousemove', move)
   document.addEventListener('mouseup', up)
@@ -713,8 +1116,24 @@ function refreshCharts() {
   fetchQuote()
 }
 
+let resizeObserver = null
+const RESIZE_THROTTLE_MS = 120
+let resizeThrottleTimer = null
+function resizeChartsThrottled() {
+  if (resizeThrottleTimer != null) return
+  resizeThrottleTimer = setTimeout(() => {
+    resizeThrottleTimer = null
+    resizeCharts()
+  }, RESIZE_THROTTLE_MS)
+}
 onMounted(async () => {
-  window.addEventListener('resize', resizeCharts)
+  window.addEventListener('resize', resizeChartsThrottled)
+  if (panelLeftRef.value && typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => {
+      nextTick(resizeChartsThrottled)
+    })
+    resizeObserver.observe(panelLeftRef.value)
+  }
   await fetchSecurityInfo()
   await fetchQuote()
   if (chartTab.value === 'intraday') loadIntraday()
@@ -735,7 +1154,12 @@ function resizeCharts() {
 }
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', resizeCharts)
+  if (resizeThrottleTimer != null) clearTimeout(resizeThrottleTimer)
+  window.removeEventListener('resize', resizeChartsThrottled)
+  if (resizeObserver && panelLeftRef.value) {
+    resizeObserver.unobserve(panelLeftRef.value)
+    resizeObserver = null
+  }
   if (intradayChart) { intradayChart.dispose(); intradayChart = null }
   if (intradayVolChart) { intradayVolChart.dispose(); intradayVolChart = null }
   ;[klineChartRef, klineSubRef, klineWeekChartRef, klineWeekSubRef, klineMonthChartRef, klineMonthSubRef].forEach(refEl => {
@@ -840,6 +1264,26 @@ onBeforeUnmount(() => {
   background: #0d0d0d;
 }
 
+.panel-left-inner {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* K 线/分时 主图与副图之间的可拖拽分割条 */
+.resizer-kline {
+  height: 6px;
+  flex-shrink: 0;
+  background: #262626;
+  cursor: row-resize;
+}
+
+.resizer-kline:hover {
+  background: #404040;
+}
+
 .panel-left[style*="100%"] {
   border-right: none;
 }
@@ -911,12 +1355,15 @@ onBeforeUnmount(() => {
 .chart-tabs :deep(.el-tab-pane) {
   height: 100%;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .intraday-wrap {
   display: flex;
-  height: 100%;
-  min-height: 400px;
+  flex: 1;
+  min-height: 0;
 }
 
 .intraday-charts {
@@ -926,15 +1373,21 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.chart-half {
+.chart-half.chart-price {
   flex: 1;
-  min-height: 180px;
+  min-height: 0;
+}
+
+.chart-half.chart-volume {
+  flex-shrink: 0;
+  min-height: 80px;
+  overflow: hidden;
 }
 
 .chart-dom {
   width: 100%;
   height: 100%;
-  min-height: 160px;
+  min-height: 0;
 }
 
 .intraday-side {
@@ -985,19 +1438,65 @@ onBeforeUnmount(() => {
 .kline-wrap {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 400px;
+  flex: 1;
+  min-height: 0;
   padding: 0;
+}
+
+.kline-data-panel {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #e0e0e0;
+  background: #0d0d0d;
+  border-bottom: 1px solid #262626;
+}
+
+.kline-data-panel-sub {
+  border-bottom: none;
+  border-top: 1px solid #262626;
+}
+
+.kline-data-row1,
+.kline-data-row2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  width: 100%;
+}
+
+.kline-data-row2 {
+  margin-top: 2px;
+}
+
+.kline-data-item {
+  color: #e0e0e0;
+}
+
+.kline-main-area {
+  flex: 1;
+  min-height: 0;
 }
 
 .kline-chart-dom {
   flex: 1;
-  min-height: 200px;
+  min-height: 0;
 }
 
 .kline-indicator {
   flex-shrink: 0;
   padding: 2px 8px;
+}
+
+.kline-sub-dom {
+  flex-shrink: 0;
+  min-height: 80px;
+  overflow: hidden;
 }
 
 .security-detail :deep(.kline-indicator .el-radio-button__inner) {
