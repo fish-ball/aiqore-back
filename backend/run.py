@@ -21,6 +21,6 @@ if __name__ == "__main__":
         port=8000,
         reload=settings.DEBUG,
         # 确保uvicorn使用UTF-8编码
-        log_config=None  # 使用默认日志配置，但确保编码正确
+        # log_config=None  # 使用默认日志配置，但确保编码正确
     )
 

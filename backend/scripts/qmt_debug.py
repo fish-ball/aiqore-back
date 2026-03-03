@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 通过 get_market_data(period='tick') 获取分笔数据的调试脚本。
-运行：在项目根目录执行 uv run python scripts/qmt_debug.py [标的] [日期]
+运行：在 backend 目录执行 uv run python scripts/qmt_debug.py [标的] [日期]
 示例：uv run python scripts/qmt_debug.py 000001.SZ 20260224
 需配置 XT_QUANT_PATH 环境变量或 app 中数据源连接。
 """

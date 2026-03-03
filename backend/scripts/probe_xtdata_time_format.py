@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 探测 adapter.get_klines_data 返回的 time 列实际类型与值，便于统一归一化逻辑。
-运行：在项目根目录执行 uv run python scripts/probe_xtdata_time_format.py
+运行：在 backend 目录执行 uv run python scripts/probe_xtdata_time_format.py
 需配置环境或修改下方 XT_QUANT_PATH。
 """
 import sys

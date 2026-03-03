@@ -98,10 +98,10 @@ frontend/
 
 1. **启动后端服务**
    ```bash
-   # 在项目根目录
-   python run.py
+   cd backend
+   uv run python run.py
    # 或
-   uvicorn app.main:app --reload
+   uv run uvicorn app.main:app --reload
    ```
 
 2. **启动前端服务**

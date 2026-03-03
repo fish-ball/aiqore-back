@@ -4,12 +4,38 @@
 
 ## 快速开始
 
-1. **安装 UV 并同步依赖**：`uv sync`
-2. **配置环境**：复制 `.env.example` 为 `.env` 并填写
-3. **初始化数据库**：`uv run python init_db.py` 或 `uv run alembic upgrade head`
-4. **启动后端**：`uv run python run.py` 或 `start_server.bat`（默认 http://localhost:8000）
-5. **启动前端**：`cd frontend && npm install && npm run dev`（默认 http://localhost:3000）
-6. **异步任务（可选）**：先启动 Redis，再 `uv run celery -A app.celery_app worker --loglevel=info --pool=solo` 或 `start_celery_worker.bat`
+1. **安装 UV 并同步依赖（后端）**：
+   ```bash
+   cd backend
+   uv sync
+   ```
+2. **配置环境（后端）**：在 `backend` 目录下复制 `.env.example` 为 `.env` 并填写
+3. **初始化数据库（后端）**：
+   ```bash
+   cd backend
+   uv run python init_db.py
+   # 或
+   uv run alembic upgrade head
+   ```
+4. **启动后端**（默认 http://localhost:8000）：
+   ```bash
+   cd backend
+   uv run python run.py
+   # 或（Windows）
+   start_server.bat
+   ```
+5. **启动前端**（默认 http://localhost:3000）：
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+6. **异步任务（可选）**：先启动 Redis，然后在 `backend` 目录执行：
+   ```bash
+   uv run celery -A app.celery_app worker --loglevel=info --pool=solo
+   # 或（Windows）
+   start_celery_worker.bat
+   ```
 
 API 文档：http://localhost:8000/docs 、 http://localhost:8000/redoc
 
