@@ -9,6 +9,7 @@ import SecurityDetail from '../views/SecurityDetail.vue'
 import Sectors from '../views/Sectors.vue'
 import DataSourceConnections from '../views/DataSourceConnections.vue'
 import DataSourceDebug from '../views/DataSourceDebug.vue'
+import TaskManager from '../views/TaskManager.vue'
 
 const routes = [
   {
@@ -64,6 +65,11 @@ const routes = [
     path: '/data-sources/debug/:id',
     name: 'DataSourceDebug',
     component: DataSourceDebug
+  },
+  {
+    path: '/tasks',
+    name: 'TaskManager',
+    component: TaskManager
   }
 ]
 

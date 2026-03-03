@@ -1,5 +1,8 @@
-"""异步任务模块"""
-from app.tasks.security_tasks import update_securities_task
+"""异步任务模块
 
-__all__ = ["update_securities_task"]
+导入具体任务模块，以便 Celery 能够发现并注册其中定义的任务。
+"""
 
+from . import security_tasks  # noqa: F401
+
+__all__ = ["security_tasks"]

@@ -7,6 +7,7 @@ import logging
 from app.database import get_db
 from app.services.security_service import security_service
 from app.models.security import Security
+from app.utils.task_manager import save_task_info
 
 
 class UpdateSecuritiesBody(BaseModel):
@@ -56,7 +57,20 @@ async def update_securities(body: UpdateSecuritiesBody):
         task = task_update_bulk_security_info.delay(
             body.market, body.sector, body.source_type or "qmt", body.source_id
         )
-        
+
+        # 记录任务信息，便于任务管理页面统一展示
+        save_task_info(
+            task_id=task.id,
+            task_name="update_bulk_security_info",
+            celery_name="task_update_bulk_security_info",
+            params={
+                "market": body.market,
+                "sector": body.sector,
+                "source_type": body.source_type or "qmt",
+                "source_id": body.source_id,
+            },
+        )
+
         return {
             "code": 0,
             "data": {
@@ -222,6 +236,19 @@ def update_security_data(body: UpdateDataBody, db: Session = Depends(get_db)):
             source_type=source_type,
             source_id=source_id,
             force_update=False,
+        )
+
+        # 记录任务信息，便于任务管理页面统一展示
+        save_task_info(
+            task_id=task.id,
+            task_name="update_single_security_all_data",
+            celery_name="task_update_single_security_all_data",
+            params={
+                "symbol": symbol,
+                "source_type": source_type,
+                "source_id": source_id,
+                "force_update": False,
+            },
         )
 
         return {

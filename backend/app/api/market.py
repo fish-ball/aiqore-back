@@ -4,6 +4,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.services.market_service import market_service
 from app.database import get_db
+from app.utils.task_manager import save_task_info
 
 router = APIRouter(prefix="/api/market", tags=["行情"])
 
@@ -77,6 +78,24 @@ async def get_kline(
                 source_id=None,
                 force_update=False,
             )
+
+            # 记录任务信息
+            save_task_info(
+                task_id=task.id,
+                task_name="update_single_security_kdata",
+                celery_name="task_update_single_security_kdata",
+                params={
+                    "symbol": symbol,
+                    "security_type": security_type,
+                    "period": period,
+                    "start_date": start_d,
+                    "end_date": end_d,
+                    "source_type": "qmt",
+                    "source_id": None,
+                    "force_update": False,
+                },
+            )
+
             return {
                 "code": 0,
                 "data": {
@@ -112,6 +131,22 @@ async def get_kline(
                 source_id=None,
                 force_update=False,
             )
+
+            # 记录任务信息
+            save_task_info(
+                task_id=task.id,
+                task_name="update_single_security_tick_for_date",
+                celery_name="task_update_single_security_tick_for_date",
+                params={
+                    "symbol": symbol,
+                    "trade_date": trade_date,
+                    "security_type": security_type,
+                    "source_type": "qmt",
+                    "source_id": None,
+                    "force_update": False,
+                },
+            )
+
             return {
                 "code": 0,
                 "data": {
@@ -199,6 +234,22 @@ async def get_ticks(
             source_id=None,
             force_update=False,
         )
+
+        # 记录任务信息
+        save_task_info(
+            task_id=task.id,
+            task_name="update_single_security_tick_for_date",
+            celery_name="task_update_single_security_tick_for_date",
+            params={
+                "symbol": symbol,
+                "trade_date": trade_date,
+                "security_type": security_type,
+                "source_type": "qmt",
+                "source_id": None,
+                "force_update": False,
+            },
+        )
+
         return {
             "code": 0,
             "data": {

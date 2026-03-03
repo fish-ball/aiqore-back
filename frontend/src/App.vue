@@ -86,6 +86,10 @@
             <el-icon><Connection /></el-icon>
             <span>数据源连接</span>
           </el-menu-item>
+          <el-menu-item index="/tasks">
+            <el-icon><Timer /></el-icon>
+            <span>任务管理</span>
+          </el-menu-item>
           <el-menu-item index="/analysis">
             <el-icon><DataAnalysis /></el-icon>
             <span>数据分析</span>
