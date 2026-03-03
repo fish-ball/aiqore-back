@@ -188,7 +188,7 @@ async def get_securities(
 
 
 @router.post("/update-data")
-async def update_security_data(body: UpdateDataBody, db: Session = Depends(get_db)):
+def update_security_data(body: UpdateDataBody, db: Session = Depends(get_db)):
     """
     按指定数据源拉取并补全单个证券的本地缓存数据：全量日线、周线、月线（按 metadata.yaml 补全尚未下载的区间），
     以及全量分时（按日线交易日列表，补全尚未下载的 ticks/YYYYMMDD.parquet）。接口执行后 data 目录下会产生对应 parquet 与 metadata.yaml。
