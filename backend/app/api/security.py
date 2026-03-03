@@ -41,10 +41,10 @@ async def update_securities(body: UpdateSecuritiesBody):
     从数据源更新证券基础信息（异步任务，经抽象层，可指定数据源连接）
     """
     try:
-        from app.tasks.security_tasks import update_securities_task
+        from app.tasks.security_tasks import task_update_bulk_security_info
         from app.utils.task_lock import check_task_lock
 
-        task_name = "update_securities"
+        task_name = "task_update_bulk_security_info"
         is_locked, lock_message = check_task_lock(task_name)
 
         if is_locked:
@@ -53,7 +53,7 @@ async def update_securities(body: UpdateSecuritiesBody):
                 detail=lock_message or f"任务 '{task_name}' 正在运行中，请等待完成后再试"
             )
 
-        task = update_securities_task.delay(
+        task = task_update_bulk_security_info.delay(
             body.market, body.sector, body.source_type or "qmt", body.source_id
         )
         
@@ -190,82 +190,79 @@ async def get_securities(
 @router.post("/update-data")
 def update_security_data(body: UpdateDataBody, db: Session = Depends(get_db)):
     """
-    按指定数据源拉取并补全单个证券的本地缓存数据：全量日线、周线、月线（按 metadata.yaml 补全尚未下载的区间），
-    以及全量分时（按日线交易日列表，补全尚未下载的 ticks/YYYYMMDD.parquet）。接口执行后 data 目录下会产生对应 parquet 与 metadata.yaml。
+    按指定数据源拉取并补全单个证券的本地缓存数据（异步任务）：
+    - 全量日线、周线、月线（按 metadata.yaml 补全尚未下载的区间）；
+    - 全量分时（按日线交易日列表，补全尚未下载的 ticks/YYYYMMDD.parquet）。
+    提交任务后立即返回 task_id，由前端轮询任务状态。
     """
-    from datetime import datetime
-    from app.services.data_source.cache import (
-        get_daily,
-        get_weekly,
-        get_monthly,
-        get_ticks,
-        get_security_dir,
-        get_dates_from_daily_parquet,
-    )
-    from app.services.data_source.sync import _resolve_config
-    from app.services.data_source.adapter import get_adapter
-    from app.services.security_service import security_service
-    from app.config import settings
-
-    symbol = body.symbol
-    source_type = body.source_type or "qmt"
-    source_id = body.source_id
-
-    security = security_service.get_security_by_symbol(db, symbol)
-    if not security:
-        raise HTTPException(status_code=404, detail="证券不存在")
-    security_type = security.security_type or "股票"
-    list_dt = security.list_date
-    if list_dt:
-        start_date = list_dt.strftime("%Y-%m-%d")
-    else:
-        start_date = "1990-01-01"
-    end_date = datetime.now().strftime("%Y-%m-%d")
-
-    config, err = _resolve_config(db, source_type or "qmt", source_id)
-    if err is not None:
-        raise HTTPException(status_code=400, detail=err)
-    adapter = get_adapter(source_type or "qmt", config)
-
-    # 确保 data 根目录与标的目录存在
-    data_root = settings.DATA_ROOT_PATH
-    data_root.mkdir(parents=True, exist_ok=True)
-    security_dir = get_security_dir(security_type, symbol)
-    security_dir.mkdir(parents=True, exist_ok=True)
-
-    result = {"symbol": symbol, "daily": 0, "weekly": 0, "monthly": 0, "ticks_dates": 0}
     try:
-        # 按 meta 补全日线、周线、月线（不强制全量，只拉缺失区间）
-        daily_rows = get_daily(security_type, symbol, start_date, end_date, force_update=False, adapter=adapter)
-        result["daily"] = len(daily_rows)
-        weekly_rows = get_weekly(security_type, symbol, start_date, end_date, force_update=False, adapter=adapter)
-        result["weekly"] = len(weekly_rows)
-        monthly_rows = get_monthly(security_type, symbol, start_date, end_date, force_update=False, adapter=adapter)
-        result["monthly"] = len(monthly_rows)
-    except Exception as e:
-        logger.exception("拉取 K 线失败: %s", e)
-        raise HTTPException(status_code=500, detail=f"拉取 K 线失败: {str(e)}")
+        from app.tasks.security_tasks import task_update_single_security_all_data
+        from app.utils.task_lock import check_task_lock
 
-    # 按日线 parquet 中的交易日补全分时（仅补尚未下载的日期）
-    try:
-        dates = get_dates_from_daily_parquet(security_type, symbol)
-        tick_count = 0
-        for d in dates:
-            try:
-                rows = get_ticks(security_type, symbol, d, force_update=False, adapter=adapter)
-                if rows:
-                    tick_count += 1
-            except Exception as e:
-                logger.warning("拉取分时 %s 失败: %s", d, e)
-        result["ticks_dates"] = tick_count
-    except Exception as e:
-        logger.warning("补全分时失败: %s", e)
+        symbol = body.symbol
+        source_type = body.source_type or "qmt"
+        source_id = body.source_id
 
-    # 若未拉到任何 K 线，在 data 中带提示，前端可据此提示用户
-    total_kline = result["daily"] + result["weekly"] + result["monthly"]
-    if total_kline == 0:
-        result["hint"] = "未获取到任何 K 线数据，请确认数据源（QMT）已连接且标的代码正确（如 300760.SZ）"
-    return {"code": 0, "data": result, "message": "success"}
+        # 校验证券是否存在，避免提交无效任务
+        sec = security_service.get_security_by_symbol(db, symbol)
+        if not sec:
+            raise HTTPException(status_code=404, detail="证券不存在")
+
+        # 针对单个标的做任务锁，避免重复提交
+        task_name = f"task_update_single_security_all_data:{symbol}"
+        is_locked, lock_message = check_task_lock(task_name)
+        if is_locked:
+            raise HTTPException(
+                status_code=409,
+                detail=lock_message or f"任务 '{task_name}' 正在运行中，请等待完成后再试",
+            )
+
+        task = task_update_single_security_all_data.delay(
+            symbol=symbol,
+            source_type=source_type,
+            source_id=source_id,
+            force_update=False,
+        )
+
+        return {
+            "code": 0,
+            "data": {
+                "task_id": task.id,
+                "status": "PENDING",
+            },
+            "message": "任务已提交，正在后台处理",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"提交单证券数据更新任务失败: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"提交任务失败: {str(e)}")
+
+
+@router.get("/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    """
+    根据 Celery task_id 查询任务状态与进度。
+    """
+    from app.celery_app import celery_app
+
+    async_result = celery_app.AsyncResult(task_id)
+    state = async_result.state
+    info = async_result.info
+    meta = info if isinstance(info, dict) else {"result": info}
+
+    return {
+        "code": 0,
+        "data": {
+            "task_id": task_id,
+            "state": state,
+            "meta": meta,
+        },
+        "message": "success",
+    }
 
 
 @router.get("/search")

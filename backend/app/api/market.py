@@ -1,5 +1,5 @@
 """行情API"""
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Query, Depends, HTTPException
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.services.market_service import market_service
@@ -35,13 +35,18 @@ async def get_kline(
     db: Session = Depends(get_db),
 ):
     """
-    获取K线/分时数据。默认直接读取本地 data 目录下的 parquet（1d/1w/1M 为 daily/weekly/monthly.parquet，1m 单日为 ticks/YYYYMMDD.parquet）；
-    无数据或 force_update=true 时从数据源拉取并写入 parquet 后返回。
+    获取K线/分时数据。
+    - 当 `force_update=false` 时：直接读取本地 data 目录下的 parquet（1d/1w/1M 为 daily/weekly/monthly.parquet，1m 单日为 ticks/YYYYMMDD.parquet）；
+    - 当 `force_update=true` 时：提交对应 Celery 任务更新数据并返回 task_id，由前端轮询任务状态后再调用本接口获取数据。
     """
     from datetime import datetime, timedelta
     from app.services.data_source.cache import get_daily, get_weekly, get_monthly, get_ticks
     from app.services.data_source import get_default_qmt_adapter
     from app.services.security_service import security_service
+    from app.tasks.security_tasks import (
+        task_update_single_security_kdata,
+        task_update_single_security_tick_for_date,
+    )
 
     # 缺省 start_date/end_date 时返回全部 K 线，由前端控制显示范围
     end_d = end_date
@@ -54,28 +59,70 @@ async def get_kline(
             start_dt = end_dt - timedelta(days=min(365 * 2, max(1, count)))
             start_d = start_dt.strftime("%Y-%m-%d")
 
+    # 日/周/月 K 线
     if period in ("1d", "1w", "1M"):
         security_type = "股票"
         sec = security_service.get_security_by_symbol(db, symbol)
         if sec and sec.security_type:
             security_type = sec.security_type
+
+        if force_update:
+            task = task_update_single_security_kdata.delay(
+                symbol=symbol,
+                security_type=security_type,
+                period=period,
+                start_date=start_d,
+                end_date=end_d,
+                source_type="qmt",
+                source_id=None,
+                force_update=False,
+            )
+            return {
+                "code": 0,
+                "data": {
+                    "task_id": task.id,
+                    "status": "PENDING",
+                },
+                "message": "任务已提交，正在后台处理",
+            }
+
         adapter = get_default_qmt_adapter()
         if period == "1d":
-            data = get_daily(security_type, symbol, start_d, end_d, force_update=force_update, adapter=adapter)
+            data = get_daily(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
         elif period == "1w":
-            data = get_weekly(security_type, symbol, start_d, end_d, force_update=force_update, adapter=adapter)
+            data = get_weekly(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
         else:
-            data = get_monthly(security_type, symbol, start_d, end_d, force_update=force_update, adapter=adapter)
+            data = get_monthly(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
         return {"code": 0, "data": data, "message": "success"}
 
+    # 1 分钟分时（按单日 ticks）
     if period == "1m":
         trade_date = (end_d or start_d or datetime.now().strftime("%Y-%m-%d")) if (start_d or end_d) else datetime.now().strftime("%Y-%m-%d")
         security_type = "股票"
         sec = security_service.get_security_by_symbol(db, symbol)
         if sec and sec.security_type:
             security_type = sec.security_type
+
+        if force_update:
+            task = task_update_single_security_tick_for_date.delay(
+                symbol=symbol,
+                trade_date=trade_date,
+                security_type=security_type,
+                source_type="qmt",
+                source_id=None,
+                force_update=False,
+            )
+            return {
+                "code": 0,
+                "data": {
+                    "task_id": task.id,
+                    "status": "PENDING",
+                },
+                "message": "任务已提交，正在后台处理",
+            }
+
         adapter = get_default_qmt_adapter()
-        data = get_ticks(security_type, symbol, trade_date, force_update=force_update, adapter=adapter)
+        data = get_ticks(security_type, symbol, trade_date, force_update=False, adapter=adapter)
         return {"code": 0, "data": data, "message": "success"}
 
     data = market_service.get_kline_data(symbol, period, count, start_date, end_date)
@@ -129,19 +176,40 @@ async def get_ticks(
     db: Session = Depends(get_db),
 ):
     """
-    获取指定交易日的分笔数据，原样返回 tick 列表（每项含 time、lastClose、amount 等）。
-    用于分时图等展示；数据来自 cache，与 get_ticks_data 落盘格式一致。
+    获取指定交易日的分笔数据。
+    - 当 `force_update=false` 时：直接从本地 parquet 读取并返回。
+    - 当 `force_update=true` 时：提交 Celery 任务拉取并写入 parquet，返回 task_id。
     """
     from app.services.data_source.cache import get_ticks as cache_get_ticks
     from app.services.data_source import get_default_qmt_adapter
     from app.services.security_service import security_service
+    from app.tasks.security_tasks import task_update_single_security_tick_for_date
 
     security_type = "股票"
     sec = security_service.get_security_by_symbol(db, symbol)
     if sec and sec.security_type:
         security_type = sec.security_type
+
+    if force_update:
+        task = task_update_single_security_tick_for_date.delay(
+            symbol=symbol,
+            trade_date=trade_date,
+            security_type=security_type,
+            source_type="qmt",
+            source_id=None,
+            force_update=False,
+        )
+        return {
+            "code": 0,
+            "data": {
+                "task_id": task.id,
+                "status": "PENDING",
+            },
+            "message": "任务已提交，正在后台处理",
+        }
+
     adapter = get_default_qmt_adapter()
-    data = cache_get_ticks(security_type, symbol, trade_date, force_update=force_update, adapter=adapter)
+    data = cache_get_ticks(security_type, symbol, trade_date, force_update=False, adapter=adapter)
     data = _ticks_to_jsonable(data)
     return {"code": 0, "data": data, "message": "success"}
 
