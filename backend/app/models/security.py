@@ -15,7 +15,7 @@ class Security(Base):
     __tablename__ = "securities"
 
     id = Column(Integer, primary_key=True, index=True)
-    symbol = Column(String(20), unique=True, nullable=False, index=True, comment="证券代码，如 000001.SZ")
+    symbol = Column(String(64), unique=True, nullable=False, index=True, comment="证券代码，如 000001.SZ")
     name = Column(String(100), nullable=False, comment="证券名称")
     market = Column(String(10), nullable=False, comment="市场，如 SZ, SH")
     security_type = Column(String(20), nullable=False, default="股票", comment="证券类型：股票、基金、债券等")

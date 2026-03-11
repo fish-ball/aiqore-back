@@ -286,22 +286,18 @@ def task_update_single_security_tick_full(
         db.close()
 
 
-@celery_app.task(bind=True, name="task_update_single_security_all_data")
-def task_update_single_security_all_data(
-    self,
+def _update_single_security_all_data_core(
     symbol: str,
     source_type: str = "qmt",
     source_id: Optional[int] = None,
     force_update: bool = False,
-):
-    """单个证券的全量数据更新（K 线 + 分时）。"""
+) -> Dict[str, Any]:
+    """单个证券全量数据更新核心逻辑（供 Celery 任务与串行调用复用，不直接更新任务状态）。"""
     db = SessionLocal()
     try:
         security = security_service.get_security_by_symbol(db, symbol)
         if not security:
-            result = _build_error_result("证券不存在", {"symbol": symbol})
-            self.update_state(state="SUCCESS", meta={"status": "证券不存在", "result": result})
-            return result
+            return _build_error_result("证券不存在", {"symbol": symbol})
 
         security_type = security.security_type or "股票"
         list_dt = security.list_date
@@ -313,14 +309,7 @@ def task_update_single_security_all_data(
 
         adapter, err = _resolve_adapter(db, source_type, source_id)
         if err is not None:
-            result = _build_error_result(err, {"symbol": symbol})
-            self.update_state(state="SUCCESS", meta={"status": "配置解析失败", "result": result})
-            return result
-
-        self.update_state(
-            state="PROGRESS",
-            meta={"current": 0, "total": 0, "status": "开始更新 K 线数据..."},
-        )
+            return _build_error_result(err, {"symbol": symbol})
 
         daily_result = _update_single_security_kdata_core(
             adapter=adapter,
@@ -350,11 +339,6 @@ def task_update_single_security_all_data(
             force_update=force_update,
         )
 
-        self.update_state(
-            state="PROGRESS",
-            meta={"current": 0, "total": 0, "status": "开始补全分时数据..."},
-        )
-
         tick_result = _update_single_security_tick_full_core(
             adapter=adapter,
             security_type=security_type,
@@ -362,7 +346,7 @@ def task_update_single_security_all_data(
             force_update=force_update,
         )
 
-        result = {
+        return {
             "success": True,
             "message": "更新完成",
             "symbol": symbol,
@@ -372,9 +356,36 @@ def task_update_single_security_all_data(
             "monthly": monthly_result.get("rows", 0),
             "ticks_dates": tick_result.get("ticks_dates", 0),
         }
+    finally:
+        db.close()
+
+
+@celery_app.task(bind=True, name="task_update_single_security_all_data")
+def task_update_single_security_all_data(
+    self,
+    symbol: str,
+    source_type: str = "qmt",
+    source_id: Optional[int] = None,
+    force_update: bool = False,
+):
+    """单个证券的全量数据更新（K 线 + 分时，带任务进度）。"""
+    try:
+        self.update_state(
+            state="PROGRESS",
+            meta={"current": 0, "total": 0, "status": "开始更新 K 线与分时数据..."},
+        )
+
+        result = _update_single_security_all_data_core(
+            symbol=symbol,
+            source_type=source_type,
+            source_id=source_id,
+            force_update=force_update,
+        )
+
+        status = "更新完成" if result.get("success") else "更新失败"
         self.update_state(
             state="SUCCESS",
-            meta={"status": "更新完成", "result": result},
+            meta={"status": status, "result": result},
         )
         return result
     except Exception as e:
@@ -383,8 +394,6 @@ def task_update_single_security_all_data(
 
         logger.error(traceback.format_exc())
         raise
-    finally:
-        db.close()
 
 
 @celery_app.task(bind=True, name="task_update_bulk_security_all_data")
@@ -420,8 +429,8 @@ def task_update_bulk_security_all_data(
                     "status": f"正在更新 {symbol} ({current}/{total})",
                 },
             )
-            # 这里直接在当前 worker 中串行执行单证券更新，避免过多子任务调度
-            task_update_single_security_all_data(
+            # 在当前 worker 中串行执行单证券更新（调用核心逻辑，避免嵌套 Celery 状态存储导致 task_id 为空）
+            _update_single_security_all_data_core(
                 symbol=symbol,
                 source_type=source_type,
                 source_id=source_id,

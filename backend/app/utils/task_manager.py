@@ -80,6 +80,17 @@ def save_task_info(
     return info
 
 
+def _safe_result_payload(obj: Any) -> Any:
+    """将 Celery 任务返回结果转换为可序列化的形式。
+
+    - dict / list / 标量类型保持不变；
+    - 其他对象（如异常实例）转换为字符串，避免 Pydantic 序列化失败。
+    """
+    if isinstance(obj, (dict, list, str, int, float, bool)) or obj is None:
+        return obj
+    return str(obj)
+
+
 def _merge_celery_state(info: Dict[str, Any], task_id: str) -> Dict[str, Any]:
     """合并 Celery 当前状态/结果到任务信息中。"""
     try:
@@ -91,7 +102,8 @@ def _merge_celery_state(info: Dict[str, Any], task_id: str) -> Dict[str, Any]:
         if isinstance(celery_info, dict):
             info["meta"] = celery_info
         elif celery_info is not None:
-            info["meta"] = {"result": celery_info}
+            # 将异常等非标准类型转换为字符串，避免响应序列化报错
+            info["meta"] = {"result": _safe_result_payload(celery_info)}
         else:
             info.setdefault("meta", {})
     except Exception:
@@ -123,11 +135,10 @@ def get_task_info(task_id: str, with_celery_state: bool = True) -> Optional[Dict
             async_result = celery_app.AsyncResult(task_id)
             state = async_result.state
             celery_info = async_result.info
-            meta: Dict[str, Any]
             if isinstance(celery_info, dict):
-                meta = celery_info
+                meta: Dict[str, Any] = celery_info
             elif celery_info is not None:
-                meta = {"result": celery_info}
+                meta = {"result": _safe_result_payload(celery_info)}
             else:
                 meta = {}
             return {
