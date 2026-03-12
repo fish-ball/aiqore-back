@@ -13,6 +13,10 @@ from app.services.data_source.cache import (
     get_monthly,
     get_ticks,
     get_dates_from_daily_parquet,
+    get_security_dir,
+    get_divid_factors_path,
+    read_meta,
+    write_meta,
 )
 from app.services.data_source.sync import _resolve_config
 from app.services.security_service import security_service
@@ -346,6 +350,16 @@ def _update_single_security_all_data_core(
             force_update=force_update,
         )
 
+        # 除权数据：全量更新时一并拉取除权信息，写入 divid_factors.parquet
+        divid_result = _update_single_security_divid_factors_core(
+            adapter=adapter,
+            security_type=security_type,
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            force_update=force_update,
+        )
+
         return {
             "success": True,
             "message": "更新完成",
@@ -355,7 +369,121 @@ def _update_single_security_all_data_core(
             "weekly": weekly_result.get("rows", 0),
             "monthly": monthly_result.get("rows", 0),
             "ticks_dates": tick_result.get("ticks_dates", 0),
+            "divid_rows": divid_result.get("rows", 0) if divid_result.get("success") else 0,
         }
+    finally:
+        db.close()
+
+
+def _update_single_security_divid_factors_core(
+    adapter: Any,
+    security_type: str,
+    symbol: str,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    force_update: bool,
+) -> Dict[str, Any]:
+    """
+    更新单个证券的除权数据，并写入对应目录的 divid_factors.parquet。
+    目前策略较简单：每次调用都会直接从数据源获取并整体覆盖本地文件。
+    """
+    try:
+        df = None
+        if hasattr(adapter, "get_divid_factors"):
+            df = adapter.get_divid_factors(symbol, start_time=start_date, end_time=end_date)
+        if df is None:
+            return _build_error_result("数据源未返回除权数据", {"symbol": symbol})
+
+        try:
+            import pandas as pd  # noqa: F401
+        except ImportError:
+            return _build_error_result("pandas 未安装，无法写入除权数据 parquet", {"symbol": symbol})
+
+        if getattr(df, "empty", False):
+            rows_count = 0
+        else:
+            rows_count = int(len(df))
+
+        security_dir = get_security_dir(security_type, symbol)
+        path = get_divid_factors_path(security_dir)
+        security_dir.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(path, index=False)
+
+        # 在 metadata 中记录除权数据的更新时间和行数，方便后续拓展使用
+        meta = read_meta(security_dir)
+        divid_meta = meta.get("divid_factors") or {}
+        divid_meta.update(
+            {
+                "rows": rows_count,
+                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+        meta["divid_factors"] = divid_meta
+        write_meta(security_dir, meta, merge=False)
+
+        return {
+            "success": True,
+            "message": "更新完成",
+            "symbol": symbol,
+            "rows": rows_count,
+        }
+    except Exception as e:
+        logger.error(f"更新除权数据失败: {symbol}, {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        return _build_error_result("更新除权数据异常", {"symbol": symbol})
+
+
+@celery_app.task(bind=True, name="task_update_single_security_divid_factors")
+def task_update_single_security_divid_factors(
+    self,
+    symbol: str,
+    source_type: str = "qmt",
+    source_id: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    force_update: bool = False,
+):
+    """
+    拉取并落盘单个证券的除权数据。
+    - 数据来源：xtdata.get_divid_factors，经 QMTAdapter 封装。
+    - 目标路径：对应证券数据目录下的 divid_factors.parquet。
+    """
+    db = SessionLocal()
+    try:
+        security = security_service.get_security_by_symbol(db, symbol)
+        if not security:
+            result = _build_error_result("证券不存在", {"symbol": symbol})
+            self.update_state(state="SUCCESS", meta={"status": "证券不存在", "result": result})
+            return result
+
+        security_type = security.security_type or "股票"
+
+        adapter, err = _resolve_adapter(db, source_type, source_id)
+        if err is not None:
+            result = _build_error_result(err, {"symbol": symbol})
+            self.update_state(state="SUCCESS", meta={"status": "配置解析失败", "result": result})
+            return result
+
+        # 默认不指定时间范围时，数据源会返回全部除权数据
+        result = _update_single_security_divid_factors_core(
+            adapter=adapter,
+            security_type=security_type,
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            force_update=force_update,
+        )
+        status = result.get("message", "")
+        self.update_state(state="SUCCESS", meta={"status": status, "result": result})
+        return result
+    except Exception as e:
+        logger.error(f"更新除权数据任务失败: {symbol}, {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        raise
     finally:
         db.close()
 

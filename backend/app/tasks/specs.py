@@ -85,7 +85,7 @@ _register(
         name="update_single_security_all_data",
         celery_name="task_update_single_security_all_data",
         title="更新单个证券全量数据",
-        description="更新单个证券的日/周/月 K 线及全部分时数据。",
+        description="更新单个证券的日/周/月 K 线、全部分时数据以及除权数据。",
         category="security",
         params=[
             TaskParamSpec(
@@ -285,7 +285,7 @@ _register(
         name="update_bulk_security_all_data",
         celery_name="task_update_bulk_security_all_data",
         title="批量更新证券全量数据",
-        description="批量更新指定类型证券（或给定列表）的日/周/月 K 线及分时数据。",
+        description="批量更新指定类型证券（或给定列表）的日/周/月 K 线、分时数据以及除权数据。",
         category="security",
         params=[
             TaskParamSpec(
@@ -321,6 +321,59 @@ _register(
                 required=False,
                 default=False,
                 description="是否强制重新拉取并覆盖本地缓存。",
+            ),
+        ],
+    )
+)
+
+_register(
+    TaskSpec(
+        name="update_single_security_divid_factors",
+        celery_name="task_update_single_security_divid_factors",
+        title="更新单个证券除权数据",
+        description="拉取并落盘单个证券的除权数据，写入对应目录的 divid_factors.parquet。",
+        category="security",
+        params=[
+            TaskParamSpec(
+                name="symbol",
+                type="string",
+                required=True,
+                description="证券代码，例如 000001.SZ。",
+            ),
+            TaskParamSpec(
+                name="source_type",
+                type="string",
+                required=False,
+                default="qmt",
+                description="数据源类型，例如 qmt。",
+            ),
+            TaskParamSpec(
+                name="source_id",
+                type="integer",
+                required=False,
+                default=None,
+                description="数据源连接 ID，未指定时使用默认连接。",
+            ),
+            TaskParamSpec(
+                name="start_date",
+                type="string",
+                required=False,
+                default=None,
+                description="开始日期，格式 YYYY-MM-DD；为空时由数据源决定默认范围。",
+            ),
+            TaskParamSpec(
+                name="end_date",
+                type="string",
+                required=False,
+                default=None,
+                description="结束日期，格式 YYYY-MM-DD；为空时由数据源决定默认范围。",
+            ),
+            TaskParamSpec(
+                name="force_update",
+                type="boolean",
+                required=False,
+                default=False,
+                description="是否强制重新拉取并覆盖本地除权数据。",
             ),
         ],
     )

@@ -469,6 +469,29 @@ class QMTAdapter(SecuritiesDataSourceAdapter):
             logger.error("获取分笔数据失败 %s %s: %s", symbol, trade_date_flat, e)
             return None
 
+    def get_divid_factors(
+        self,
+        symbol: str,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+    ) -> Optional[Any]:
+        """
+        获取除权数据，直接封装 xtdata.get_divid_factors。
+        start_time/end_time 支持 YYYY-MM-DD 或 YYYYMMDD，内部转换为 xtdata 需要的格式。
+        """
+        xtdata = self._get_xtdata()
+        if not hasattr(xtdata, "get_divid_factors"):
+            logger.warning("当前 xtdata 版本不支持 get_divid_factors，无法获取除权数据")
+            return None
+        st = _to_xtdata_time(start_time) if start_time else ""
+        et = _to_xtdata_time(end_time) if end_time else ""
+        try:
+            df = xtdata.get_divid_factors(symbol, start_time=st or "", end_time=et or "")
+            return df
+        except Exception as e:
+            logger.error("获取除权数据失败 %s: %s", symbol, e)
+            return None
+
     def get_realtime_quote(self, symbols: List[str]) -> Optional[Dict[str, Dict[str, Any]]]:
         xtdata = self._get_xtdata()
         try:

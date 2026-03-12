@@ -69,6 +69,11 @@ def get_ticks_path(security_dir: Path, trade_date_yyyymmdd: str) -> Path:
     return get_ticks_dir(security_dir) / f"{trade_date_yyyymmdd}.parquet"
 
 
+def get_divid_factors_path(security_dir: Path) -> Path:
+    """除权数据文件路径：divid_factors.parquet。"""
+    return security_dir / "divid_factors.parquet"
+
+
 def get_meta_path(security_dir: Path) -> Path:
     return security_dir / "metadata.yaml"
 

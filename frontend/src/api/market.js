@@ -29,6 +29,12 @@ export const marketApi = {
     })
   },
 
+  getDividFactors(symbol) {
+    return api.get('/market/divid-factors', {
+      params: { symbol }
+    })
+  },
+
   searchStocks(keyword) {
     return api.get('/market/search', {
       params: { keyword }

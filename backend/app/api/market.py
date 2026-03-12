@@ -265,6 +265,45 @@ async def get_ticks(
     return {"code": 0, "data": data, "message": "success"}
 
 
+@router.get("/divid-factors")
+async def get_divid_factors(
+    symbol: str = Query(..., description="证券代码"),
+    db: Session = Depends(get_db),
+):
+    """
+    获取单个证券的除权除息数据。
+    - 数据来源：本地 data 目录下对应证券目录中的 divid_factors.parquet；
+    - 若文件不存在，则返回空列表。
+    """
+    from pathlib import Path
+    from app.services.data_source.cache import get_security_dir, get_divid_factors_path
+    from app.services.security_service import security_service
+
+    security_type = "股票"
+    sec = security_service.get_security_by_symbol(db, symbol)
+    if sec and sec.security_type:
+        security_type = sec.security_type
+
+    security_dir = get_security_dir(security_type, symbol)
+    path = get_divid_factors_path(security_dir)
+    if not isinstance(path, Path):
+        path = Path(path)
+    if not path.is_file():
+        return {"code": 0, "data": [], "message": "success"}
+
+    try:
+        import pandas as pd
+
+        df = pd.read_parquet(path)
+        if df is None or df.empty:
+            data = []
+        else:
+            data = df.to_dict("records")
+        return {"code": 0, "data": data, "message": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取除权数据失败: {e}")
+
+
 @router.get("/search")
 async def search_stocks(
     keyword: str = Query(..., description="搜索关键词"),

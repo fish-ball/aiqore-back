@@ -30,159 +30,23 @@
       <!-- 左侧面板：行情（K线在上、技术指标在下，中间可拖拽） -->
       <div
         v-show="layoutMode !== 'right'"
-        ref="panelLeftRef"
         class="panel-left"
         :style="{ width: layoutMode === 'left' ? '100%' : leftPanelWidthPx }"
       >
         <div class="panel-left-inner">
           <el-tabs v-model="chartTab" class="chart-tabs">
-          <el-tab-pane label="分时" name="intraday">
-            <div class="intraday-wrap">
-              <div class="intraday-charts">
-                <div class="chart-half chart-price">
-                  <div ref="intradayChartRef" class="chart-dom"></div>
-                </div>
-                <div class="resizer-kline" @mousedown="startResizeVertical"> </div>
-                <div class="chart-half chart-volume" :style="{ height: leftPanelBottomHeight + 'px' }">
-                  <div ref="intradayVolRef" class="chart-dom"></div>
-                </div>
-              </div>
-              <div class="intraday-side">
-                <!-- 待接口：五档盘口（可考虑从 get_full_tick 扩展） -->
-                <div class="side-block">
-                  <el-table :data="fiveLevelPlaceholder" size="small" class="five-level-table" :show-header="false">
-                    <el-table-column prop="label" width="56" />
-                    <el-table-column prop="price" />
-                    <el-table-column prop="vol" />
-                  </el-table>
-                </div>
-                <!-- 待接口：最新成交 -->
-                <div class="side-block">
-                  <div class="trade-placeholder">最新成交 - 待接口</div>
-                </div>
-              </div>
-            </div>
-          </el-tab-pane>
-          <el-tab-pane label="日K" name="day">
-            <div class="kline-wrap">
-              <div class="kline-data-panel kline-data-panel-top">
-                <div class="kline-data-row1">
-                  <span class="kline-data-item">日期 {{ displayKlineOHLC.date }}</span>
-                  <span class="kline-data-item">开盘 {{ displayKlineOHLC.open }}</span>
-                  <span class="kline-data-item">收盘 {{ displayKlineOHLC.close }}</span>
-                  <span class="kline-data-item">最高 {{ displayKlineOHLC.high }}</span>
-                  <span class="kline-data-item">最低 {{ displayKlineOHLC.low }}</span>
-                </div>
-                <div class="kline-data-row2">
-                  <span class="kline-data-item">MA5 {{ displayKlineOHLC.ma5 }}</span>
-                  <span class="kline-data-item">MA10 {{ displayKlineOHLC.ma10 }}</span>
-                  <span class="kline-data-item">MA20 {{ displayKlineOHLC.ma20 }}</span>
-                  <span class="kline-data-item">MA30 {{ displayKlineOHLC.ma30 }}</span>
-                  <span class="kline-data-item">MA60 {{ displayKlineOHLC.ma60 }}</span>
-                  <span class="kline-data-item">MA120 {{ displayKlineOHLC.ma120 }}</span>
-                  <span class="kline-data-item">MA250 {{ displayKlineOHLC.ma250 }}</span>
-                </div>
-              </div>
-              <div class="kline-main-area">
-                <div ref="klineChartRef" class="chart-dom kline-chart-dom"></div>
-              </div>
-              <div class="resizer-kline" @mousedown="startResizeVertical"> </div>
-              <div class="kline-indicator">
-                <el-radio-group v-model="klineIndicator" size="small" @change="updateKlineIndicator">
-                  <el-radio-button value="volume">成交量</el-radio-button>
-                  <el-radio-button value="amount">成交额</el-radio-button>
-                  <el-radio-button value="kdj">KDJ</el-radio-button>
-                  <el-radio-button value="rsi">RSI</el-radio-button>
-                  <el-radio-button value="macd">MACD</el-radio-button>
-                </el-radio-group>
-              </div>
-              <div class="kline-data-panel kline-data-panel-sub">
-                <span class="kline-data-item">日期 {{ displaySubIndicator.date }}</span>
-                <span class="kline-data-item">{{ displaySubIndicator.text }}</span>
-              </div>
-              <div ref="klineSubRef" class="chart-dom kline-sub-dom" :style="{ height: leftPanelBottomHeight + 'px' }"></div>
-            </div>
-          </el-tab-pane>
-          <el-tab-pane label="周K" name="week">
-            <div class="kline-wrap">
-              <div class="kline-data-panel kline-data-panel-top">
-                <div class="kline-data-row1">
-                  <span class="kline-data-item">日期 {{ displayKlineOHLC.date }}</span>
-                  <span class="kline-data-item">开盘 {{ displayKlineOHLC.open }}</span>
-                  <span class="kline-data-item">收盘 {{ displayKlineOHLC.close }}</span>
-                  <span class="kline-data-item">最高 {{ displayKlineOHLC.high }}</span>
-                  <span class="kline-data-item">最低 {{ displayKlineOHLC.low }}</span>
-                </div>
-                <div class="kline-data-row2">
-                  <span class="kline-data-item">MA5 {{ displayKlineOHLC.ma5 }}</span>
-                  <span class="kline-data-item">MA10 {{ displayKlineOHLC.ma10 }}</span>
-                  <span class="kline-data-item">MA20 {{ displayKlineOHLC.ma20 }}</span>
-                  <span class="kline-data-item">MA30 {{ displayKlineOHLC.ma30 }}</span>
-                  <span class="kline-data-item">MA60 {{ displayKlineOHLC.ma60 }}</span>
-                  <span class="kline-data-item">MA120 {{ displayKlineOHLC.ma120 }}</span>
-                  <span class="kline-data-item">MA250 {{ displayKlineOHLC.ma250 }}</span>
-                </div>
-              </div>
-              <div class="kline-main-area">
-                <div ref="klineWeekChartRef" class="chart-dom kline-chart-dom"></div>
-              </div>
-              <div class="resizer-kline" @mousedown="startResizeVertical"> </div>
-              <div class="kline-indicator">
-                <el-radio-group v-model="klineWeekIndicator" size="small" @change="updateKlineWeekIndicator">
-                  <el-radio-button value="volume">成交量</el-radio-button>
-                  <el-radio-button value="amount">成交额</el-radio-button>
-                  <el-radio-button value="kdj">KDJ</el-radio-button>
-                  <el-radio-button value="rsi">RSI</el-radio-button>
-                  <el-radio-button value="macd">MACD</el-radio-button>
-                </el-radio-group>
-              </div>
-              <div class="kline-data-panel kline-data-panel-sub">
-                <span class="kline-data-item">日期 {{ displaySubIndicator.date }}</span>
-                <span class="kline-data-item">{{ displaySubIndicator.text }}</span>
-              </div>
-              <div ref="klineWeekSubRef" class="chart-dom kline-sub-dom" :style="{ height: leftPanelBottomHeight + 'px' }"></div>
-            </div>
-          </el-tab-pane>
-          <el-tab-pane label="月K" name="month">
-            <div class="kline-wrap">
-              <div class="kline-data-panel kline-data-panel-top">
-                <div class="kline-data-row1">
-                  <span class="kline-data-item">日期 {{ displayKlineOHLC.date }}</span>
-                  <span class="kline-data-item">开盘 {{ displayKlineOHLC.open }}</span>
-                  <span class="kline-data-item">收盘 {{ displayKlineOHLC.close }}</span>
-                  <span class="kline-data-item">最高 {{ displayKlineOHLC.high }}</span>
-                  <span class="kline-data-item">最低 {{ displayKlineOHLC.low }}</span>
-                </div>
-                <div class="kline-data-row2">
-                  <span class="kline-data-item">MA5 {{ displayKlineOHLC.ma5 }}</span>
-                  <span class="kline-data-item">MA10 {{ displayKlineOHLC.ma10 }}</span>
-                  <span class="kline-data-item">MA20 {{ displayKlineOHLC.ma20 }}</span>
-                  <span class="kline-data-item">MA30 {{ displayKlineOHLC.ma30 }}</span>
-                  <span class="kline-data-item">MA60 {{ displayKlineOHLC.ma60 }}</span>
-                  <span class="kline-data-item">MA120 {{ displayKlineOHLC.ma120 }}</span>
-                  <span class="kline-data-item">MA250 {{ displayKlineOHLC.ma250 }}</span>
-                </div>
-              </div>
-              <div class="kline-main-area">
-                <div ref="klineMonthChartRef" class="chart-dom kline-chart-dom"></div>
-              </div>
-              <div class="resizer-kline" @mousedown="startResizeVertical"> </div>
-              <div class="kline-indicator">
-                <el-radio-group v-model="klineMonthIndicator" size="small" @change="updateKlineMonthIndicator">
-                  <el-radio-button value="volume">成交量</el-radio-button>
-                  <el-radio-button value="amount">成交额</el-radio-button>
-                  <el-radio-button value="kdj">KDJ</el-radio-button>
-                  <el-radio-button value="rsi">RSI</el-radio-button>
-                  <el-radio-button value="macd">MACD</el-radio-button>
-                </el-radio-group>
-              </div>
-              <div class="kline-data-panel kline-data-panel-sub">
-                <span class="kline-data-item">日期 {{ displaySubIndicator.date }}</span>
-                <span class="kline-data-item">{{ displaySubIndicator.text }}</span>
-              </div>
-              <div ref="klineMonthSubRef" class="chart-dom kline-sub-dom" :style="{ height: leftPanelBottomHeight + 'px' }"></div>
-            </div>
-          </el-tab-pane>
+            <el-tab-pane label="分时" name="intraday" lazy>
+              <DayLineChart ref="dayLineRef" :symbol="symbol" />
+            </el-tab-pane>
+            <el-tab-pane label="日K" name="day" lazy>
+              <KlineChart ref="klineDayRef" :symbol="symbol" period="1d" style="height: 100%;" />
+            </el-tab-pane>
+            <el-tab-pane label="周K" name="week" lazy>
+              <KlineChart ref="klineWeekRef" :symbol="symbol" period="1w" style="height: 100%;" />
+            </el-tab-pane>
+            <el-tab-pane label="月K" name="month" lazy>
+              <KlineChart ref="klineMonthRef" :symbol="symbol" period="1M" style="height: 100%;" />
+            </el-tab-pane>
           </el-tabs>
         </div>
       </div>
@@ -194,21 +58,28 @@
         @mousedown="startResize"
       ></div>
 
-      <!-- 右侧面板：F10 -->
+      <!-- 右侧面板：F10 / 除权除息 -->
       <div
         v-show="layoutMode !== 'left'"
         class="panel-right"
         :style="{ width: layoutMode === 'right' ? '100%' : undefined, flex: layoutMode === 'both' ? 1 : undefined }"
       >
         <div class="f10-panel">
-          <el-collapse v-model="f10ActiveNames">
-            <el-collapse-item title="操盘必读" name="read">
-              <div class="f10-placeholder">操盘必读 - 待接口</div>
-            </el-collapse-item>
-            <el-collapse-item title="财务分析" name="finance">
-              <div class="f10-placeholder">财务分析 - 待接口</div>
-            </el-collapse-item>
-          </el-collapse>
+          <el-tabs v-model="rightTab" class="f10-tabs">
+            <el-tab-pane label="F10" name="f10">
+              <el-collapse v-model="f10ActiveNames">
+                <el-collapse-item title="操盘必读" name="read">
+                  <div class="f10-placeholder">操盘必读 - 待接口</div>
+                </el-collapse-item>
+                <el-collapse-item title="财务分析" name="finance">
+                  <div class="f10-placeholder">财务分析 - 待接口</div>
+                </el-collapse-item>
+              </el-collapse>
+            </el-tab-pane>
+            <el-tab-pane label="除权除息" name="divid">
+              <DividFactorsTable v-if="rightTab === 'divid'" :symbol="symbol" />
+            </el-tab-pane>
+          </el-tabs>
         </div>
       </div>
     </div>
@@ -223,7 +94,9 @@ import { ArrowLeft } from '@element-plus/icons-vue'
 import { securityApi } from '../api/security'
 import { marketApi } from '../api/market'
 import { useDataSourceStore } from '../stores/dataSource'
-import * as echarts from 'echarts'
+import DividFactorsTable from './components/diagram/DividFactorsTable.vue'
+import DayLineChart from './components/diagram/DayLineChart.vue'
+import KlineChart from './components/diagram/KlineChart.vue'
 
 const dataSourceStore = useDataSourceStore()
 
@@ -293,6 +166,10 @@ let resizingVertical = false
 
 // 分时 / 日K / 周K / 月K
 const chartTab = ref('intraday')
+const dayLineRef = ref(null)
+const klineDayRef = ref(null)
+const klineWeekRef = ref(null)
+const klineMonthRef = ref(null)
 const intradayChartRef = ref(null)
 const intradayVolRef = ref(null)
 const klineChartRef = ref(null)
@@ -334,6 +211,7 @@ const fiveLevelPlaceholder = ref([
 ])
 
 const f10ActiveNames = ref(['read', 'finance'])
+const rightTab = ref('f10')
 
 // 当前 K 线主图展示的数据（点击时为该根，否则为最新一根）；含日期与全部 MA，优先用缓存 O(1)
 const displayKlineOHLC = computed(() => {
@@ -1064,12 +942,8 @@ async function loadIntraday() {
   }
 }
 
-watch(chartTab, (name) => {
+watch(chartTab, () => {
   klineHoverIndex.value = null
-  if (name === 'day') loadDayKline()
-  else if (name === 'week') loadWeekKline()
-  else if (name === 'month') loadMonthKline()
-  else if (name === 'intraday') loadIntraday()
 })
 
 // 拖拽调整左侧宽度（结束时写入 localStorage）
@@ -1150,12 +1024,17 @@ async function triggerUpdateData() {
   }
 }
 
-function refreshCharts() {
-  if (chartTab.value === 'intraday') loadIntraday()
-  else if (chartTab.value === 'day') loadDayKline()
-  else if (chartTab.value === 'week') loadWeekKline()
-  else if (chartTab.value === 'month') loadMonthKline()
-  fetchQuote()
+async function refreshCharts() {
+  if (chartTab.value === 'intraday' && dayLineRef.value?.refresh) {
+    await dayLineRef.value.refresh()
+  } else if (chartTab.value === 'day' && klineDayRef.value?.refresh) {
+    await klineDayRef.value.refresh()
+  } else if (chartTab.value === 'week' && klineWeekRef.value?.refresh) {
+    await klineWeekRef.value.refresh()
+  } else if (chartTab.value === 'month' && klineMonthRef.value?.refresh) {
+    await klineMonthRef.value.refresh()
+  }
+  await fetchQuote()
 }
 
 let resizeObserver = null
@@ -1178,10 +1057,6 @@ onMounted(async () => {
   }
   await fetchSecurityInfo()
   await fetchQuote()
-  if (chartTab.value === 'intraday') loadIntraday()
-  else if (chartTab.value === 'day') loadDayKline()
-  else if (chartTab.value === 'week') loadWeekKline()
-  else if (chartTab.value === 'month') loadMonthKline()
 })
 
 function resizeCharts() {
@@ -1548,6 +1423,65 @@ onBeforeUnmount(() => {
 
 .f10-panel {
   padding: 8px;
+}
+
+.f10-tabs {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.f10-tabs :deep(.el-tabs__header) {
+  margin: 0 0 4px 0;
+}
+
+.f10-tabs :deep(.el-tabs__nav-wrap::after),
+.f10-tabs :deep(.el-tabs__nav-wrap) {
+  background: #0d0d0d;
+  border-bottom: 1px solid #333;
+}
+
+.f10-tabs :deep(.el-tabs__item) {
+  color: #b0b0b0;
+  font-size: 12px;
+}
+
+.f10-tabs :deep(.el-tabs__item.is-active) {
+  color: #e0e0e0;
+}
+
+.f10-tabs :deep(.el-tabs__active-bar),
+.f10-tabs :deep(.el-tabs__ink-bar) {
+  background: #5c9eed;
+}
+
+.f10-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+}
+
+.divid-panel {
+  height: 100%;
+}
+
+.security-detail :deep(.el-table) {
+  background: transparent;
+  color: #e0e0e0;
+}
+
+.security-detail :deep(.el-table__inner-wrapper),
+.security-detail :deep(.el-table__header-wrapper),
+.security-detail :deep(.el-table__body-wrapper),
+.security-detail :deep(.el-table th),
+.security-detail :deep(.el-table td) {
+  background: transparent !important;
+  border-color: #262626;
+  color: #b0b0b0;
+}
+
+.security-detail :deep(.el-table__row:hover > td) {
+  background: #1a1a1a !important;
 }
 
 .security-detail :deep(.f10-panel .el-collapse) {
