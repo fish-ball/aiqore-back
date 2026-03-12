@@ -7,14 +7,15 @@ export const marketApi = {
     })
   },
   
-  getKline(symbol, period = '1d', count = 100, startDate = null, endDate = null) {
+  getKline(symbol, period = '1d', count = 100, startDate = null, endDate = null, adjustType = null) {
     return api.get('/market/kline', {
       params: {
         symbol,
         period,
         count,
         start_date: startDate,
-        end_date: endDate
+        end_date: endDate,
+        adjust_type: adjustType
       }
     })
   },

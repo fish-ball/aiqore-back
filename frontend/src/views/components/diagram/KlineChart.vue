@@ -2,11 +2,20 @@
   <div ref="wrapRef" class="kline-wrap">
     <div class="kline-data-panel kline-data-panel-top">
       <div class="kline-data-row1">
-        <span class="kline-data-item">日期 {{ displayOHLC.date }}</span>
-        <span class="kline-data-item">开盘 {{ displayOHLC.open }}</span>
-        <span class="kline-data-item">收盘 {{ displayOHLC.close }}</span>
-        <span class="kline-data-item">最高 {{ displayOHLC.high }}</span>
-        <span class="kline-data-item">最低 {{ displayOHLC.low }}</span>
+        <div class="kline-data-row1-left">
+          <span class="kline-data-item">日期 {{ displayOHLC.date }}</span>
+          <span class="kline-data-item">开盘 {{ displayOHLC.open }}</span>
+          <span class="kline-data-item">收盘 {{ displayOHLC.close }}</span>
+          <span class="kline-data-item">最高 {{ displayOHLC.high }}</span>
+          <span class="kline-data-item">最低 {{ displayOHLC.low }}</span>
+        </div>
+        <div class="kline-data-row1-right">
+          <span class="kline-data-item kline-adjust-label">复权</span>
+          <el-radio-group v-model="adjustType" size="small" class="kline-adjust-switch" @change="onAdjustTypeChange">
+            <el-radio-button value="none">不复权</el-radio-button>
+            <el-radio-button value="forward">前复权</el-radio-button>
+          </el-radio-group>
+        </div>
       </div>
       <div class="kline-data-row2">
         <span class="kline-data-item">MA5 {{ displayOHLC.ma5 }}</span>
@@ -36,11 +45,55 @@
       <span class="kline-data-item">{{ displaySub.text }}</span>
     </div>
     <div ref="subRef" class="chart-dom kline-sub-dom" :style="{ height: leftPanelBottomHeight + 'px' }"></div>
+    <el-dialog
+      v-model="dividDialogVisible"
+      :title="`除权除息 ${dividDialogDate}`"
+      width="420px"
+      append-to-body
+    >
+      <div v-if="!dividDialogItems.length">暂无除权除息详情</div>
+      <div v-else class="divid-dialog-content">
+        <div
+          v-for="(item, idx) in dividDialogItems"
+          :key="idx"
+          class="divid-dialog-row"
+        >
+          <div class="divid-dialog-line">
+            <span class="divid-dialog-label">日期：</span>
+            <span class="divid-dialog-value">{{ normalizeDividDate(item) }}</span>
+          </div>
+          <div class="divid-dialog-line">
+            <span class="divid-dialog-label">派息(每股)：</span>
+            <span class="divid-dialog-value">{{ item.interest ?? '--' }}</span>
+          </div>
+          <div class="divid-dialog-line">
+            <span class="divid-dialog-label">送股(每股)：</span>
+            <span class="divid-dialog-value">{{ item.stockBonus ?? '--' }}</span>
+          </div>
+          <div class="divid-dialog-line">
+            <span class="divid-dialog-label">转增(每股)：</span>
+            <span class="divid-dialog-value">{{ item.stockGift ?? '--' }}</span>
+          </div>
+          <div class="divid-dialog-line">
+            <span class="divid-dialog-label">配股(每股)：</span>
+            <span class="divid-dialog-value">{{ item.allotNum ?? '--' }}</span>
+          </div>
+          <div class="divid-dialog-line">
+            <span class="divid-dialog-label">配股价：</span>
+            <span class="divid-dialog-value">{{ item.allotPrice ?? '--' }}</span>
+          </div>
+          <div class="divid-dialog-line">
+            <span class="divid-dialog-label">DR：</span>
+            <span class="divid-dialog-value">{{ item.dr ?? '--' }}</span>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import * as echarts from 'echarts'
 import { marketApi } from '../../../api/market'
 
@@ -91,6 +144,17 @@ const hoverIndex = ref(null)
 const loading = ref(false)
 // 当前 K 线可见范围（通过时间轴滑块控制），使用索引区间记录，避免每次重新计算
 const visibleRange = ref(null)
+// 复权方式：none=不复权，forward=前复权（后端根据该参数按日K/周K/月K复权）
+const adjustType = ref('none')
+
+// 除权除息数据（按日期聚合），用于在 K 线上绘制标记
+const dividFactors = ref([])
+const dividByDate = ref(new Map())
+
+// 弹窗展示的除权除息详细信息
+const dividDialogVisible = ref(false)
+const dividDialogDate = ref('')
+const dividDialogItems = ref([])
 
 // 行情页黑底白字图表主题（与现有行情软件风格一致）
 const CHART_DARK = {
@@ -398,6 +462,40 @@ function buildKlineOption(rawData, maCache, zoomRange, defaultVisibleCount) {
     { name: 'MA120', type: 'line', data: ma120, smooth: false, symbol: 'none', lineStyle: { width: 1, color: '#ffc107' } },
     { name: 'MA250', type: 'line', data: ma250, smooth: false, symbol: 'none', lineStyle: { width: 1, color: '#ff9800' } }
   ]
+
+  // 在主图上添加除权除息标记（按日期对齐）
+  const dividendPoints = []
+  if (dividByDate.value && typeof dividByDate.value.get === 'function') {
+    for (let i = 0; i < times.length; i++) {
+      const d = times[i]
+      const items = dividByDate.value.get(d)
+      if (!items || !items.length) continue
+      const y = h[i] != null ? h[i] * 1.02 : c[i]
+      dividendPoints.push({
+        value: [i, y],
+        dateLabel: d,
+        dividItems: items
+      })
+    }
+  }
+  if (dividendPoints.length) {
+    series.push({
+      name: '除权除息标记',
+      type: 'scatter',
+      data: dividendPoints,
+      symbol: 'triangle',
+      symbolSize: 10,
+      itemStyle: { color: '#ff5252' },
+      label: {
+        show: true,
+        formatter: 'Q',
+        color: '#ffffff',
+        fontSize: 10,
+        position: 'top'
+      },
+      z: 5
+    })
+  }
 
   return {
     ...CHART_DARK,
@@ -765,6 +863,58 @@ function buildKlineCache(arr) {
   }
 }
 
+// 将除权除息原始记录中的日期字段归一化为 YYYY-MM-DD，用于与 K 线横轴对齐
+function normalizeDividDate(row) {
+  if (!row) return ''
+  const v = row.time ?? row.date ?? row.m_timetag ?? ''
+  if (v == null || v === '') return ''
+  if (typeof v === 'number') {
+    return formatKlineTimeForAxis(v)
+  }
+  const s = String(v).trim()
+  if (/^\d{8}$/.test(s)) {
+    const y = s.slice(0, 4)
+    const m = s.slice(4, 6)
+    const d = s.slice(6, 8)
+    return `${y}-${m}-${d}`
+  }
+  if (/^\d{14}$/.test(s)) {
+    const y = s.slice(0, 4)
+    const m = s.slice(4, 6)
+    const d = s.slice(6, 8)
+    return `${y}-${m}-${d}`
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    return s.slice(0, 10)
+  }
+  return formatKlineTimeForAxis(s)
+}
+
+// 获取并缓存当前证券的除权除息数据
+async function loadDividFactors() {
+  const s = (props.symbol || '').trim()
+  if (!s) {
+    dividFactors.value = []
+    dividByDate.value = new Map()
+    return
+  }
+  try {
+    const res = await marketApi.getDividFactors(s)
+    const rows = Array.isArray(res) ? res : []
+    dividFactors.value = rows
+    const map = new Map()
+    for (const r of rows) {
+      const d = normalizeDividDate(r)
+      if (!d) continue
+      if (!map.has(d)) map.set(d, [])
+      map.get(d).push(r)
+    }
+    dividByDate.value = map
+  } catch (e) {
+    console.error('获取除权除息数据失败:', e)
+  }
+}
+
 function renderKline(chartDom, subDom, rawData, ind, tabCache) {
   if (!chartDom || !rawData.length) return
   const mainChart = echarts.getInstanceByDom(chartDom) || echarts.init(chartDom)
@@ -803,6 +953,17 @@ function renderKline(chartDom, subDom, rawData, ind, tabCache) {
     }
     bindKlineZoom(mainChart, subChart, visibleRange, total)
   }
+  // 点击除权除息标记时弹出详情对话框
+  if (mainChart && mainChart.on) {
+    mainChart.off('click')
+    mainChart.on('click', params => {
+      if (params && params.seriesName === '除权除息标记' && params.data && params.data.dividItems) {
+        dividDialogDate.value = params.data.dateLabel || params.name || ''
+        dividDialogItems.value = params.data.dividItems
+        dividDialogVisible.value = true
+      }
+    })
+  }
   bindKlineHover(mainChart, subChart, rawData.length)
 }
 
@@ -818,7 +979,7 @@ async function fetchKline(count = 250) {
   const s = (props.symbol || '').trim()
   if (!s) return []
   try {
-    const res = await marketApi.getKline(s, props.period, count)
+    const res = await marketApi.getKline(s, props.period, count, null, null, adjustType.value)
     return Array.isArray(res) ? res : []
   } catch (e) {
     console.error('获取K线失败:', e)
@@ -864,6 +1025,11 @@ async function loadKline() {
   } finally {
     loading.value = false
   }
+}
+
+// 复权切换时重新加载 K 线数据
+function onAdjustTypeChange() {
+  loadKline()
 }
 
 function startResizeVertical(e) {
@@ -924,8 +1090,17 @@ onMounted(async () => {
     })
     resizeObserver.observe(wrapRef.value)
   }
+  await loadDividFactors()
   await refresh()
 })
+
+watch(
+  () => props.symbol,
+  () => {
+    loadDividFactors()
+    loadKline()
+  }
+)
 
 onBeforeUnmount(() => {
   if (resizeThrottleTimer != null) clearTimeout(resizeThrottleTimer)
@@ -988,6 +1163,24 @@ defineExpose({
   width: 100%;
 }
 
+.kline-data-row1-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.kline-data-row1-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kline-adjust-label {
+  color: #b0b0b0;
+}
+
 .kline-data-row2 {
   margin-top: 2px;
 }
@@ -1034,6 +1227,31 @@ defineExpose({
   min-height: 80px;
   overflow: hidden;
   width: 100%;
+}
+
+.divid-dialog-content {
+  font-size: 12px;
+}
+
+.divid-dialog-row + .divid-dialog-row {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #333;
+}
+
+.divid-dialog-line {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 2px;
+}
+
+.divid-dialog-label {
+  width: 90px;
+  color: #b0b0b0;
+}
+
+.divid-dialog-value {
+  color: #e0e0e0;
 }
 </style>
 

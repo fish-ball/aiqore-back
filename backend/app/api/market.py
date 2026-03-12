@@ -30,6 +30,7 @@ async def get_kline(
     symbol: str = Query(..., description="证券代码"),
     period: str = Query("1d", description="周期：1m, 5m, 15m, 30m, 1h, 1d, 1w, 1M"),
     count: int = Query(100, description="数据条数"),
+    adjust_type: str = Query("none", description="复权方式：none=不复权, forward=前复权（预留参数，实际复权由服务层实现）"),
     start_date: Optional[str] = Query(None, description="开始日期，格式：YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="结束日期，格式：YYYY-MM-DD"),
     force_update: bool = Query(False, description="是否从数据源拉取并更新本地 parquet，默认直接读 parquet"),
@@ -160,6 +161,7 @@ async def get_kline(
         data = get_ticks(security_type, symbol, trade_date, force_update=False, adapter=adapter)
         return {"code": 0, "data": data, "message": "success"}
 
+    # 此处保留原有接口签名，复权处理由 market_service 内部根据 adjust_type 进行扩展
     data = market_service.get_kline_data(symbol, period, count, start_date, end_date)
     return {"code": 0, "data": data, "message": "success"}
 
