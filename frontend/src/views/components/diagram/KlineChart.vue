@@ -54,6 +54,11 @@ const props = defineProps({
   period: {
     type: String,
     required: true
+  },
+  // 默认可见的 K 线根数（用于初始化时间轴滑块范围）
+  defaultVisibleCount: {
+    type: Number,
+    default: 100
   }
 })
 
@@ -84,6 +89,8 @@ const cache = ref(null)
 const indicator = ref('volume')
 const hoverIndex = ref(null)
 const loading = ref(false)
+// 当前 K 线可见范围（通过时间轴滑块控制），使用索引区间记录，避免每次重新计算
+const visibleRange = ref(null)
 
 // 行情页黑底白字图表主题（与现有行情软件风格一致）
 const CHART_DARK = {
@@ -99,6 +106,8 @@ const GRID_LEFT = 82
 const GRID_RIGHT = 22
 const GRID_BOTTOM = 14
 const GRID_TOP = 14
+// 副图底部需要预留更大空间给时间轴滑块和 X 轴日期标签
+const SUB_GRID_BOTTOM = 56
 
 const HOVER_CROSS_V_ID = 'klineHoverCrossV'
 const HOVER_CROSS_H_ID = 'klineHoverCrossH'
@@ -328,7 +337,7 @@ function calcMACD(arr, short = 12, long = 26, mid = 9) {
   return { dif, dea, macd }
 }
 
-function buildKlineOption(rawData, maCache) {
+function buildKlineOption(rawData, maCache, zoomRange, defaultVisibleCount) {
   if (!rawData || rawData.length === 0) return null
   const times = rawData.map(item => {
     const t = item.time ?? item.timestamp ?? item.date ?? ''
@@ -347,6 +356,37 @@ function buildKlineOption(rawData, maCache) {
   const ma60 = maCache?.ma60 ?? calcMA(rawData, 60)
   const ma120 = maCache?.ma120 ?? calcMA(rawData, 120)
   const ma250 = maCache?.ma250 ?? calcMA(rawData, 250)
+
+  // 计算当前需要展示的索引区间：优先使用已有的缩放状态，否则使用默认最后 N 根
+  const total = rawData.length
+  let startIndex = 0
+  let endIndex = total > 0 ? total - 1 : 0
+  if (total > 0) {
+    if (zoomRange && zoomRange.startIndex != null && zoomRange.endIndex != null) {
+      startIndex = Math.max(0, Math.min(zoomRange.startIndex, total - 1))
+      endIndex = Math.max(startIndex, Math.min(zoomRange.endIndex, total - 1))
+    } else {
+      const baseCount = typeof defaultVisibleCount === 'number' && defaultVisibleCount > 0 ? defaultVisibleCount : 100
+      const visible = Math.min(total, baseCount)
+      startIndex = Math.max(0, total - visible)
+      endIndex = total - 1
+    }
+  }
+
+  const dataZoom = total
+    ? [
+        {
+          // 主图内部缩放仅用于与副图时间轴保持同步，不单独展示滑块
+          type: 'inside',
+          xAxisIndex: 0,
+          startValue: startIndex,
+          endValue: endIndex,
+          zoomOnMouseWheel: false,
+          moveOnMouseWheel: true,
+          moveOnMouseMove: true
+        }
+      ]
+    : []
 
   const series = [
     { name: 'K线', type: 'candlestick', data: candleData, itemStyle: { color: '#ef5350', borderColor: '#ef5350', color0: '#26a69a', borderColor0: '#26a69a' } },
@@ -390,28 +430,78 @@ function buildKlineOption(rawData, maCache) {
       axisLine: CHART_DARK.axisLine,
       splitLine: CHART_DARK.splitLine
     },
-    series
+    series,
+    dataZoom
   }
 }
 
-function buildSubOption(rawData, type, subCache) {
+function buildSubOption(rawData, type, subCache, zoomRange, defaultVisibleCount) {
   if (!rawData || rawData.length === 0) return null
   const times = rawData.map(item => {
     const t = item.time ?? item.timestamp ?? item.date ?? ''
     return formatKlineTimeForAxis(t)
   })
-  const grid = { left: GRID_LEFT, right: GRID_RIGHT, bottom: GRID_BOTTOM, top: GRID_TOP, containLabel: false }
+  const grid = { left: GRID_LEFT, right: GRID_RIGHT, bottom: SUB_GRID_BOTTOM, top: GRID_TOP, containLabel: false }
   const xAxis = {
     type: 'category',
     data: times,
     boundaryGap: true,
-    axisLabel: { show: false },
+    // 副图显示日期刻度，作为整体 X 轴坐标展示
+    axisLabel: { show: true, ...CHART_DARK.axisLabel },
     axisLine: CHART_DARK.axisLine,
     splitLine: { show: false }
   }
 
   const xAxisMerged = xAxis
   const axisCommon = { axisLine: CHART_DARK.axisLine, splitLine: CHART_DARK.splitLine, axisLabel: CHART_DARK.axisLabel }
+
+  // 副图时间轴滑块的索引区间计算，逻辑与主图保持一致
+  const total = rawData.length
+  let startIndex = 0
+  let endIndex = total > 0 ? total - 1 : 0
+  if (total > 0) {
+    if (zoomRange && zoomRange.startIndex != null && zoomRange.endIndex != null) {
+      startIndex = Math.max(0, Math.min(zoomRange.startIndex, total - 1))
+      endIndex = Math.max(startIndex, Math.min(zoomRange.endIndex, total - 1))
+    } else {
+      const baseCount = typeof defaultVisibleCount === 'number' && defaultVisibleCount > 0 ? defaultVisibleCount : 100
+      const visible = Math.min(total, baseCount)
+      startIndex = Math.max(0, total - visible)
+      endIndex = total - 1
+    }
+  }
+
+  const dataZoom = total
+    ? [
+        {
+          type: 'inside',
+          xAxisIndex: 0,
+          startValue: startIndex,
+          endValue: endIndex,
+          zoomOnMouseWheel: false,
+          moveOnMouseWheel: true,
+          moveOnMouseMove: true
+        },
+        {
+          // 副图底部显示的时间轴滑块
+          type: 'slider',
+          xAxisIndex: 0,
+          startValue: startIndex,
+          endValue: endIndex,
+          bottom: 4,
+          height: 24,
+          borderColor: '#404040',
+          backgroundColor: '#151515',
+          dataBackground: {
+            lineStyle: { color: '#555' },
+            areaStyle: { color: '#333' }
+          },
+          fillerColor: 'rgba(92, 158, 237, 0.25)',
+          handleStyle: { color: '#5c9eed' },
+          textStyle: { color: '#b0b0b0' }
+        }
+      ]
+    : []
   if (type === 'volume') {
     const vol = subCache?.volume?.data ?? rawData.map(x => parseInt(x.volume || 0, 10))
     const colors = subCache?.volume?.colors ?? rawData.map((x, i) => (i > 0 && x.close >= rawData[i - 1].close ? '#ef5350' : '#26a69a'))
@@ -422,7 +512,8 @@ function buildSubOption(rawData, type, subCache) {
       grid,
       xAxis: xAxisMerged,
       yAxis: { type: 'value', ...axisCommon, axisLabel: { formatter: v => formatVolume(v), ...CHART_DARK.axisLabel } },
-      series: [{ name: '成交量', type: 'bar', data: vol, itemStyle: { color: params => colors[params.dataIndex] } }]
+      series: [{ name: '成交量', type: 'bar', data: vol, itemStyle: { color: params => colors[params.dataIndex] } }],
+      dataZoom
     }
   }
   if (type === 'amount') {
@@ -441,7 +532,8 @@ function buildSubOption(rawData, type, subCache) {
           ...CHART_DARK.axisLabel
         }
       },
-      series: [{ name: '成交额', type: 'bar', data: amount, itemStyle: { color: '#5c9eed' } }]
+      series: [{ name: '成交额', type: 'bar', data: amount, itemStyle: { color: '#5c9eed' } }],
+      dataZoom
     }
   }
   if (type === 'kdj') {
@@ -457,7 +549,8 @@ function buildSubOption(rawData, type, subCache) {
         { name: 'K', type: 'line', data: k, smooth: false, symbol: 'none' },
         { name: 'D', type: 'line', data: d, smooth: false, symbol: 'none' },
         { name: 'J', type: 'line', data: j, smooth: false, symbol: 'none' }
-      ]
+      ],
+      dataZoom
     }
   }
   if (type === 'rsi') {
@@ -469,7 +562,8 @@ function buildSubOption(rawData, type, subCache) {
       grid,
       xAxis: xAxisMerged,
       yAxis: { type: 'value', min: 0, max: 100, ...axisCommon },
-      series: [{ name: 'RSI', type: 'line', data: rsi, smooth: false, symbol: 'none' }]
+      series: [{ name: 'RSI', type: 'line', data: rsi, smooth: false, symbol: 'none' }],
+      dataZoom
     }
   }
   if (type === 'macd') {
@@ -486,7 +580,8 @@ function buildSubOption(rawData, type, subCache) {
         { name: 'DIF', type: 'line', data: dif, smooth: false, symbol: 'none' },
         { name: 'DEA', type: 'line', data: dea, smooth: false, symbol: 'none' },
         { name: 'MACD', type: 'bar', data: macd, itemStyle: { color: params => barColors[params.dataIndex] } }
-      ]
+      ],
+      dataZoom
     }
   }
   return null
@@ -595,6 +690,56 @@ function bindKlineHover(mainChart, subChart, dataLen) {
   }
 }
 
+// 绑定主 / 副图时间轴缩放同步（包括副图滑块、两图滚轮和拖拽）
+function bindKlineZoom(mainChart, subChart, zoomRangeRef, dataLen) {
+  if (!mainChart || !mainChart.on || !subChart || !subChart.on) return
+
+  let syncing = false
+
+  function handleZoom(source, params) {
+    if (!params || syncing || dataLen <= 0) return
+    const batch = Array.isArray(params.batch) && params.batch.length ? params.batch[0] : params
+    let startIndex = batch.startValue
+    let endIndex = batch.endValue
+    if (startIndex == null || endIndex == null) {
+      const startPercent = typeof batch.start === 'number' ? batch.start : 0
+      const endPercent = typeof batch.end === 'number' ? batch.end : 100
+      startIndex = Math.round((startPercent / 100) * (dataLen - 1))
+      endIndex = Math.round((endPercent / 100) * (dataLen - 1))
+    }
+    if (!Number.isFinite(startIndex) || !Number.isFinite(endIndex)) return
+    startIndex = Math.max(0, Math.min(startIndex, dataLen - 1))
+    endIndex = Math.max(startIndex, Math.min(endIndex, dataLen - 1))
+
+    zoomRangeRef.value = { startIndex, endIndex }
+
+    syncing = true
+    try {
+      if (source === 'sub' && mainChart && mainChart.dispatchAction) {
+        mainChart.dispatchAction({
+          type: 'dataZoom',
+          startValue: startIndex,
+          endValue: endIndex
+        })
+      } else if (source === 'main' && subChart && subChart.dispatchAction) {
+        subChart.dispatchAction({
+          type: 'dataZoom',
+          startValue: startIndex,
+          endValue: endIndex
+        })
+      }
+    } finally {
+      syncing = false
+    }
+  }
+
+  mainChart.off('dataZoom')
+  subChart.off('dataZoom')
+
+  mainChart.on('dataZoom', params => handleZoom('main', params))
+  subChart.on('dataZoom', params => handleZoom('sub', params))
+}
+
 function buildKlineCache(arr) {
   if (!arr || arr.length === 0) return null
   const vol = arr.map(x => parseInt(x.volume || 0, 10))
@@ -623,13 +768,40 @@ function buildKlineCache(arr) {
 function renderKline(chartDom, subDom, rawData, ind, tabCache) {
   if (!chartDom || !rawData.length) return
   const mainChart = echarts.getInstanceByDom(chartDom) || echarts.init(chartDom)
-  const opt = buildKlineOption(rawData, tabCache?.ma)
+  const opt = buildKlineOption(rawData, tabCache?.ma, visibleRange.value, props.defaultVisibleCount)
   if (opt) mainChart.setOption(opt, true)
   let subChart = null
   if (subDom && rawData.length) {
     subChart = echarts.getInstanceByDom(subDom) || echarts.init(subDom)
-    const subOpt = buildSubOption(rawData, ind, tabCache?.sub)
+    const subOpt = buildSubOption(rawData, ind, tabCache?.sub, visibleRange.value, props.defaultVisibleCount)
     if (subOpt) subChart.setOption(subOpt, true)
+  }
+  // 初始化或恢复缩放区间：首次加载使用默认最后 N 根，之后保持用户在时间轴上的选择
+  const total = rawData.length
+  if (total > 0) {
+    if (!visibleRange.value || visibleRange.value.startIndex == null || visibleRange.value.endIndex == null) {
+      const baseCount = typeof props.defaultVisibleCount === 'number' && props.defaultVisibleCount > 0 ? props.defaultVisibleCount : 100
+      const visible = Math.min(total, baseCount)
+      const startIndex = Math.max(0, total - visible)
+      const endIndex = total - 1
+      visibleRange.value = { startIndex, endIndex }
+    }
+    const { startIndex, endIndex } = visibleRange.value
+    if (mainChart && mainChart.dispatchAction) {
+      mainChart.dispatchAction({
+        type: 'dataZoom',
+        startValue: startIndex,
+        endValue: endIndex
+      })
+    }
+    if (subChart && subChart.dispatchAction) {
+      subChart.dispatchAction({
+        type: 'dataZoom',
+        startValue: startIndex,
+        endValue: endIndex
+      })
+    }
+    bindKlineZoom(mainChart, subChart, visibleRange, total)
   }
   bindKlineHover(mainChart, subChart, rawData.length)
 }
@@ -637,7 +809,7 @@ function renderKline(chartDom, subDom, rawData, ind, tabCache) {
 function updateIndicator() {
   if (subRef.value && data.value.length) {
     const subChart = echarts.getInstanceByDom(subRef.value) || echarts.init(subRef.value)
-    const opt = buildSubOption(data.value, indicator.value, cache.value?.sub ?? null)
+    const opt = buildSubOption(data.value, indicator.value, cache.value?.sub ?? null, visibleRange.value, props.defaultVisibleCount)
     if (opt) subChart.setOption(opt, true)
   }
 }
