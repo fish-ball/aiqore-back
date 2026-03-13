@@ -1,12 +1,233 @@
 """行情API"""
 from fastapi import APIRouter, Query, Depends, HTTPException
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pandas as pd
 from sqlalchemy.orm import Session
 from app.services.market_service import market_service
 from app.database import get_db
 from app.utils.task_manager import save_task_info
 
 router = APIRouter(prefix="/api/market", tags=["行情"])
+
+
+def _load_divid_factors(security_type: str, symbol: str) -> Optional["pd.DataFrame"]:
+    """
+    加载单个证券的除权除息因子（divid_factors.parquet）。
+    返回 DataFrame，若不存在或为空则返回 None。
+    """
+    from pathlib import Path
+    import pandas as pd
+    from app.services.data_source.cache import get_security_dir, get_divid_factors_path
+
+    security_dir = get_security_dir(security_type, symbol)
+    path = get_divid_factors_path(security_dir)
+    if not isinstance(path, Path):
+        path = Path(path)
+    if not path.is_file():
+        return None
+
+    df = pd.read_parquet(path)
+    if df is None or df.empty:
+        return None
+    return df
+
+
+def _time_ms_to_date_str(time_ms: Any) -> Optional[str]:
+    """UNIX 毫秒时间戳 -> YYYY-MM-DD。"""
+    from datetime import datetime
+    if time_ms is None:
+        return None
+    try:
+        t = int(float(time_ms)) / 1000.0
+        return datetime.fromtimestamp(t).strftime("%Y-%m-%d")
+    except Exception:
+        return None
+
+
+def _build_divid_params_by_date(divid_df: "pd.DataFrame") -> Dict[str, Dict[str, float]]:
+    """
+    从除权除息表按日期聚合，得到每个除权日的参数字典。
+    使用 interest, stockBonus, stockGift, allotNum, allotPrice 计算，不使用 dr。
+    同一天多条记录：interest/stockBonus/stockGift/allotNum 求和；allot 金额为 sum(allotPrice*allotNum)。
+    返回: { "YYYY-MM-DD": {"interest", "stockBonus", "stockGift", "allotNum", "allotAmount"}, ... }
+    """
+    import pandas as pd
+
+    if divid_df is None or divid_df.empty:
+        return {}
+
+    need = ["time", "interest", "stockBonus", "stockGift", "allotNum", "allotPrice"]
+    for c in need:
+        if c not in divid_df.columns:
+            return {}
+
+    df = divid_df.copy()
+    df["date"] = df["time"].map(_time_ms_to_date_str)
+    df = df[df["date"].notna()].copy()
+    if df.empty:
+        return {}
+
+    df["allotAmount"] = df["allotNum"].astype(float) * df["allotPrice"].astype(float)
+    agg = df.groupby("date").agg(
+        interest=("interest", "sum"),
+        stockBonus=("stockBonus", "sum"),
+        stockGift=("stockGift", "sum"),
+        allotNum=("allotNum", "sum"),
+        allotAmount=("allotAmount", "sum"),
+    ).to_dict("index")
+
+    return {str(k): v for k, v in agg.items()}
+
+
+def _calc_forward_price(v: float, d: Dict[str, float]) -> float:
+    """
+    前复权单次除权公式（与迅投官方 process_forward 一致）：
+    calc_front(v, d) = (v - interest + allotPrice*allotNum) / (1 + allotNum + stockBonus + stockGift)
+    """
+    interest = float(d.get("interest") or 0)
+    stock_bonus = float(d.get("stockBonus") or 0)
+    stock_gift = float(d.get("stockGift") or 0)
+    allot_num = float(d.get("allotNum") or 0)
+    allot_amount = float(d.get("allotAmount") or 0)
+    denom = 1.0 + allot_num + stock_bonus + stock_gift
+    if denom <= 0:
+        return v
+    return (v - interest + allot_amount) / denom
+
+
+def _apply_forward_adjust_for_daily(
+    daily_rows: List[Dict[str, Any]],
+    security_type: str,
+    symbol: str,
+) -> List[Dict[str, Any]]:
+    """
+    对日 K 线做前复权，逻辑与迅投官方 process_forward 一致：
+    对每个交易日，按时间顺序对该日之后的所有除权日依次应用：
+    v = (v - interest + allotPrice*allotNum) / (1 + allotNum + stockBonus + stockGift)
+    送转配时成交量按累计股本扩张比放大；成交额按复权价与复权量一致调整。
+    """
+    if not daily_rows:
+        return []
+
+    divid_df = _load_divid_factors(security_type, symbol)
+    if divid_df is None or divid_df.empty:
+        return daily_rows
+
+    divid_params = _build_divid_params_by_date(divid_df)
+    if not divid_params:
+        return daily_rows
+
+    # 除权日列表按日期升序，便于对每个交易日按“之后发生的除权”顺序递推
+    ex_dates_sorted = sorted(divid_params.keys())
+
+    result: List[Dict[str, Any]] = []
+    for row in daily_rows:
+        date_str = _time_ms_to_date_str(row.get("time"))
+        if not date_str:
+            result.append(row)
+            continue
+
+        # 该日之后发生的除权（ex_date > date_str），按时间顺序
+        future_divids = [divid_params[ex] for ex in ex_dates_sorted if ex > date_str]
+
+        new_row = dict(row)
+
+        for col in ("open", "high", "low", "close"):
+            if col not in new_row:
+                continue
+            v = float(new_row[col])
+            for d in future_divids:
+                v = _calc_forward_price(v, d)
+            new_row[col] = round(v, 2)
+
+        # 成交量：送转配使 1 股变 (1+allotNum+stockBonus+stockGift) 股，历史量需乘累计扩张比
+        vol_factor = 1.0
+        if future_divids and "volume" in new_row:
+            for d in future_divids:
+                expand = 1.0 + float(d.get("allotNum") or 0) + float(d.get("stockBonus") or 0) + float(d.get("stockGift") or 0)
+                if expand > 0:
+                    vol_factor *= expand
+            new_row["volume"] = int(round(float(new_row["volume"]) * vol_factor, 0))
+
+        # 成交额：复权后与 复权价*复权量 一致，即 amount_adj = amount_orig * (close_adj/close_orig) * (vol_adj/vol_orig)
+        if "amount" in new_row:
+            orig_close = float(row.get("close") or 0)
+            orig_vol = float(row.get("volume") or 0)
+            if orig_close > 0 and orig_vol > 0:
+                new_row["amount"] = round(
+                    float(new_row["amount"]) * (new_row["close"] / orig_close) * (float(new_row.get("volume", 0)) / orig_vol),
+                    2,
+                )
+            elif orig_close > 0:
+                new_row["amount"] = round(float(new_row["amount"]) * (new_row["close"] / orig_close), 2)
+
+        result.append(new_row)
+
+    return result
+
+
+def _aggregate_daily_to_period(
+    daily_rows: List[Dict[str, Any]],
+    period: str,
+) -> List[Dict[str, Any]]:
+    """
+    将日 K（已前复权）合成为周 / 月 K。
+
+    周/月 K 的合成规则：
+    - time：该周期最后一个交易日的 time；
+    - open：该周期第一个交易日的 open；
+    - close：该周期最后一个交易日的 close；
+    - high/low：周期内 high 最大 / low 最小；
+    - volume/amount：周期内求和。
+    """
+    import pandas as pd
+    from datetime import datetime
+
+    if not daily_rows:
+        return []
+
+    df = pd.DataFrame(daily_rows)
+    if "time" not in df.columns:
+        return daily_rows
+
+    df = df.copy()
+    df["datetime"] = df["time"].map(
+        lambda t: datetime.fromtimestamp(int(float(t)) / 1000.0)
+    )
+    df = df.sort_values("datetime").reset_index(drop=True)
+
+    if period == "1w":
+        # 以周五为一周结束（与常见行情软件周 K 接近）
+        grouper = pd.Grouper(key="datetime", freq="W-FRI")
+    elif period == "1M":
+        grouper = pd.Grouper(key="datetime", freq="M")
+    else:
+        # 其他周期暂不支持该聚合
+        return daily_rows
+
+    groups = df.groupby(grouper, sort=True)
+    result: List[Dict[str, Any]] = []
+
+    for _, g in groups:
+        if g.empty:
+            continue
+        g = g.sort_values("datetime")
+        row: Dict[str, Any] = {}
+        # 使用组内最后一行的 time 作为该周期 time
+        row["time"] = int(g.iloc[-1]["time"])
+        row["open"] = float(g.iloc[0]["open"])
+        row["close"] = float(g.iloc[-1]["close"])
+        row["high"] = float(g["high"].max())
+        row["low"] = float(g["low"].min())
+        if "volume" in g.columns:
+            row["volume"] = int(g["volume"].sum())
+        if "amount" in g.columns:
+            row["amount"] = float(g["amount"].sum())
+        result.append(row)
+
+    return result
 
 
 @router.get("/quote")
@@ -30,7 +251,7 @@ async def get_kline(
     symbol: str = Query(..., description="证券代码"),
     period: str = Query("1d", description="周期：1m, 5m, 15m, 30m, 1h, 1d, 1w, 1M"),
     count: int = Query(100, description="数据条数"),
-    adjust_type: str = Query("none", description="复权方式：none=不复权, forward=前复权（预留参数，实际复权由服务层实现）"),
+    adjust_type: str = Query("none", description="复权方式：none=不复权, forward=前复权"),
     start_date: Optional[str] = Query(None, description="开始日期，格式：YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="结束日期，格式：YYYY-MM-DD"),
     force_update: bool = Query(False, description="是否从数据源拉取并更新本地 parquet，默认直接读 parquet"),
@@ -107,12 +328,24 @@ async def get_kline(
             }
 
         adapter = get_default_qmt_adapter()
+        # 先从本地缓存/数据源获取基础 K 线数据
         if period == "1d":
-            data = get_daily(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
-        elif period == "1w":
-            data = get_weekly(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
+            base_daily = get_daily(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
+            if adjust_type == "forward":
+                base_daily = _apply_forward_adjust_for_daily(base_daily, security_type, symbol)
+            data = base_daily
         else:
-            data = get_monthly(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
+            # 周/月 K：如果需要复权，则基于日 K 重新合成；否则沿用原有周/月缓存逻辑
+            if adjust_type == "forward":
+                base_daily = get_daily(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
+                base_daily = _apply_forward_adjust_for_daily(base_daily, security_type, symbol)
+                data = _aggregate_daily_to_period(base_daily, period)
+            else:
+                if period == "1w":
+                    data = get_weekly(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
+                else:
+                    data = get_monthly(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
+
         return {"code": 0, "data": data, "message": "success"}
 
     # 1 分钟分时（按单日 ticks）
@@ -161,7 +394,6 @@ async def get_kline(
         data = get_ticks(security_type, symbol, trade_date, force_update=False, adapter=adapter)
         return {"code": 0, "data": data, "message": "success"}
 
-    # 此处保留原有接口签名，复权处理由 market_service 内部根据 adjust_type 进行扩展
     data = market_service.get_kline_data(symbol, period, count, start_date, end_date)
     return {"code": 0, "data": data, "message": "success"}
 
