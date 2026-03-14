@@ -79,6 +79,8 @@ const subChartIndicator = ref('volume')
 const subChartTimes = ref([])
 const subChartVolumes = ref([])
 const subChartAmounts = ref([])
+// 盘前(集合竞价)区域在 x 轴上的结束索引，用于主图/副图 markArea
+const subChartCallAuctionEndIndex = ref(-1)
 
 let intradayChart = null
 let intradayVolChart = null
@@ -109,6 +111,12 @@ const CHART_DARK = {
 // 主图与副图：Y 轴固定 60px，横轴与绘图区对齐；副图底部留 10px 留白
 const CHART_GRID = { left: 60, right: '5%', bottom: '14%', top: '8%', containLabel: false }
 const CHART_GRID_VOL = { left: 60, right: '5%', bottom: 40, top: '8%', containLabel: false }
+
+// 盘前区域背景：浅灰 20% 半透明
+const MARK_AREA_PRE_MARKET = {
+  silent: true,
+  itemStyle: { color: 'rgba(128,128,128,0.2)' }
+}
 
 // 成交量/成交额：tooltip 等用，万/亿两位小数
 function formatVolumeAmount(value) {
@@ -150,6 +158,10 @@ function applyVolChartOption() {
   const ind = subChartIndicator.value
   const data = ind === 'amount' ? amounts : volumes
   const name = ind === 'amount' ? '成交额' : '成交量'
+  const endIdx = subChartCallAuctionEndIndex.value
+  const volPreMarketMarkArea = endIdx >= 0
+    ? { ...MARK_AREA_PRE_MARKET, data: [[{ xAxis: 0 }, { xAxis: endIdx }]] }
+    : {}
   intradayVolChart.setOption({
     ...CHART_DARK,
     animation: false,
@@ -173,7 +185,7 @@ function applyVolChartOption() {
       }
     },
     series: [
-      { name, type: 'bar', data, itemStyle: { color: '#5c9eed' } }
+      { name, type: 'bar', data, itemStyle: { color: '#5c9eed' }, markArea: volPreMarketMarkArea }
     ]
   }, true)
 }
@@ -202,6 +214,7 @@ async function loadIntraday() {
       subChartTimes.value = []
       subChartVolumes.value = []
       subChartAmounts.value = []
+      subChartCallAuctionEndIndex.value = -1
       if (!intradayChart) intradayChart = echarts.init(priceDom)
       intradayChart.setOption({
         ...CHART_DARK,
@@ -265,6 +278,11 @@ async function loadIntraday() {
     })
     const pricesCallAuction = sorted.map(([, v]) => (v[OPENINT_CALL_AUCTION] ? v[OPENINT_CALL_AUCTION].price : null))
     const pricesContinuous = sorted.map(([, v]) => (v[OPENINT_CONTINUOUS] ? v[OPENINT_CONTINUOUS].price : null))
+    let callAuctionEndIndex = -1
+    for (let i = 0; i < pricesCallAuction.length; i++) {
+      if (pricesCallAuction[i] != null) callAuctionEndIndex = i
+    }
+    subChartCallAuctionEndIndex.value = callAuctionEndIndex
     const cumVols = sorted.map(([, v]) => v.volume || 0)
     const cumAmts = sorted.map(([, v]) => v.amount || 0)
     const volumesPerMinute = cumVols.map((cum, i) => Math.max(0, cum - (i > 0 ? cumVols[i - 1] : 0)))
@@ -280,6 +298,9 @@ async function loadIntraday() {
       if (p != null) { sum += p; n++ }
       avgPrices.push(n > 0 ? (sum / n).toFixed(2) : null)
     }
+    const preMarketMarkArea = callAuctionEndIndex >= 0
+      ? { ...MARK_AREA_PRE_MARKET, data: [[{ xAxis: 0 }, { xAxis: callAuctionEndIndex }]] }
+      : {}
     if (!intradayChart) intradayChart = echarts.init(priceDom)
     intradayChart.setOption({
       ...CHART_DARK,
@@ -288,7 +309,7 @@ async function loadIntraday() {
       xAxis: { type: 'category', data: times, boundaryGap: false, axisLine: CHART_DARK.axisLine, axisLabel: CHART_DARK.axisLabel, splitLine: { show: false } },
       yAxis: { type: 'value', scale: true, axisLabel: { formatter: v => v.toFixed(2), ...CHART_DARK.axisLabel }, axisLine: CHART_DARK.axisLine, splitLine: CHART_DARK.splitLine },
       series: [
-        { name: '集合竞价', type: 'line', data: pricesCallAuction, smooth: false, symbol: 'none', connectNulls: false, lineStyle: { width: 2, color: '#9e9e9e' } },
+        { name: '集合竞价', type: 'line', data: pricesCallAuction, smooth: false, symbol: 'none', connectNulls: false, lineStyle: { width: 2, color: '#9e9e9e' }, markArea: preMarketMarkArea },
         { name: '连续交易', type: 'line', data: pricesContinuous, smooth: false, symbol: 'none', connectNulls: false, lineStyle: { width: 2, color: '#5c9eed' } },
         { name: '均价', type: 'line', data: avgPrices, smooth: false, symbol: 'none', connectNulls: true, lineStyle: { width: 1, color: '#ffc107' } }
       ]
