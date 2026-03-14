@@ -8,6 +8,8 @@
           <span class="kline-data-item">收盘 {{ displayOHLC.close }}</span>
           <span class="kline-data-item">最高 {{ displayOHLC.high }}</span>
           <span class="kline-data-item">最低 {{ displayOHLC.low }}</span>
+          <span class="kline-data-item">量 {{ displayOHLC.volume }}</span>
+          <span class="kline-data-item">额 {{ displayOHLC.amount }}</span>
         </div>
         <div class="kline-data-row1-right">
           <span class="kline-data-item kline-adjust-label">复权</span>
@@ -187,6 +189,8 @@ const displayOHLC = computed(() => {
       close: '--',
       high: '--',
       low: '--',
+      volume: '--',
+      amount: '--',
       ma5: '--',
       ma10: '--',
       ma20: '--',
@@ -207,6 +211,8 @@ const displayOHLC = computed(() => {
     close: formatPrice(bar.close),
     high: formatPrice(bar.high),
     low: formatPrice(bar.low),
+    volume: formatVolume(bar.volume || 0),
+    amount: formatAmount(bar.amount || 0),
     ma5: ma ? v(ma.ma5, idx) : v(calcMA(arr, 5), idx),
     ma10: ma ? v(ma.ma10, idx) : v(calcMA(arr, 10), idx),
     ma20: ma ? v(ma.ma20, idx) : v(calcMA(arr, 20), idx),
@@ -454,13 +460,13 @@ function buildKlineOption(rawData, maCache, zoomRange, defaultVisibleCount) {
 
   const series = [
     { name: 'K线', type: 'candlestick', data: candleData, itemStyle: { color: '#ef5350', borderColor: '#ef5350', color0: '#26a69a', borderColor0: '#26a69a' } },
-    { name: 'MA5', type: 'line', data: ma5, smooth: false, symbol: 'none', lineStyle: { width: 1, color: '#e0e0e0' } },
-    { name: 'MA10', type: 'line', data: ma10, smooth: false, symbol: 'none', lineStyle: { width: 1, color: '#b0b0b0' } },
-    { name: 'MA20', type: 'line', data: ma20, smooth: false, symbol: 'none', lineStyle: { width: 1, color: '#808080' } },
-    { name: 'MA30', type: 'line', data: ma30, smooth: false, symbol: 'none', lineStyle: { width: 1, color: '#606060' } },
-    { name: 'MA60', type: 'line', data: ma60, smooth: false, symbol: 'none', lineStyle: { width: 1, color: '#5c9eed' } },
-    { name: 'MA120', type: 'line', data: ma120, smooth: false, symbol: 'none', lineStyle: { width: 1, color: '#ffc107' } },
-    { name: 'MA250', type: 'line', data: ma250, smooth: false, symbol: 'none', lineStyle: { width: 1, color: '#ff9800' } }
+    { name: 'MA5', type: 'line', data: ma5, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#e0e0e0' } },
+    { name: 'MA10', type: 'line', data: ma10, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#b0b0b0' } },
+    { name: 'MA20', type: 'line', data: ma20, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#808080' } },
+    { name: 'MA30', type: 'line', data: ma30, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#606060' } },
+    { name: 'MA60', type: 'line', data: ma60, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#5c9eed' } },
+    { name: 'MA120', type: 'line', data: ma120, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#ffc107' } },
+    { name: 'MA250', type: 'line', data: ma250, smooth: true, symbol: 'none', lineStyle: { width: 1, color: '#ff9800' } }
   ]
 
   // 在主图上添加除权除息标记（按日期对齐）
@@ -644,9 +650,9 @@ function buildSubOption(rawData, type, subCache, zoomRange, defaultVisibleCount)
       xAxis: xAxisMerged,
       yAxis: { type: 'value', min: 0, max: 100, ...axisCommon },
       series: [
-        { name: 'K', type: 'line', data: k, smooth: false, symbol: 'none' },
-        { name: 'D', type: 'line', data: d, smooth: false, symbol: 'none' },
-        { name: 'J', type: 'line', data: j, smooth: false, symbol: 'none' }
+        { name: 'K', type: 'line', data: k, smooth: true, symbol: 'none' },
+        { name: 'D', type: 'line', data: d, smooth: true, symbol: 'none' },
+        { name: 'J', type: 'line', data: j, smooth: true, symbol: 'none' }
       ],
       dataZoom
     }
@@ -660,7 +666,7 @@ function buildSubOption(rawData, type, subCache, zoomRange, defaultVisibleCount)
       grid,
       xAxis: xAxisMerged,
       yAxis: { type: 'value', min: 0, max: 100, ...axisCommon },
-      series: [{ name: 'RSI', type: 'line', data: rsi, smooth: false, symbol: 'none' }],
+      series: [{ name: 'RSI', type: 'line', data: rsi, smooth: true, symbol: 'none' }],
       dataZoom
     }
   }
@@ -675,8 +681,8 @@ function buildSubOption(rawData, type, subCache, zoomRange, defaultVisibleCount)
       xAxis: xAxisMerged,
       yAxis: { type: 'value', ...axisCommon },
       series: [
-        { name: 'DIF', type: 'line', data: dif, smooth: false, symbol: 'none' },
-        { name: 'DEA', type: 'line', data: dea, smooth: false, symbol: 'none' },
+        { name: 'DIF', type: 'line', data: dif, smooth: true, symbol: 'none' },
+        { name: 'DEA', type: 'line', data: dea, smooth: true, symbol: 'none' },
         { name: 'MACD', type: 'bar', data: macd, itemStyle: { color: params => barColors[params.dataIndex] } }
       ],
       dataZoom
