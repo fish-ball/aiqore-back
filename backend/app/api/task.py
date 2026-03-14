@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from app.celery_app import celery_app
 from app.tasks.specs import TaskSpec, get_task_spec, list_task_specs
-from app.utils.task_manager import get_task_info, list_tasks, mark_task_state, save_task_info
+from app.utils.task_manager import delete_task, get_task_info, list_tasks, mark_task_state, save_task_info
 
 
 router = APIRouter(prefix="/api/tasks", tags=["任务管理"])
@@ -135,6 +135,20 @@ async def stop_task(task_id: str) -> Dict[str, Any]:
         "code": 0,
         "data": {"task_id": task_id, "state": "REVOKED"},
         "message": "任务已请求停止",
+    }
+
+
+@router.delete("/{task_id}")
+async def delete_task_api(task_id: str) -> Dict[str, Any]:
+    """从任务列表中删除指定任务记录（仅删除本地 Redis 记录，不影响 Celery 后端）。"""
+    ok = delete_task(task_id)
+    if not ok:
+        raise HTTPException(status_code=500, detail="删除任务记录失败")
+
+    return {
+        "code": 0,
+        "data": {"task_id": task_id},
+        "message": "已删除",
     }
 
 

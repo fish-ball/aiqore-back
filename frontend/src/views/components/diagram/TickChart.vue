@@ -7,6 +7,12 @@
       </div>
       <div class="resizer-kline" @mousedown="startResizeVertical"></div>
       <div class="chart-half chart-volume" :style="{ height: leftPanelBottomHeight + 'px' }">
+        <div class="tick-sub-toolbar">
+          <el-radio-group v-model="subChartIndicator" size="small" @change="applyVolChartOption">
+            <el-radio-button value="volume">成交量</el-radio-button>
+            <el-radio-button value="amount">成交额</el-radio-button>
+          </el-radio-group>
+        </div>
         <div ref="intradayVolRef" class="chart-dom"></div>
       </div>
     </div>
@@ -36,6 +42,7 @@ import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { marketApi } from '../../../api/market'
+import { securityApi } from '../../../api/security'
 
 const props = defineProps({
   // 证券代码，例如 000001.SZ
@@ -66,6 +73,13 @@ let resizingVertical = false
 const intradayChartRef = ref(null)
 const intradayVolRef = ref(null)
 
+// 副图：成交量/成交额切换（与 K 线图一致）
+const subChartIndicator = ref('volume')
+// 预处理后的分钟数据，供副图与切换使用
+const subChartTimes = ref([])
+const subChartVolumes = ref([])
+const subChartAmounts = ref([])
+
 let intradayChart = null
 let intradayVolChart = null
 
@@ -92,22 +106,106 @@ const CHART_DARK = {
   axisLabel: { color: '#b0b0b0' }
 }
 
-// 分时：请求 ticks 接口原样数据，按整分钟聚合后渲染（价格取分钟最后 lastClose，成交量取分钟内 amount 累加）
+// 主图与副图：Y 轴固定 60px，横轴与绘图区对齐；副图底部留 10px 留白
+const CHART_GRID = { left: 60, right: '5%', bottom: '14%', top: '8%', containLabel: false }
+const CHART_GRID_VOL = { left: 60, right: '5%', bottom: 40, top: '8%', containLabel: false }
+
+// 成交量/成交额：tooltip 等用，万/亿两位小数
+function formatVolumeAmount(value) {
+  if (value == null || !Number.isFinite(value)) return '-'
+  const v = Number(value)
+  if (v >= 1e8) return (v / 1e8).toFixed(2) + '\u4ebf'
+  if (v >= 1e4) return (v / 1e4).toFixed(2) + '\u4e07'
+  return String(Math.round(v))
+}
+
+// 副图 Y 轴刻度：万/亿时数字部分最多 4 字符，如 9999万、999万、99.9万、9.99万
+function formatVolumeAxisLabel(value) {
+  if (value == null || !Number.isFinite(value)) return '-'
+  const v = Number(value)
+  const suffixW = '\u4e07'
+  const suffixY = '\u4ebf'
+  if (v >= 1e8) {
+    const x = v / 1e8
+    if (x >= 1000) return Math.round(x) + suffixY
+    if (x >= 100) return Math.round(x) + suffixY
+    if (x >= 10) return (Math.round(x * 10) / 10).toFixed(1) + suffixY
+    return (Math.round(x * 100) / 100).toFixed(2) + suffixY
+  }
+  if (v >= 1e4) {
+    const x = v / 1e4
+    if (x >= 1000) return Math.round(x) + suffixW
+    if (x >= 100) return Math.round(x) + suffixW
+    if (x >= 10) return (Math.round(x * 10) / 10).toFixed(1) + suffixW
+    return (Math.round(x * 100) / 100).toFixed(2) + suffixW
+  }
+  return String(Math.round(v))
+}
+
+function applyVolChartOption() {
+  if (!intradayVolChart) return
+  const times = subChartTimes.value
+  const volumes = subChartVolumes.value
+  const amounts = subChartAmounts.value
+  const ind = subChartIndicator.value
+  const data = ind === 'amount' ? amounts : volumes
+  const name = ind === 'amount' ? '成交额' : '成交量'
+  intradayVolChart.setOption({
+    ...CHART_DARK,
+    animation: false,
+    grid: CHART_GRID_VOL,
+    xAxis: { type: 'category', data: times, boundaryGap: true, axisLine: CHART_DARK.axisLine, axisLabel: CHART_DARK.axisLabel },
+    yAxis: {
+      type: 'value',
+      axisLine: CHART_DARK.axisLine,
+      axisLabel: { formatter: formatVolumeAxisLabel, ...CHART_DARK.axisLabel },
+      splitLine: CHART_DARK.splitLine
+    },
+    tooltip: {
+      trigger: 'axis',
+      formatter: function (params) {
+        if (!params || !params[0]) return ''
+        const i = params[0].dataIndex
+        const vol = volumes[i]
+        const amt = amounts[i]
+        const timeStr = times[i] || ''
+        return `${timeStr}<br/>成交量: ${formatVolumeAmount(vol)}<br/>成交额: ${formatVolumeAmount(amt)}`
+      }
+    },
+    series: [
+      { name, type: 'bar', data, itemStyle: { color: '#5c9eed' } }
+    ]
+  }, true)
+}
+
+// 分时：先拉取证券详情取 metadata.ticks.end_date 作为交易日，再请求 ticks 接口
 async function loadIntraday() {
   const s = (props.symbol || '').trim()
   if (!s) return
   try {
-    const today = new Date().toISOString().slice(0, 10)
-    const data = await marketApi.getTicks(s, today)
+    let tradeDate = new Date().toISOString().slice(0, 10)
+    try {
+      const detail = await securityApi.getDetail(s)
+      if (detail?.metadata?.ticks?.end_date) {
+        tradeDate = detail.metadata.ticks.end_date
+      }
+    } catch (_) {
+      // 详情失败时仍用当天
+    }
+    const data = await marketApi.getTicks(s, tradeDate, false)
     const list = Array.isArray(data) ? data : []
     await nextTick()
     const priceDom = intradayChartRef.value
     const volDom = intradayVolRef.value
     if (!priceDom || !volDom) return
     if (list.length === 0) {
+      subChartTimes.value = []
+      subChartVolumes.value = []
+      subChartAmounts.value = []
       if (!intradayChart) intradayChart = echarts.init(priceDom)
       intradayChart.setOption({
         ...CHART_DARK,
+        grid: CHART_GRID,
         title: { text: '分时 - 暂无数据', left: 'center', textStyle: { color: CHART_DARK.textStyle.color } },
         xAxis: { type: 'category', data: [], axisLine: CHART_DARK.axisLine, axisLabel: CHART_DARK.axisLabel },
         yAxis: { type: 'value' },
@@ -116,9 +214,10 @@ async function loadIntraday() {
       if (!intradayVolChart) intradayVolChart = echarts.init(volDom)
       intradayVolChart.setOption({
         ...CHART_DARK,
+        grid: CHART_GRID_VOL,
         title: { text: '分时量 - 待数据', left: 'center', textStyle: { color: CHART_DARK.textStyle.color } },
         xAxis: { type: 'category', data: [] },
-        yAxis: { type: 'value' },
+        yAxis: { type: 'value', axisLabel: { formatter: formatVolumeAxisLabel, ...CHART_DARK.axisLabel } },
         series: [{ type: 'bar', data: [] }]
       }, true)
       return
@@ -129,9 +228,20 @@ async function loadIntraday() {
     for (const item of list) {
       const t = item.time != null ? Number(item.time) : NaN
       if (Number.isNaN(t)) continue
+      const minuteKey = Math.floor(t / 60000)
+      const cumVol = Number(item.volume) || 0
+      const cumAmt = Number(item.amount) || 0
+      if (!minuteMap.has(minuteKey)) {
+        minuteMap.set(minuteKey, { lastTime: -1, volume: 0, amount: 0, 12: null, 13: null })
+      }
+      const row = minuteMap.get(minuteKey)
+      if (t >= row.lastTime) {
+        row.lastTime = t
+        row.volume = cumVol
+        row.amount = cumAmt
+      }
       const openInt = item.openInt != null ? parseInt(item.openInt, 10) : 13
       if (openInt !== OPENINT_CALL_AUCTION && openInt !== OPENINT_CONTINUOUS) continue
-      const minuteKey = Math.floor(t / 60000)
       const tickvol = parseInt(item.tickvol ?? 0, 10) || 0
       let price
       if (openInt === OPENINT_CALL_AUCTION) {
@@ -141,10 +251,6 @@ async function loadIntraday() {
       } else {
         price = parseFloat(item.lastPrice ?? item.close ?? 0)
       }
-      if (!minuteMap.has(minuteKey)) {
-        minuteMap.set(minuteKey, { 12: null, 13: null })
-      }
-      const row = minuteMap.get(minuteKey)
       if (!row[openInt]) row[openInt] = { time: t, price, tickvol }
       else {
         row[openInt].time = t
@@ -159,8 +265,13 @@ async function loadIntraday() {
     })
     const pricesCallAuction = sorted.map(([, v]) => (v[OPENINT_CALL_AUCTION] ? v[OPENINT_CALL_AUCTION].price : null))
     const pricesContinuous = sorted.map(([, v]) => (v[OPENINT_CONTINUOUS] ? v[OPENINT_CONTINUOUS].price : null))
-    const volsCallAuction = sorted.map(([, v]) => (v[OPENINT_CALL_AUCTION] ? v[OPENINT_CALL_AUCTION].tickvol : 0))
-    const volsContinuous = sorted.map(([, v]) => (v[OPENINT_CONTINUOUS] ? v[OPENINT_CONTINUOUS].tickvol : 0))
+    const cumVols = sorted.map(([, v]) => v.volume || 0)
+    const cumAmts = sorted.map(([, v]) => v.amount || 0)
+    const volumesPerMinute = cumVols.map((cum, i) => Math.max(0, cum - (i > 0 ? cumVols[i - 1] : 0)))
+    const amountsPerMinute = cumAmts.map((cum, i) => Math.max(0, cum - (i > 0 ? cumAmts[i - 1] : 0)))
+    subChartTimes.value = times
+    subChartVolumes.value = volumesPerMinute
+    subChartAmounts.value = amountsPerMinute
     const avgPrices = []
     let sum = 0
     let n = 0
@@ -173,7 +284,7 @@ async function loadIntraday() {
     intradayChart.setOption({
       ...CHART_DARK,
       animation: false,
-      grid: { left: '3%', right: '4%', bottom: '3%', top: '8%', containLabel: true },
+      grid: CHART_GRID,
       xAxis: { type: 'category', data: times, boundaryGap: false, axisLine: CHART_DARK.axisLine, axisLabel: CHART_DARK.axisLabel, splitLine: { show: false } },
       yAxis: { type: 'value', scale: true, axisLabel: { formatter: v => v.toFixed(2), ...CHART_DARK.axisLabel }, axisLine: CHART_DARK.axisLine, splitLine: CHART_DARK.splitLine },
       series: [
@@ -183,17 +294,7 @@ async function loadIntraday() {
       ]
     }, true)
     if (!intradayVolChart) intradayVolChart = echarts.init(volDom)
-    intradayVolChart.setOption({
-      ...CHART_DARK,
-      animation: false,
-      grid: { left: '3%', right: '4%', bottom: '3%', top: '8%', containLabel: true },
-      xAxis: { type: 'category', data: times, boundaryGap: true, axisLine: CHART_DARK.axisLine, axisLabel: CHART_DARK.axisLabel },
-      yAxis: { type: 'value', axisLine: CHART_DARK.axisLine, axisLabel: CHART_DARK.axisLabel, splitLine: CHART_DARK.splitLine },
-      series: [
-        { name: '集合竞价量', type: 'bar', stack: 'vol', data: volsCallAuction, itemStyle: { color: '#9e9e9e' } },
-        { name: '连续交易量', type: 'bar', stack: 'vol', data: volsContinuous, itemStyle: { color: '#5c9eed' } }
-      ]
-    }, true)
+    applyVolChartOption()
   } catch (e) {
     console.error('分时加载失败:', e)
     ElMessage.error('分时加载失败')
@@ -226,6 +327,8 @@ function startResizeVertical(e) {
 
 const RESIZE_THROTTLE_MS = 120
 let resizeThrottleTimer = null
+let resizeObserver = null
+
 function resizeChartsThrottled() {
   if (resizeThrottleTimer != null) return
   resizeThrottleTimer = setTimeout(() => {
@@ -235,8 +338,18 @@ function resizeChartsThrottled() {
 }
 
 function resizeCharts() {
-  if (intradayChart) intradayChart.resize()
-  if (intradayVolChart) intradayVolChart.resize()
+  const priceEl = intradayChartRef.value
+  const volEl = intradayVolRef.value
+  if (intradayChart && priceEl) {
+    const w = priceEl.offsetWidth
+    const h = priceEl.offsetHeight
+    if (w > 0 && h > 0) intradayChart.resize({ width: w, height: h })
+  }
+  if (intradayVolChart && volEl) {
+    const w = volEl.offsetWidth
+    const h = volEl.offsetHeight
+    if (w > 0 && h > 0) intradayVolChart.resize({ width: w, height: h })
+  }
 }
 
 async function refresh() {
@@ -246,10 +359,22 @@ async function refresh() {
 onMounted(async () => {
   window.addEventListener('resize', resizeChartsThrottled)
   await refresh()
+  const priceEl = intradayChartRef.value
+  const volEl = intradayVolRef.value
+  if (priceEl || volEl) {
+    resizeObserver = new ResizeObserver(resizeChartsThrottled)
+    if (priceEl) resizeObserver.observe(priceEl)
+    if (volEl) resizeObserver.observe(volEl)
+  }
+  nextTick(resizeChartsThrottled)
 })
 
 onBeforeUnmount(() => {
   if (resizeThrottleTimer != null) clearTimeout(resizeThrottleTimer)
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
   window.removeEventListener('resize', resizeChartsThrottled)
   if (intradayChart) { intradayChart.dispose(); intradayChart = null }
   if (intradayVolChart) { intradayVolChart.dispose(); intradayVolChart = null }
@@ -273,6 +398,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 .chart-half.chart-price {
@@ -284,6 +410,38 @@ defineExpose({
   flex-shrink: 0;
   min-height: 80px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tick-sub-toolbar {
+  flex-shrink: 0;
+  padding: 2px 8px 4px;
+  background: #0d0d0d;
+  border-bottom: 1px solid #262626;
+}
+
+.tick-sub-toolbar :deep(.el-radio-group) {
+  display: flex;
+}
+
+.tick-sub-toolbar :deep(.el-radio-button__inner) {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #b0b0b0;
+  background: transparent;
+  border-color: #404040;
+}
+
+.tick-sub-toolbar :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  color: #e0e0e0;
+  background: #262626;
+  border-color: #5c9eed;
+}
+
+.chart-half.chart-volume .chart-dom {
+  flex: 1;
+  min-height: 0;
 }
 
 .chart-dom {
@@ -346,4 +504,3 @@ defineExpose({
   padding: 4px 0;
 }
 </style>
-

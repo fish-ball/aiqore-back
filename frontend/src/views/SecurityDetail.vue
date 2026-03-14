@@ -36,7 +36,7 @@
         <div class="panel-left-inner">
           <el-tabs v-model="chartTab" class="chart-tabs">
             <el-tab-pane label="分时" name="intraday" lazy>
-              <DayLineChart ref="dayLineRef" :symbol="symbol" />
+              <TickChart ref="tickChartRef" :symbol="symbol" />
             </el-tab-pane>
             <el-tab-pane label="日K" name="day" lazy>
               <KlineChart ref="klineDayRef" :symbol="symbol" period="1d" style="height: 100%;" />
@@ -95,7 +95,7 @@ import { securityApi } from '../api/security'
 import { marketApi } from '../api/market'
 import { useDataSourceStore } from '../stores/dataSource'
 import DividFactorsTable from './components/diagram/DividFactorsTable.vue'
-import DayLineChart from './components/diagram/DayLineChart.vue'
+import TickChart from './components/diagram/TickChart.vue'
 import KlineChart from './components/diagram/KlineChart.vue'
 
 const dataSourceStore = useDataSourceStore()
@@ -166,7 +166,7 @@ let resizingVertical = false
 
 // 分时 / 日K / 周K / 月K
 const chartTab = ref('intraday')
-const dayLineRef = ref(null)
+const tickChartRef = ref(null)
 const klineDayRef = ref(null)
 const klineWeekRef = ref(null)
 const klineMonthRef = ref(null)
@@ -1025,8 +1025,8 @@ async function triggerUpdateData() {
 }
 
 async function refreshCharts() {
-  if (chartTab.value === 'intraday' && dayLineRef.value?.refresh) {
-    await dayLineRef.value.refresh()
+  if (chartTab.value === 'intraday' && tickChartRef.value?.refresh) {
+    await tickChartRef.value.refresh()
   } else if (chartTab.value === 'day' && klineDayRef.value?.refresh) {
     await klineDayRef.value.refresh()
   } else if (chartTab.value === 'week' && klineWeekRef.value?.refresh) {

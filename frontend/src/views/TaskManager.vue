@@ -66,7 +66,7 @@
             <span>{{ row.meta?.status || row.meta?.message || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button
               link
@@ -84,6 +84,14 @@
               @click="stopTask(row)"
             >
               停止
+            </el-button>
+            <el-button
+              link
+              type="danger"
+              size="small"
+              @click="deleteTask(row)"
+            >
+              删除
             </el-button>
           </template>
         </el-table-column>
@@ -520,6 +528,32 @@ async function stopTask(row) {
   try {
     await taskApi.stop(row.task_id)
     ElMessage.success('已请求停止任务')
+    fetchTaskList()
+  } catch (e) {
+    // 已在全局拦截器中提示
+  }
+}
+
+async function deleteTask(row) {
+  if (!row || !row.task_id) return
+
+  try {
+    await ElMessageBox.confirm(
+      '确定要从任务列表中删除该任务记录吗？仅删除本地记录，不影响 Celery 后端。',
+      '删除确认',
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消'
+      }
+    )
+  } catch {
+    return
+  }
+
+  try {
+    await taskApi.delete(row.task_id)
+    ElMessage.success('已删除')
     fetchTaskList()
   } catch (e) {
     // 已在全局拦截器中提示

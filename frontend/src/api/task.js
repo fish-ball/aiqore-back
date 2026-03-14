@@ -34,6 +34,11 @@ export const taskApi = {
   /** 停止任务 */
   stop(taskId) {
     return api.post(`/tasks/${taskId}/stop`)
+  },
+
+  /** 删除任务记录（仅删除列表中的记录，不影响 Celery 后端） */
+  delete(taskId) {
+    return api.delete(`/tasks/${taskId}`)
   }
 }
 

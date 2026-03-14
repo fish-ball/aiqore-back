@@ -14,6 +14,7 @@ from app.services.data_source.cache import (
     get_monthly,
     get_ticks,
     get_dates_from_daily_parquet,
+    get_existing_ticks_dates,
     get_security_dir,
     get_divid_factors_path,
     read_meta,
@@ -272,32 +273,70 @@ def task_update_single_security_kdata(
         db.close()
 
 
+def _update_single_security_tick_last_day_core(
+    adapter: Any,
+    security_type: str,
+    symbol: str,
+    force_update: bool,
+) -> Dict[str, Any]:
+    """仅拉取 kline 中最后一个交易日的 tick（用于单证券/全量列表联动更新，默认只抓最后一天）。"""
+    dates_all = get_dates_from_daily_parquet(security_type, symbol)
+    if not dates_all:
+        return {"success": True, "message": "更新完成", "symbol": symbol, "ticks_dates": 0}
+    last_date = dates_all[-1]
+    rows = get_ticks(security_type, symbol, last_date, force_update=force_update, adapter=adapter)
+    n = 1 if rows else 0
+    logger.info("分时最后一天: symbol=%s, date=%s, rows=%s, 落盘=%s", symbol, last_date, len(rows) if rows else 0, n)
+    return {
+        "success": True,
+        "message": "更新完成",
+        "symbol": symbol,
+        "ticks_dates": n,
+    }
+
+
 def _update_single_security_tick_full_core(
     adapter: Any,
     security_type: str,
     symbol: str,
     force_update: bool,
 ) -> Dict[str, Any]:
+    """全日期扫描 kline 的交易日，对未落盘的日期拉取 tick；已存在且非 force 时跳过。不做区间截断。"""
     t0 = time.perf_counter()
-    dates = get_dates_from_daily_parquet(security_type, symbol)
-    logger.info("分时全量补全: symbol=%s, 日线交易日数=%s, force_update=%s", symbol, len(dates), force_update)
-    tick_count = 0
-    for i, d in enumerate(dates):
+    dates_all = get_dates_from_daily_parquet(security_type, symbol)
+    existing = get_existing_ticks_dates(security_type, symbol)
+    if force_update:
+        dates_to_fetch = list(dates_all)
+    else:
+        dates_to_fetch = [d for d in dates_all if d not in existing]
+    logger.info(
+        "分时全量补全: symbol=%s, 日线交易日数=%s, 已落盘=%s, 待补全=%s, force_update=%s",
+        symbol, len(dates_all), len(existing), len(dates_to_fetch), force_update,
+    )
+    new_count = 0
+    for i, d in enumerate(dates_to_fetch):
         try:
             rows = get_ticks(security_type, symbol, d, force_update=force_update, adapter=adapter)
             if rows:
-                tick_count += 1
-            if (i + 1) % 50 == 0 or i == len(dates) - 1:
-                logger.info("分时全量补全: symbol=%s, 进度 %s/%s, 已落盘 %s 天, 已耗时 %s", symbol, i + 1, len(dates), tick_count, _elapsed(t0))
+                new_count += 1
+            if (i + 1) % 100 == 0 or i == len(dates_to_fetch) - 1:
+                logger.info(
+                    "分时全量补全: symbol=%s, 进度 %s/%s, 本次新落盘 %s 天, 已耗时 %s",
+                    symbol, i + 1, len(dates_to_fetch), new_count, _elapsed(t0),
+                )
         except Exception as e:
             logger.warning("拉取分时 %s %s 失败: %s", symbol, d, e)
-    logger.info("分时全量补全: 完成 symbol=%s, 共 %s 天有分笔, 总耗时 %s", symbol, tick_count, _elapsed(t0))
+    tick_count_total = len(existing) + new_count
+    logger.info(
+        "分时全量补全: 完成 symbol=%s, 已有=%s, 本次新落盘=%s, 合计有分笔=%s 天, 总耗时 %s",
+        symbol, len(existing), new_count, tick_count_total, _elapsed(t0),
+    )
     return {
         "success": True,
         "message": "更新完成",
         "symbol": symbol,
-        "dates": len(dates),
-        "ticks_dates": tick_count,
+        "dates": len(dates_all),
+        "ticks_dates": tick_count_total,
     }
 
 
@@ -310,11 +349,11 @@ def task_update_single_security_tick_full(
     source_id: Optional[int] = None,
     force_update: bool = False,
 ):
-    """按日线 parquet 中的交易日补全该证券所有分时数据。"""
+    """按 kline 全日期扫描补全该证券分时：遍历所有交易日，目录中已存在 tick 文件且非 force 时跳过，不做区间截断。"""
     db = SessionLocal()
     try:
         t0 = time.perf_counter()
-        logger.info("任务分时全量补全: 启动 symbol=%s", symbol)
+        logger.info("任务分时全量补全: 启动 symbol=%s (全日期扫描)", symbol)
         adapter, err = _resolve_adapter(db, source_type, source_id)
         if err is not None:
             logger.warning("任务分时全量补全: 配置解析失败 symbol=%s, err=%s", symbol, err)
@@ -384,13 +423,14 @@ def _update_single_security_all_data_core(
         monthly_result = {"rows": len(get_monthly(security_type, symbol, None, None, force_update=False, adapter=None))}
 
         t_ticks = time.perf_counter()
-        tick_result = _update_single_security_tick_full_core(
+        # 默认只联动抓最后一天的 tick，不再全量补全
+        tick_result = _update_single_security_tick_last_day_core(
             adapter=adapter,
             security_type=security_type,
             symbol=symbol,
             force_update=force_update,
         )
-        logger.info("全量更新: symbol=%s, 分时完成 ticks_dates=%s, 耗时 %s", symbol, tick_result.get("ticks_dates", 0), _elapsed(t_ticks))
+        logger.info("全量更新: symbol=%s, 分时(最后一天) ticks_dates=%s, 耗时 %s", symbol, tick_result.get("ticks_dates", 0), _elapsed(t_ticks))
 
         # 除权数据：全量更新时一并拉取除权信息，写入 divid_factors.parquet
         t_divid = time.perf_counter()

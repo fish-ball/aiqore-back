@@ -215,3 +215,19 @@ def mark_task_state(task_id: str, state: str) -> None:
         # 标记失败不影响主流程
         pass
 
+
+def delete_task(task_id: str) -> bool:
+    """从 Redis 中删除任务记录（仅删除本地记录，不影响 Celery 后端）。
+
+    Returns:
+        是否成功删除（若 key 不存在也视为成功）。
+    """
+    try:
+        r = _get_redis_client()
+        key = _task_key(task_id)
+        r.delete(key)
+        r.zrem(_TASK_ZSET_KEY, task_id)
+        return True
+    except Exception:
+        return False
+

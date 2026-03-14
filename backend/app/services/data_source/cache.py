@@ -201,8 +201,60 @@ def get_dates_from_daily_parquet(security_type: Optional[str], symbol: str) -> L
     return dates
 
 
+def get_existing_ticks_dates(security_type: Optional[str], symbol: str) -> set:
+    """返回已落盘分笔的交易日集合（YYYY-MM-DD），用于分时补全时跳过已有日期。"""
+    security_dir = get_security_dir(security_type, symbol)
+    ticks_dir = get_ticks_dir(security_dir)
+    if not ticks_dir.is_dir():
+        return set()
+    out = set()
+    for p in ticks_dir.iterdir():
+        if p.suffix.lower() == ".parquet":
+            stem = p.stem
+            if len(stem) == 8 and stem.isdigit():
+                out.add(f"{stem[:4]}-{stem[4:6]}-{stem[6:8]}")
+    return out
+
+
+# 日 K 线（daily.parquet）整理：价格类 6 位小数，成交额 4 位小数；周/月线写入时不再做舍入
+DAILY_KLINE_PRICE_DECIMALS = 6
+DAILY_KLINE_AMOUNT_DECIMALS = 4
+DAILY_KLINE_PRICE_COLUMNS = ("open", "high", "low", "close", "preClose")
+
+
+def _round_daily_kline_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """仅对日 K 线写入前整理：open/high/low/close/preClose 6 位小数，amount 4 位小数。返回新列表。"""
+    if not rows:
+        return rows
+    result = []
+    for r in rows:
+        new_row = dict(r)
+        for col in DAILY_KLINE_PRICE_COLUMNS:
+            if col not in new_row:
+                continue
+            v = new_row[col]
+            if isinstance(v, float) and v == v:
+                new_row[col] = round(v, DAILY_KLINE_PRICE_DECIMALS)
+            elif isinstance(v, (int, float)) and not isinstance(v, bool):
+                try:
+                    new_row[col] = round(float(v), DAILY_KLINE_PRICE_DECIMALS)
+                except (TypeError, ValueError):
+                    pass
+        if "amount" in new_row:
+            v = new_row["amount"]
+            if isinstance(v, float) and v == v:
+                new_row["amount"] = round(v, DAILY_KLINE_AMOUNT_DECIMALS)
+            elif isinstance(v, (int, float)) and not isinstance(v, bool):
+                try:
+                    new_row["amount"] = round(float(v), DAILY_KLINE_AMOUNT_DECIMALS)
+                except (TypeError, ValueError):
+                    pass
+        result.append(new_row)
+    return result
+
+
 def _write_parquet_kline(path: Path, rows: List[Dict[str, Any]]) -> None:
-    """写入 K 线 parquet，仅写入 KLINE_COLUMNS；行数据由 adapter 或合并结果提供，不再做格式整理。"""
+    """写入 K 线 parquet，仅写入 KLINE_COLUMNS。不做舍入（日线舍入在 _get_kline 写入前单独做，周/月不转换）。"""
     if not rows:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -518,6 +570,8 @@ def _get_kline(
                 all_new.extend(raw)
 
     merged = _merge_kline_rows(existing, all_new)
+    if merged and period == "1d":
+        merged = _round_daily_kline_rows(merged)
     if merged:
         _write_parquet_kline(path, merged)
         dates = [_time_ms_to_date_str(r.get("time")) for r in merged if r.get("time") is not None]
@@ -539,6 +593,54 @@ def _get_kline(
     return result
 
 
+# 分笔（tick）数据整理：价格 6 位小数，成交额 4 位；askPrice/bidPrice/askVol/bidVol 统一为浮点数组 6 位小数
+TICK_PRICE_DECIMALS = 6
+TICK_AMOUNT_DECIMALS = 4
+
+
+def _normalize_tick_data(raw: Any) -> Any:
+    """
+    对 tick 数据按表独立整理，抓取后写入前调用。
+    - lastPrice / open / high / low / lastClose：6 位小数舍入
+    - amount：4 位小数舍入
+    - askPrice / bidPrice / askVol / bidVol：统一为浮点数组，逐元素 6 位小数舍入
+    支持 pandas.DataFrame，返回新 DataFrame。
+    """
+    try:
+        import pandas as pd
+        import numpy as np
+    except ImportError:
+        return raw
+    if not isinstance(raw, pd.DataFrame) or raw.empty:
+        return raw
+    df = raw.copy()
+
+    for col in ("lastPrice", "open", "high", "low", "lastClose"):
+        if col in df.columns and np.issubdtype(df[col].dtype, np.floating):
+            df[col] = df[col].round(TICK_PRICE_DECIMALS)
+    if "amount" in df.columns and np.issubdtype(df["amount"].dtype, np.floating):
+        df["amount"] = df["amount"].round(TICK_AMOUNT_DECIMALS)
+
+    def round_float_list(val):
+        if val is None or (isinstance(val, float) and val != val):
+            return val
+        if isinstance(val, (list, np.ndarray)):
+            out = []
+            for x in val:
+                try:
+                    out.append(round(float(x), TICK_PRICE_DECIMALS))
+                except (TypeError, ValueError):
+                    out.append(0.0)
+            return out
+        return val
+
+    for col in ("askPrice", "bidPrice", "askVol", "bidVol"):
+        if col in df.columns:
+            df[col] = df[col].apply(round_float_list)
+
+    return df
+
+
 def get_ticks(
     security_type: Optional[str],
     symbol: str,
@@ -550,6 +652,7 @@ def get_ticks(
     """
     获取分笔：trade_date 为 YYYYMMDD、YYYY-MM-DD 或 int/float（毫秒时间戳）。
     若本地已有 ticks/YYYYMMDD.parquet 且非 force 则直接读；否则调 adapter.get_ticks_data 写入并更新 meta。
+    抓取后按 tick 表规则整理（价格 6 位、amount 4 位、ask/bid 数组处理）再落盘。
     返回 list of dict（每行一条），字段与 data_schema.TICK_DF_* 一致。
     """
     if isinstance(trade_date, (int, float)):
@@ -566,6 +669,8 @@ def get_ticks(
             import pandas as pd
             df = pd.read_parquet(ticks_path)
             if df is not None and not df.empty:
+                # 读回时 parquet 的 list 列会变成 ndarray，再做一次整理保证 ask/bid 数组为 list of float
+                df = _normalize_tick_data(df)
                 return df.to_dict("records")
         except Exception as e:
             logger.warning("读取分笔 parquet 失败 %s: %s", ticks_path, e)
@@ -577,6 +682,7 @@ def get_ticks(
             try:
                 import pandas as pd
                 if isinstance(raw, pd.DataFrame) and not raw.empty:
+                    raw = _normalize_tick_data(raw)
                     get_ticks_dir(security_dir).mkdir(parents=True, exist_ok=True)
                     raw.to_parquet(ticks_path, index=False)
                     rows = raw.to_dict("records")
