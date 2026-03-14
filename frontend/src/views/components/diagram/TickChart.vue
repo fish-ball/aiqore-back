@@ -42,12 +42,16 @@ import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { marketApi } from '../../../api/market'
-import { securityApi } from '../../../api/security'
 
 const props = defineProps({
   // 证券代码，例如 000001.SZ
   symbol: {
     type: String,
+    required: true
+  },
+  // 证券详情（含 metadata.ticks.end_date），必填，由外部在加载成功后传入
+  securityDetail: {
+    type: Object,
     required: true
   }
 })
@@ -81,6 +85,8 @@ const subChartVolumes = ref([])
 const subChartAmounts = ref([])
 // 盘前(集合竞价)区域在 x 轴上的结束索引，用于主图/副图 markArea
 const subChartCallAuctionEndIndex = ref(-1)
+// 主图是否有右侧涨跌幅轴，副图 grid.right 与之对齐
+const subChartHasRightAxis = ref(false)
 
 let intradayChart = null
 let intradayVolChart = null
@@ -108,8 +114,9 @@ const CHART_DARK = {
   axisLabel: { color: '#b0b0b0' }
 }
 
-// 主图与副图：Y 轴固定 60px，横轴与绘图区对齐；副图底部留 10px 留白
+// 主图与副图：Y 轴固定 60px，横轴与绘图区对齐；副图底部留 10px 留白；有右侧涨跌幅轴时主图/副图统一用 8% 右边距以对齐
 const CHART_GRID = { left: 60, right: '5%', bottom: '14%', top: '8%', containLabel: false }
+const CHART_GRID_WITH_RIGHT_AXIS = { left: 60, right: '8%', bottom: '14%', top: '8%', containLabel: false }
 const CHART_GRID_VOL = { left: 60, right: '5%', bottom: 40, top: '8%', containLabel: false }
 
 // 盘前区域背景：浅灰 20% 半透明
@@ -159,13 +166,15 @@ function applyVolChartOption() {
   const data = ind === 'amount' ? amounts : volumes
   const name = ind === 'amount' ? '成交额' : '成交量'
   const endIdx = subChartCallAuctionEndIndex.value
+  const hasRight = subChartHasRightAxis.value
   const volPreMarketMarkArea = endIdx >= 0
     ? { ...MARK_AREA_PRE_MARKET, data: [[{ xAxis: 0 }, { xAxis: endIdx }]] }
     : {}
+  const volGrid = { ...CHART_GRID_VOL, right: hasRight ? '8%' : '5%' }
   intradayVolChart.setOption({
     ...CHART_DARK,
     animation: false,
-    grid: CHART_GRID_VOL,
+    grid: volGrid,
     xAxis: { type: 'category', data: times, boundaryGap: true, axisLine: CHART_DARK.axisLine, axisLabel: CHART_DARK.axisLabel },
     yAxis: {
       type: 'value',
@@ -190,20 +199,12 @@ function applyVolChartOption() {
   }, true)
 }
 
-// 分时：先拉取证券详情取 metadata.ticks.end_date 作为交易日，再请求 ticks 接口
+// 分时：使用 props.securityDetail.metadata.ticks.end_date 作为交易日
 async function loadIntraday() {
   const s = (props.symbol || '').trim()
   if (!s) return
   try {
-    let tradeDate = new Date().toISOString().slice(0, 10)
-    try {
-      const detail = await securityApi.getDetail(s)
-      if (detail?.metadata?.ticks?.end_date) {
-        tradeDate = detail.metadata.ticks.end_date
-      }
-    } catch (_) {
-      // 详情失败时仍用当天
-    }
+    const tradeDate = props.securityDetail?.metadata?.ticks?.end_date || new Date().toISOString().slice(0, 10)
     const data = await marketApi.getTicks(s, tradeDate, false)
     const list = Array.isArray(data) ? data : []
     await nextTick()
@@ -215,6 +216,7 @@ async function loadIntraday() {
       subChartVolumes.value = []
       subChartAmounts.value = []
       subChartCallAuctionEndIndex.value = -1
+      subChartHasRightAxis.value = false
       if (!intradayChart) intradayChart = echarts.init(priceDom)
       intradayChart.setOption({
         ...CHART_DARK,
@@ -278,11 +280,23 @@ async function loadIntraday() {
     })
     const pricesCallAuction = sorted.map(([, v]) => (v[OPENINT_CALL_AUCTION] ? v[OPENINT_CALL_AUCTION].price : null))
     const pricesContinuous = sorted.map(([, v]) => (v[OPENINT_CONTINUOUS] ? v[OPENINT_CONTINUOUS].price : null))
+    const lastClose = list[0]?.lastClose != null ? parseFloat(list[0].lastClose) : null
+    const allPrices = [...pricesCallAuction, ...pricesContinuous].filter(p => p != null && Number.isFinite(p))
+    const priceMin = allPrices.length ? Math.min(...allPrices) : null
+    const priceMax = allPrices.length ? Math.max(...allPrices) : null
+    const hasRightAxis = lastClose != null && lastClose > 0 && priceMin != null && priceMax != null
+    // lastClose 居中、上下幅度对称：取相对 lastClose 的最大偏离作为半幅
+    const maxDev = hasRightAxis ? Math.max(priceMax - lastClose, lastClose - priceMin) : 0
+    const axisMin = hasRightAxis ? lastClose - maxDev : null
+    const axisMax = hasRightAxis ? lastClose + maxDev : null
+    const pctMin = hasRightAxis ? -maxDev / lastClose * 100 : null
+    const pctMax = hasRightAxis ? maxDev / lastClose * 100 : null
     let callAuctionEndIndex = -1
     for (let i = 0; i < pricesCallAuction.length; i++) {
       if (pricesCallAuction[i] != null) callAuctionEndIndex = i
     }
     subChartCallAuctionEndIndex.value = callAuctionEndIndex
+    subChartHasRightAxis.value = hasRightAxis
     const cumVols = sorted.map(([, v]) => v.volume || 0)
     const cumAmts = sorted.map(([, v]) => v.amount || 0)
     const volumesPerMinute = cumVols.map((cum, i) => Math.max(0, cum - (i > 0 ? cumVols[i - 1] : 0)))
@@ -301,17 +315,29 @@ async function loadIntraday() {
     const preMarketMarkArea = callAuctionEndIndex >= 0
       ? { ...MARK_AREA_PRE_MARKET, data: [[{ xAxis: 0 }, { xAxis: callAuctionEndIndex }]] }
       : {}
+    const baselineMarkLine = lastClose != null && Number.isFinite(lastClose)
+      ? { silent: true, symbol: ['none', 'none'], lineStyle: { type: 'dashed', color: '#fff' }, data: [{ yAxis: lastClose }] }
+      : {}
+    const mainGrid = hasRightAxis ? CHART_GRID_WITH_RIGHT_AXIS : CHART_GRID
+    // 有右侧涨跌幅轴时：Y 轴 lastClose 居中、上下幅度对称（axisMin/Max）；并关闭左侧 splitLine
+    const mainYAxisLeft = hasRightAxis
+      ? { type: 'value', min: axisMin, max: axisMax, scale: true, axisLabel: { formatter: v => v.toFixed(2), ...CHART_DARK.axisLabel }, axisLine: CHART_DARK.axisLine, splitLine: { show: false } }
+      : { type: 'value', scale: true, axisLabel: { formatter: v => v.toFixed(2), ...CHART_DARK.axisLabel }, axisLine: CHART_DARK.axisLine, splitLine: CHART_DARK.splitLine }
+    // 右侧仅作涨跌幅坐标轴，与主价格系列同尺度（pctMin/pctMax 由 priceMin/priceMax 与 lastClose 算出，0% 即 lastClose）
+    const mainYAxisRight = hasRightAxis
+      ? { type: 'value', position: 'right', min: pctMin, max: pctMax, scale: true, axisLine: CHART_DARK.axisLine, axisLabel: { formatter: v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%', ...CHART_DARK.axisLabel }, splitLine: { show: false } }
+      : null
     if (!intradayChart) intradayChart = echarts.init(priceDom)
     intradayChart.setOption({
       ...CHART_DARK,
       animation: false,
-      grid: CHART_GRID,
+      grid: mainGrid,
       xAxis: { type: 'category', data: times, boundaryGap: false, axisLine: CHART_DARK.axisLine, axisLabel: CHART_DARK.axisLabel, splitLine: { show: false } },
-      yAxis: { type: 'value', scale: true, axisLabel: { formatter: v => v.toFixed(2), ...CHART_DARK.axisLabel }, axisLine: CHART_DARK.axisLine, splitLine: CHART_DARK.splitLine },
+      yAxis: mainYAxisRight != null ? [mainYAxisLeft, mainYAxisRight] : mainYAxisLeft,
       series: [
-        { name: '集合竞价', type: 'line', data: pricesCallAuction, smooth: false, symbol: 'none', connectNulls: false, lineStyle: { width: 2, color: '#9e9e9e' }, markArea: preMarketMarkArea },
-        { name: '连续交易', type: 'line', data: pricesContinuous, smooth: false, symbol: 'none', connectNulls: false, lineStyle: { width: 2, color: '#5c9eed' } },
-        { name: '均价', type: 'line', data: avgPrices, smooth: false, symbol: 'none', connectNulls: true, lineStyle: { width: 1, color: '#ffc107' } }
+        { name: '集合竞价', type: 'line', data: pricesCallAuction, smooth: false, symbol: 'none', connectNulls: false, lineStyle: { width: 2, color: '#9e9e9e' }, markArea: preMarketMarkArea, yAxisIndex: 0 },
+        { name: '连续交易', type: 'line', data: pricesContinuous, smooth: false, symbol: 'none', connectNulls: false, lineStyle: { width: 2, color: '#5c9eed' }, markLine: baselineMarkLine, yAxisIndex: 0 },
+        { name: '均价', type: 'line', data: avgPrices, smooth: false, symbol: 'none', connectNulls: true, lineStyle: { width: 1, color: '#ffc107' }, yAxisIndex: 0 }
       ]
     }, true)
     if (!intradayVolChart) intradayVolChart = echarts.init(volDom)

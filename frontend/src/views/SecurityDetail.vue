@@ -36,7 +36,7 @@
         <div class="panel-left-inner">
           <el-tabs v-model="chartTab" class="chart-tabs">
             <el-tab-pane label="分时" name="intraday" lazy>
-              <TickChart ref="tickChartRef" :symbol="symbol" />
+              <TickChart v-if="securityDetailLoaded" ref="tickChartRef" :symbol="symbol" :security-detail="securityInfo" />
             </el-tab-pane>
             <el-tab-pane label="日K" name="day" lazy>
               <KlineChart ref="klineDayRef" :symbol="symbol" period="1d" style="height: 100%;" />
@@ -118,6 +118,7 @@ const route = useRoute()
 const router = useRouter()
 const symbol = ref(route.params.symbol || '')
 const securityInfo = ref({})
+const securityDetailLoaded = ref(false)
 const quote = ref({
   last_price: 0,
   open: 0,
@@ -329,9 +330,11 @@ function getPriceColor(lastPrice, preClose) {
 }
 
 async function fetchSecurityInfo() {
+  securityDetailLoaded.value = false
   try {
     const info = await securityApi.getDetail(symbol.value)
     securityInfo.value = info
+    securityDetailLoaded.value = true
   } catch (error) {
     console.error('获取证券信息失败:', error)
   }
