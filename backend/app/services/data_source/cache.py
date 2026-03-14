@@ -64,6 +64,56 @@ def get_ticks_dir(security_dir: Path) -> Path:
     return security_dir / "ticks"
 
 
+def _date_to_yyyy_mm_dd(value: Any) -> Optional[str]:
+    """将 YYYYMMDD 或 YYYY-MM-DD 转为 YYYY-MM-DD。"""
+    if value is None:
+        return None
+    s = str(value).strip()
+    if len(s) == 8 and s.isdigit():
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+    if len(s) >= 10 and s[4] == "-":
+        return s[:10]
+    return None
+
+
+def _normalize_ticks_meta(ticks_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    将 ticks 元数据统一为 start_date / end_date（YYYY-MM-DD）。
+    兼容旧字段 date_min / date_max（YYYYMMDD），读入后转为 start_date / end_date。
+    返回仅含 start_date、end_date、updated_at 的字典。
+    """
+    if not ticks_dict:
+        return {}
+    out: Dict[str, Any] = {}
+    start = ticks_dict.get("start_date") or ticks_dict.get("date_min")
+    end = ticks_dict.get("end_date") or ticks_dict.get("date_max")
+    if start is not None:
+        out["start_date"] = _date_to_yyyy_mm_dd(start) or str(start)[:10]
+    if end is not None:
+        out["end_date"] = _date_to_yyyy_mm_dd(end) or str(end)[:10]
+    if ticks_dict.get("updated_at") is not None:
+        out["updated_at"] = ticks_dict["updated_at"]
+    return out
+
+
+def get_metadata_for_security(security_type: Optional[str], symbol: str) -> Dict[str, Any]:
+    """
+    读取该证券的 metadata.yaml。K 线统一为 kline（日线区间）；ticks 统一为 start_date/end_date。
+    供获取单个证券接口附加返回。不再返回 daily/weekly/monthly 旧键。
+    """
+    security_dir = get_security_dir(security_type, symbol)
+    meta = read_meta(security_dir)
+    if not meta:
+        return {}
+    result = dict(meta)
+    result["kline"] = meta.get("kline") or meta.get("daily") or {}
+    for key in ("daily", "weekly", "monthly"):
+        result.pop(key, None)
+    if result.get("ticks") is not None:
+        result["ticks"] = _normalize_ticks_meta(result["ticks"])
+    return result
+
+
 def get_ticks_path(security_dir: Path, trade_date_yyyymmdd: str) -> Path:
     """分时按日存储：ticks/YYYYMMDD.parquet"""
     return get_ticks_dir(security_dir) / f"{trade_date_yyyymmdd}.parquet"
@@ -250,19 +300,92 @@ def _filter_rows_by_date(rows: List[Dict[str, Any]], start_date: Optional[str], 
     return out
 
 
-def _kline_meta_key(period: str) -> str:
-    """period 1d -> daily, 1w -> weekly, 1M -> monthly"""
-    if period == "1d":
-        return "daily"
+def _aggregate_daily_to_period(daily_rows: List[Dict[str, Any]], period: str) -> List[Dict[str, Any]]:
+    """
+    将日 K 合成为周 K（自然周）或月 K（自然月）。
+    周：自然周（pd.Grouper freq='W-SUN'）；月：自然月（freq='M'）。
+    聚合规则：time=周期内最后交易日 time；open=首日 open；close=末日 close；high/low=周期内最大/最小；volume/amount=求和。
+    其余 KLINE 列补 0。
+    """
+    if not daily_rows:
+        return []
+    try:
+        import pandas as pd
+    except ImportError:
+        logger.warning("pandas 未安装，无法聚合周/月 K")
+        return []
+
+    df = pd.DataFrame(daily_rows)
+    if "time" not in df.columns:
+        return []
+    df = df.copy()
+    df["_dt"] = df["time"].map(lambda t: datetime.fromtimestamp(int(float(t)) / 1000.0))
+    df = df.sort_values("_dt").reset_index(drop=True)
+
     if period == "1w":
-        return "weekly"
-    if period == "1M":
-        return "monthly"
-    return "daily"
+        grouper = pd.Grouper(key="_dt", freq="W-SUN")
+    elif period == "1M":
+        grouper = pd.Grouper(key="_dt", freq="M")
+    else:
+        return []
+
+    result: List[Dict[str, Any]] = []
+    for _, g in df.groupby(grouper, sort=True):
+        if g.empty:
+            continue
+        g = g.sort_values("_dt")
+        row: Dict[str, Any] = {col: 0 for col in KLINE_COLUMNS}
+        row["time"] = int(g.iloc[-1]["time"])
+        row["open"] = float(g.iloc[0]["open"])
+        row["close"] = float(g.iloc[-1]["close"])
+        row["high"] = float(g["high"].max())
+        row["low"] = float(g["low"].min())
+        if "volume" in g.columns:
+            row["volume"] = int(g["volume"].sum())
+        if "amount" in g.columns:
+            row["amount"] = float(g["amount"].sum())
+        result.append(row)
+    return result
 
 
-def _period_to_meta_key(period: str) -> str:
-    return _kline_meta_key(period)
+def rebuild_weekly_monthly_from_daily(security_type: Optional[str], symbol: str) -> None:
+    """
+    清除周 K、月 K 缓存文件，并根据日线 parquet 重新聚合生成 weekly.parquet 与 monthly.parquet。
+    周线用自然周（W-SUN），月线用自然月（M）。周/月由日线生成，不再写入 meta（仅 kline 存日线区间）。
+    """
+    security_dir = get_security_dir(security_type, symbol)
+    daily_path = get_daily_path(security_dir)
+    weekly_path = get_weekly_path(security_dir)
+    monthly_path = get_monthly_path(security_dir)
+
+    if weekly_path.is_file():
+        try:
+            weekly_path.unlink()
+        except OSError as e:
+            logger.warning("删除周 K 缓存失败 %s: %s", weekly_path, e)
+    if monthly_path.is_file():
+        try:
+            monthly_path.unlink()
+        except OSError as e:
+            logger.warning("删除月 K 缓存失败 %s: %s", monthly_path, e)
+
+    daily_rows = _read_parquet_kline(daily_path)
+    if not daily_rows:
+        return
+
+    weekly_rows = _aggregate_daily_to_period(daily_rows, "1w")
+    monthly_rows = _aggregate_daily_to_period(daily_rows, "1M")
+
+    if weekly_rows:
+        _write_parquet_kline(weekly_path, weekly_rows)
+    if monthly_rows:
+        _write_parquet_kline(monthly_path, monthly_rows)
+    # 周/月由日线生成，不再单独写入 meta，仅日线区间存于 kline
+
+
+def _get_kline_meta_key() -> str:
+    """K 线元数据统一使用 kline（仅存日线区间，周/月由日线生成）。"""
+    return "kline"
 
 
 def get_daily(
@@ -290,8 +413,16 @@ def get_weekly(
     force_update: bool = False,
     adapter: Any = None,
 ) -> List[Dict[str, Any]]:
-    """获取周线。"""
-    return _get_kline(security_type, symbol, "1w", start_date, end_date, force_update=force_update, adapter=adapter)
+    """
+    获取周线。不从数据源抓取，仅从本地 weekly.parquet 读取（该文件由日线合并生成）。
+    若 weekly.parquet 不存在则先根据日线重建再返回。
+    """
+    security_dir = get_security_dir(security_type, symbol)
+    path = get_weekly_path(security_dir)
+    if not path.is_file():
+        rebuild_weekly_monthly_from_daily(security_type, symbol)
+    rows = _read_parquet_kline(path)
+    return _filter_rows_by_date(rows, start_date, end_date)
 
 
 def get_monthly(
@@ -303,8 +434,16 @@ def get_monthly(
     force_update: bool = False,
     adapter: Any = None,
 ) -> List[Dict[str, Any]]:
-    """获取月线。"""
-    return _get_kline(security_type, symbol, "1M", start_date, end_date, force_update=force_update, adapter=adapter)
+    """
+    获取月线。不从数据源抓取，仅从本地 monthly.parquet 读取（该文件由日线合并生成）。
+    若 monthly.parquet 不存在则先根据日线重建再返回。
+    """
+    security_dir = get_security_dir(security_type, symbol)
+    path = get_monthly_path(security_dir)
+    if not path.is_file():
+        rebuild_weekly_monthly_from_daily(security_type, symbol)
+    rows = _read_parquet_kline(path)
+    return _filter_rows_by_date(rows, start_date, end_date)
 
 
 def _get_kline(
@@ -317,9 +456,8 @@ def _get_kline(
     force_update: bool = False,
     adapter: Any = None,
 ) -> List[Dict[str, Any]]:
-    """K 线统一逻辑：daily/weekly/monthly."""
+    """K 线：仅日线走此逻辑并读写 meta，周/月由 get_weekly/get_monthly 直接读 parquet。"""
     security_dir = get_security_dir(security_type, symbol)
-    meta_key = _period_to_meta_key(period)
     if period == "1d":
         path = get_daily_path(security_dir)
     elif period == "1w":
@@ -328,7 +466,9 @@ def _get_kline(
         path = get_monthly_path(security_dir)
 
     meta = read_meta(security_dir)
-    type_meta = meta.get(meta_key) or {}
+    # 统一使用 kline；兼容旧版 daily
+    meta_key = _get_kline_meta_key()
+    type_meta = meta.get(meta_key) or meta.get("daily") or {}
     meta_start = type_meta.get("start_date")
     meta_end = type_meta.get("end_date")
     # meta 中可能原样存 int，比较前转为 YYYY-MM-DD 字符串
@@ -390,7 +530,9 @@ def _get_kline(
             }
             type_meta.update(new_type_meta)
             meta[meta_key] = type_meta
-            write_meta(security_dir, meta, merge=True)
+            for old_key in ("daily", "weekly", "monthly"):
+                meta.pop(old_key, None)
+            write_meta(security_dir, meta, merge=False)
 
     # 返回请求区间内的数据
     result = _filter_rows_by_date(merged if merged else existing, start_date, end_date)
@@ -439,24 +581,19 @@ def get_ticks(
                     raw.to_parquet(ticks_path, index=False)
                     rows = raw.to_dict("records")
                     meta = read_meta(security_dir)
-                    ticks_meta = meta.get("ticks") or {}
-                    date_min = ticks_meta.get("date_min")
-                    date_max = ticks_meta.get("date_max")
-                    if date_min is None or date_max is None:
-                        dates_list = list(ticks_meta.get("dates") or [])
-                        if dates_list:
-                            date_min = date_min or min(dates_list)
-                            date_max = date_max or max(dates_list)
-                    date_min = date_min or trade_date_flat
-                    date_max = date_max or trade_date_flat
-                    if trade_date_flat < date_min:
-                        date_min = trade_date_flat
-                    if trade_date_flat > date_max:
-                        date_max = trade_date_flat
-                    ticks_meta["date_min"] = date_min
-                    ticks_meta["date_max"] = date_max
-                    ticks_meta["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    meta["ticks"] = ticks_meta
+                    ticks_meta = _normalize_ticks_meta(meta.get("ticks") or {})
+                    trade_date_norm = _date_to_yyyy_mm_dd(trade_date_flat) or f"{trade_date_flat[:4]}-{trade_date_flat[4:6]}-{trade_date_flat[6:8]}"
+                    start_date = ticks_meta.get("start_date") or trade_date_norm
+                    end_date = ticks_meta.get("end_date") or trade_date_norm
+                    if trade_date_norm < start_date:
+                        start_date = trade_date_norm
+                    if trade_date_norm > end_date:
+                        end_date = trade_date_norm
+                    meta["ticks"] = {
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    }
                     write_meta(security_dir, meta, merge=True)
             except Exception as e:
                 logger.warning("写入分笔 parquet 失败 %s: %s", ticks_path, e)

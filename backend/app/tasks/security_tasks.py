@@ -2,6 +2,7 @@
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import logging
+import time
 
 from app.celery_app import celery_app
 from app.database import SessionLocal
@@ -17,12 +18,18 @@ from app.services.data_source.cache import (
     get_divid_factors_path,
     read_meta,
     write_meta,
+    rebuild_weekly_monthly_from_daily,
 )
 from app.services.data_source.sync import _resolve_config
 from app.services.security_service import security_service
 from app.utils.task_lock import TaskLock
 
 logger = logging.getLogger(__name__)
+
+
+def _elapsed(t0: float) -> str:
+    """将 perf_counter 起始点转为耗时描述，如 1.23s。"""
+    return "%.2fs" % (time.perf_counter() - t0)
 
 
 def _build_error_result(message: str, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -75,6 +82,9 @@ def task_update_bulk_security_info(
 
     db = SessionLocal()
     try:
+        t0 = time.perf_counter()
+        logger.info("批量同步证券基础信息: 启动, source_type=%s, source_id=%s, market=%s, sector=%s",
+                    source_type, source_id, market, sector)
         # 任务启动时立即更新状态，确保在 Redis 中创建任务记录
         self.update_state(
             state="PROGRESS",
@@ -87,6 +97,8 @@ def task_update_bulk_security_info(
 
         # 经数据源抽象层同步（按 source_type/source_id 选择连接）
         result = sync_securities(db, source_type=source_type, source_id=source_id, market=market, sector=sector)
+        logger.info("批量同步证券基础信息: 同步完成, success=%s, total=%s, created=%s, updated=%s, errors=%s, 耗时 %s",
+                    result.get("success"), result.get("total"), result.get("created"), result.get("updated"), result.get("errors"), _elapsed(t0))
 
         # 更新最终状态
         if result.get("success"):
@@ -135,13 +147,17 @@ def task_update_single_security_tick_for_date(
     """拉取并落盘单个证券指定交易日的分笔数据。"""
     db = SessionLocal()
     try:
+        t0 = time.perf_counter()
+        logger.info("分笔抓取: symbol=%s, trade_date=%s, force_update=%s", symbol, trade_date, force_update)
         adapter, err = _resolve_adapter(db, source_type, source_id)
         if err is not None:
+            logger.warning("分笔抓取: 配置解析失败 symbol=%s, err=%s", symbol, err)
             result = _build_error_result(err, {"symbol": symbol, "trade_date": str(trade_date)})
             self.update_state(state="SUCCESS", meta={"status": "配置解析失败", "result": result})
             return result
 
         rows = get_ticks(security_type, symbol, trade_date, force_update=force_update, adapter=adapter)
+        logger.info("分笔抓取: 完成 symbol=%s, trade_date=%s, rows=%s, 耗时 %s", symbol, trade_date, len(rows), _elapsed(t0))
         result = {
             "success": True,
             "message": "更新完成",
@@ -170,22 +186,44 @@ def _update_single_security_kdata_core(
     end_date: Optional[str],
     force_update: bool,
 ) -> Dict[str, Any]:
+    """仅抓取日线；周线/月线不再从数据源拉取，仅根据日线重建。"""
     if period == "1d":
+        logger.info("K线抓取: 开始日线 symbol=%s, start_date=%s, end_date=%s, force_update=%s",
+                    symbol, start_date, end_date, force_update)
+        t0 = time.perf_counter()
         rows = get_daily(security_type, symbol, start_date, end_date, force_update=force_update, adapter=adapter)
-    elif period == "1w":
-        rows = get_weekly(security_type, symbol, start_date, end_date, force_update=force_update, adapter=adapter)
-    elif period == "1M":
-        rows = get_monthly(security_type, symbol, start_date, end_date, force_update=force_update, adapter=adapter)
-    else:
-        return _build_error_result(f"不支持的周期: {period}", {"symbol": symbol})
-
-    return {
-        "success": True,
-        "message": "更新完成",
-        "symbol": symbol,
-        "period": period,
-        "rows": len(rows),
-    }
+        logger.info("K线抓取: 日线完成 symbol=%s, rows=%s, 耗时 %s", symbol, len(rows), _elapsed(t0))
+        # 日线抓取完成后清除周 K、月 K 缓存并由日线重新生成 weekly/monthly.parquet
+        logger.info("K线抓取: 根据日线重建周/月 symbol=%s", symbol)
+        t1 = time.perf_counter()
+        rebuild_weekly_monthly_from_daily(security_type, symbol)
+        logger.info("K线抓取: 周/月重建完成 symbol=%s, 耗时 %s", symbol, _elapsed(t1))
+        return {
+            "success": True,
+            "message": "更新完成",
+            "symbol": symbol,
+            "period": period,
+            "rows": len(rows),
+        }
+    if period in ("1w", "1M"):
+        # 周/月仅做从日线重建，不发起数据源请求
+        logger.info("K线抓取: 从日线重建周/月 symbol=%s, period=%s", symbol, period)
+        t0 = time.perf_counter()
+        rebuild_weekly_monthly_from_daily(security_type, symbol)
+        rows = (
+            get_weekly(security_type, symbol, start_date, end_date, force_update=False, adapter=None)
+            if period == "1w"
+            else get_monthly(security_type, symbol, start_date, end_date, force_update=False, adapter=None)
+        )
+        logger.info("K线抓取: 周/月完成 symbol=%s, period=%s, rows=%s, 耗时 %s", symbol, period, len(rows), _elapsed(t0))
+        return {
+            "success": True,
+            "message": "更新完成",
+            "symbol": symbol,
+            "period": period,
+            "rows": len(rows),
+        }
+    return _build_error_result(f"不支持的周期: {period}", {"symbol": symbol})
 
 
 @celery_app.task(bind=True, name="task_update_single_security_kdata")
@@ -203,8 +241,11 @@ def task_update_single_security_kdata(
     """更新单个证券指定周期的 K 线数据。"""
     db = SessionLocal()
     try:
+        t0 = time.perf_counter()
+        logger.info("任务 K线更新: symbol=%s, period=%s, start_date=%s, end_date=%s", symbol, period, start_date, end_date)
         adapter, err = _resolve_adapter(db, source_type, source_id)
         if err is not None:
+            logger.warning("任务 K线更新: 配置解析失败 symbol=%s, err=%s", symbol, err)
             result = _build_error_result(err, {"symbol": symbol, "period": period})
             self.update_state(state="SUCCESS", meta={"status": "配置解析失败", "result": result})
             return result
@@ -218,6 +259,7 @@ def task_update_single_security_kdata(
             end_date=end_date,
             force_update=force_update,
         )
+        logger.info("任务 K线更新: 完成 symbol=%s, period=%s, rows=%s, 总耗时 %s", symbol, period, result.get("rows", 0), _elapsed(t0))
         self.update_state(state="SUCCESS", meta={"status": result.get("message", ""), "result": result})
         return result
     except Exception as e:
@@ -236,15 +278,20 @@ def _update_single_security_tick_full_core(
     symbol: str,
     force_update: bool,
 ) -> Dict[str, Any]:
+    t0 = time.perf_counter()
     dates = get_dates_from_daily_parquet(security_type, symbol)
+    logger.info("分时全量补全: symbol=%s, 日线交易日数=%s, force_update=%s", symbol, len(dates), force_update)
     tick_count = 0
-    for d in dates:
+    for i, d in enumerate(dates):
         try:
             rows = get_ticks(security_type, symbol, d, force_update=force_update, adapter=adapter)
             if rows:
                 tick_count += 1
+            if (i + 1) % 50 == 0 or i == len(dates) - 1:
+                logger.info("分时全量补全: symbol=%s, 进度 %s/%s, 已落盘 %s 天, 已耗时 %s", symbol, i + 1, len(dates), tick_count, _elapsed(t0))
         except Exception as e:
-            logger.warning(f"拉取分时 {symbol} {d} 失败: {e}")
+            logger.warning("拉取分时 %s %s 失败: %s", symbol, d, e)
+    logger.info("分时全量补全: 完成 symbol=%s, 共 %s 天有分笔, 总耗时 %s", symbol, tick_count, _elapsed(t0))
     return {
         "success": True,
         "message": "更新完成",
@@ -266,8 +313,11 @@ def task_update_single_security_tick_full(
     """按日线 parquet 中的交易日补全该证券所有分时数据。"""
     db = SessionLocal()
     try:
+        t0 = time.perf_counter()
+        logger.info("任务分时全量补全: 启动 symbol=%s", symbol)
         adapter, err = _resolve_adapter(db, source_type, source_id)
         if err is not None:
+            logger.warning("任务分时全量补全: 配置解析失败 symbol=%s, err=%s", symbol, err)
             result = _build_error_result(err, {"symbol": symbol})
             self.update_state(state="SUCCESS", meta={"status": "配置解析失败", "result": result})
             return result
@@ -278,10 +328,11 @@ def task_update_single_security_tick_full(
             symbol=symbol,
             force_update=force_update,
         )
+        logger.info("任务分时全量补全: 完成 symbol=%s, ticks_dates=%s, 总耗时 %s", symbol, result.get("ticks_dates", 0), _elapsed(t0))
         self.update_state(state="SUCCESS", meta={"status": result.get("message", ""), "result": result})
         return result
     except Exception as e:
-        logger.error(f"补全分时失败: {symbol}, {e}")
+        logger.error("补全分时失败: %s, %s", symbol, e)
         import traceback
 
         logger.error(traceback.format_exc())
@@ -315,6 +366,9 @@ def _update_single_security_all_data_core(
         if err is not None:
             return _build_error_result(err, {"symbol": symbol})
 
+        t_total = time.perf_counter()
+        # 仅抓取日线；周线/月线在日线更新后由 rebuild_weekly_monthly_from_daily 根据日线合并生成
+        t_daily = time.perf_counter()
         daily_result = _update_single_security_kdata_core(
             adapter=adapter,
             security_type=security_type,
@@ -324,33 +378,22 @@ def _update_single_security_all_data_core(
             end_date=end_date,
             force_update=force_update,
         )
-        weekly_result = _update_single_security_kdata_core(
-            adapter=adapter,
-            security_type=security_type,
-            symbol=symbol,
-            period="1w",
-            start_date=start_date,
-            end_date=end_date,
-            force_update=force_update,
-        )
-        monthly_result = _update_single_security_kdata_core(
-            adapter=adapter,
-            security_type=security_type,
-            symbol=symbol,
-            period="1M",
-            start_date=start_date,
-            end_date=end_date,
-            force_update=force_update,
-        )
+        logger.info("全量更新: symbol=%s, 日线完成 rows=%s, 耗时 %s", symbol, daily_result.get("rows", 0), _elapsed(t_daily))
+        # 周/月行数从重建后的 parquet 统计（日线更新时已触发重建）
+        weekly_result = {"rows": len(get_weekly(security_type, symbol, None, None, force_update=False, adapter=None))}
+        monthly_result = {"rows": len(get_monthly(security_type, symbol, None, None, force_update=False, adapter=None))}
 
+        t_ticks = time.perf_counter()
         tick_result = _update_single_security_tick_full_core(
             adapter=adapter,
             security_type=security_type,
             symbol=symbol,
             force_update=force_update,
         )
+        logger.info("全量更新: symbol=%s, 分时完成 ticks_dates=%s, 耗时 %s", symbol, tick_result.get("ticks_dates", 0), _elapsed(t_ticks))
 
         # 除权数据：全量更新时一并拉取除权信息，写入 divid_factors.parquet
+        t_divid = time.perf_counter()
         divid_result = _update_single_security_divid_factors_core(
             adapter=adapter,
             security_type=security_type,
@@ -359,6 +402,8 @@ def _update_single_security_all_data_core(
             end_date=end_date,
             force_update=force_update,
         )
+        logger.info("全量更新: symbol=%s, 除权完成 rows=%s, 耗时 %s", symbol, divid_result.get("rows", 0) if divid_result.get("success") else 0, _elapsed(t_divid))
+        logger.info("全量更新: symbol=%s, 全部完成, 总耗时 %s", symbol, _elapsed(t_total))
 
         return {
             "success": True,
@@ -388,6 +433,7 @@ def _update_single_security_divid_factors_core(
     目前策略较简单：每次调用都会直接从数据源获取并整体覆盖本地文件。
     """
     try:
+        t0 = time.perf_counter()
         df = None
         if hasattr(adapter, "get_divid_factors"):
             df = adapter.get_divid_factors(symbol, start_time=start_date, end_time=end_date)
@@ -420,7 +466,7 @@ def _update_single_security_divid_factors_core(
         )
         meta["divid_factors"] = divid_meta
         write_meta(security_dir, meta, merge=False)
-
+        logger.info("除权抓取: 完成 symbol=%s, rows=%s, 耗时 %s", symbol, rows_count, _elapsed(t0))
         return {
             "success": True,
             "message": "更新完成",
@@ -428,7 +474,7 @@ def _update_single_security_divid_factors_core(
             "rows": rows_count,
         }
     except Exception as e:
-        logger.error(f"更新除权数据失败: {symbol}, {e}")
+        logger.error("更新除权数据失败: %s, %s", symbol, e)
         import traceback
 
         logger.error(traceback.format_exc())
@@ -452,6 +498,7 @@ def task_update_single_security_divid_factors(
     """
     db = SessionLocal()
     try:
+        t0 = time.perf_counter()
         security = security_service.get_security_by_symbol(db, symbol)
         if not security:
             result = _build_error_result("证券不存在", {"symbol": symbol})
@@ -475,11 +522,12 @@ def task_update_single_security_divid_factors(
             end_date=end_date,
             force_update=force_update,
         )
+        logger.info("任务除权更新: 完成 symbol=%s, rows=%s, 总耗时 %s", symbol, result.get("rows", 0), _elapsed(t0))
         status = result.get("message", "")
         self.update_state(state="SUCCESS", meta={"status": status, "result": result})
         return result
     except Exception as e:
-        logger.error(f"更新除权数据任务失败: {symbol}, {e}")
+        logger.error("更新除权数据任务失败: %s, %s", symbol, e)
         import traceback
 
         logger.error(traceback.format_exc())
@@ -498,6 +546,7 @@ def task_update_single_security_all_data(
 ):
     """单个证券的全量数据更新（K 线 + 分时，带任务进度）。"""
     try:
+        t0 = time.perf_counter()
         self.update_state(
             state="PROGRESS",
             meta={"current": 0, "total": 0, "status": "开始更新 K 线与分时数据..."},
@@ -511,13 +560,14 @@ def task_update_single_security_all_data(
         )
 
         status = "更新完成" if result.get("success") else "更新失败"
+        logger.info("任务全量更新: 完成 symbol=%s, success=%s, 总耗时 %s", symbol, result.get("success"), _elapsed(t0))
         self.update_state(
             state="SUCCESS",
             meta={"status": status, "result": result},
         )
         return result
     except Exception as e:
-        logger.error(f"更新单个证券所有数据失败: {symbol}, {e}")
+        logger.error("更新单个证券所有数据失败: %s, %s", symbol, e)
         import traceback
 
         logger.error(traceback.format_exc())
@@ -536,6 +586,7 @@ def task_update_bulk_security_all_data(
     """批量更新一批证券的所有数据。"""
     db = SessionLocal()
     try:
+        t_batch = time.perf_counter()
         if symbols is None:
             from app.models.security import Security
 
@@ -546,9 +597,11 @@ def task_update_bulk_security_all_data(
             symbols = [s.symbol for s in q.all()]
 
         total = len(symbols)
+        logger.info("批量全量更新: 启动 security_type=%s, total=%s", security_type, total)
         current = 0
         for symbol in symbols:
             current += 1
+            t_one = time.perf_counter()
             self.update_state(
                 state="PROGRESS",
                 meta={
@@ -564,7 +617,9 @@ def task_update_bulk_security_all_data(
                 source_id=source_id,
                 force_update=force_update,
             )
+            logger.info("批量全量更新: 单券完成 %s/%s symbol=%s, 耗时 %s", current, total, symbol, _elapsed(t_one))
 
+        logger.info("批量全量更新: 全部完成 security_type=%s, total=%s, 总耗时 %s", security_type, total, _elapsed(t_batch))
         result = {
             "success": True,
             "message": "批量更新完成",
@@ -577,7 +632,7 @@ def task_update_bulk_security_all_data(
         )
         return result
     except Exception as e:
-        logger.error(f"批量更新所有数据失败: {e}")
+        logger.error("批量更新所有数据失败: %s", e)
         import traceback
 
         logger.error(traceback.format_exc())

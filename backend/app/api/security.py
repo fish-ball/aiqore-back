@@ -205,7 +205,7 @@ async def get_securities(
 def update_security_data(body: UpdateDataBody, db: Session = Depends(get_db)):
     """
     按指定数据源拉取并补全单个证券的本地缓存数据（异步任务）：
-    - 全量日线、周线、月线（按 metadata.yaml 补全尚未下载的区间）；
+    - 仅拉取全量日线（周线、月线由日线合并生成，不单独抓取）；
     - 全量分时（按日线交易日列表，补全尚未下载的 ticks/YYYYMMDD.parquet）。
     提交任务后立即返回 task_id，由前端轮询任务状态。
     """
@@ -344,7 +344,7 @@ async def get_security(
         if not security:
             raise HTTPException(status_code=404, detail="证券不存在")
         
-        # 转换为字典格式
+        # 转换为字典格式，并附加本地 metadata（含 K 线/分时区间，ticks 统一为 start_date/end_date）
         security_dict = {
             "id": security.id,
             "symbol": security.symbol,
@@ -361,7 +361,12 @@ async def get_security(
             "created_at": security.created_at.isoformat() if security.created_at else None,
             "updated_at": security.updated_at.isoformat() if security.updated_at else None
         }
-        
+        from app.services.data_source.cache import get_metadata_for_security
+        security_dict["metadata"] = get_metadata_for_security(
+            security.security_type or "股票",
+            security.symbol,
+        )
+
         return {
             "code": 0,
             "data": security_dict,

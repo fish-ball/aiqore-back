@@ -173,9 +173,10 @@ def _aggregate_daily_to_period(
     period: str,
 ) -> List[Dict[str, Any]]:
     """
-    将日 K（已前复权）合成为周 / 月 K。
+    将日 K（已前复权）合成为周 / 月 K。接口层始终据此由日线重建返回。
+    周线用自然周（W-SUN），月线用自然月（M）。
 
-    周/月 K 的合成规则：
+    合成规则：
     - time：该周期最后一个交易日的 time；
     - open：该周期第一个交易日的 open；
     - close：该周期最后一个交易日的 close；
@@ -199,12 +200,12 @@ def _aggregate_daily_to_period(
     df = df.sort_values("datetime").reset_index(drop=True)
 
     if period == "1w":
-        # 以周五为一周结束（与常见行情软件周 K 接近）
-        grouper = pd.Grouper(key="datetime", freq="W-FRI")
+        # 自然周（周一至周日，按周结束日分组）
+        grouper = pd.Grouper(key="datetime", freq="W-SUN")
     elif period == "1M":
+        # 自然月
         grouper = pd.Grouper(key="datetime", freq="M")
     else:
-        # 其他周期暂不支持该聚合
         return daily_rows
 
     groups = df.groupby(grouper, sort=True)
@@ -215,7 +216,6 @@ def _aggregate_daily_to_period(
             continue
         g = g.sort_values("datetime")
         row: Dict[str, Any] = {}
-        # 使用组内最后一行的 time 作为该周期 time
         row["time"] = int(g.iloc[-1]["time"])
         row["open"] = float(g.iloc[0]["open"])
         row["close"] = float(g.iloc[-1]["close"])
@@ -263,7 +263,7 @@ async def get_kline(
     - 当 `force_update=true` 时：提交对应 Celery 任务更新数据并返回 task_id，由前端轮询任务状态后再调用本接口获取数据。
     """
     from datetime import datetime, timedelta
-    from app.services.data_source.cache import get_daily, get_weekly, get_monthly, get_ticks
+    from app.services.data_source.cache import get_daily, get_ticks
     from app.services.data_source import get_default_qmt_adapter
     from app.services.security_service import security_service
     from app.tasks.security_tasks import (
@@ -328,23 +328,18 @@ async def get_kline(
             }
 
         adapter = get_default_qmt_adapter()
-        # 先从本地缓存/数据源获取基础 K 线数据
+        # 日线：从缓存/数据源读取；周/月：接口层始终根据日线合并返回（自然周、自然月）
         if period == "1d":
             base_daily = get_daily(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
             if adjust_type == "forward":
                 base_daily = _apply_forward_adjust_for_daily(base_daily, security_type, symbol)
             data = base_daily
         else:
-            # 周/月 K：如果需要复权，则基于日 K 重新合成；否则沿用原有周/月缓存逻辑
+            # 1w/1M 始终由日线重建：取日线后可选前复权，再聚合为周/月
+            base_daily = get_daily(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
             if adjust_type == "forward":
-                base_daily = get_daily(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
                 base_daily = _apply_forward_adjust_for_daily(base_daily, security_type, symbol)
-                data = _aggregate_daily_to_period(base_daily, period)
-            else:
-                if period == "1w":
-                    data = get_weekly(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
-                else:
-                    data = get_monthly(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
+            data = _aggregate_daily_to_period(base_daily, period)
 
         return {"code": 0, "data": data, "message": "success"}
 
