@@ -44,7 +44,8 @@ const routes = [
   {
     path: '/security/:symbol',
     name: 'SecurityDetail',
-    component: SecurityDetail
+    component: SecurityDetail,
+    props: true
   },
   {
     path: '/analysis',

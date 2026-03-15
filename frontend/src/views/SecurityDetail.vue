@@ -15,7 +15,7 @@
         <el-button size="small" :loading="updateDataLoading" @click="triggerUpdateData">
           更新数据
         </el-button>
-        <el-button size="small" @click="refreshCharts">
+        <el-button size="small" @click="reload">
           刷新
         </el-button>
         <el-button size="small" @click="goBack">
@@ -92,6 +92,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { securityApi } from '../api/security'
+import { taskApi } from '../api/task'
 import { marketApi } from '../api/market'
 import { useDataSourceStore } from '../stores/dataSource'
 import DividFactorsTable from './components/diagram/DividFactorsTable.vue'
@@ -116,7 +117,11 @@ const CHART_DARK = {
 
 const route = useRoute()
 const router = useRouter()
-const symbol = ref(route.params.symbol || '')
+
+const props = defineProps({
+  symbol: { type: String, default: '' }
+})
+
 const securityInfo = ref({})
 const securityDetailLoaded = ref(false)
 const quote = ref({
@@ -331,8 +336,10 @@ function getPriceColor(lastPrice, preClose) {
 
 async function fetchSecurityInfo() {
   securityDetailLoaded.value = false
+  const s = (props.symbol || '').trim()
+  if (!s) return
   try {
-    const info = await securityApi.getDetail(symbol.value)
+    const info = await securityApi.getDetail(s)
     securityInfo.value = info
     securityDetailLoaded.value = true
   } catch (error) {
@@ -342,8 +349,10 @@ async function fetchSecurityInfo() {
 
 async function fetchQuote() {
   quoteLoading.value = true
+  const s = (props.symbol || '').trim()
+  if (!s) { quoteLoading.value = false; return }
   try {
-    const quotes = await marketApi.getQuote(symbol.value)
+    const quotes = await marketApi.getQuote(s)
     if (Array.isArray(quotes) && quotes.length > 0) {
       quote.value = quotes[0]
     } else if (quotes && quotes.symbol) {
@@ -614,10 +623,11 @@ function buildSubOption(rawData, type, subCache) {
 }
 
 async function fetchKlineForTab(period, count = 250) {
-  if (!symbol.value) return []
+  const s = (props.symbol || '').trim()
+  if (!s) return []
   try {
     // 不传 start_date/end_date，后端返回全部 K 线，由前端控制显示范围
-    const res = await marketApi.getKline(symbol.value, period, count)
+    const res = await marketApi.getKline(s, period, count)
     return Array.isArray(res) ? res : []
   } catch (e) {
     console.error('获取K线失败:', e)
@@ -840,9 +850,11 @@ async function loadMonthKline() {
 
 // 分时：请求 ticks 接口原样数据，按整分钟聚合后渲染（价格取分钟最后 lastClose，成交量取分钟内 amount 累加）
 async function loadIntraday() {
+  const s = (props.symbol || '').trim()
+  if (!s) return
   try {
     const today = new Date().toISOString().slice(0, 10)
-    const data = await marketApi.getTicks(symbol.value, today)
+    const data = await marketApi.getTicks(s, today)
     const list = Array.isArray(data) ? data : []
     await nextTick()
     const priceDom = intradayChartRef.value
@@ -949,6 +961,31 @@ watch(chartTab, () => {
   klineHoverIndex.value = null
 })
 
+// 初次加载与证券代码变更时复用：清空状态并拉取证券详情、行情、刷新图表
+async function reload() {
+  const s = (props.symbol || '').trim()
+  if (!s) return
+  securityInfo.value = {}
+  securityDetailLoaded.value = false
+  klineData.value = []
+  klineWeekData.value = []
+  klineMonthData.value = []
+  klineCache.value = { day: null, week: null, month: null }
+  await fetchSecurityInfo()
+  await fetchQuote()
+  await nextTick(refreshCharts)
+  if (needAutoFetchData()) {
+    await doUpdateData(true)
+  }
+}
+
+// 证券代码变化时重新加载（与 route 解耦后由 props 驱动）
+watch(() => props.symbol, async (newVal, oldVal) => {
+  const s = (newVal || '').trim()
+  if (!s || s === (oldVal || '').trim()) return
+  await reload()
+}, { immediate: false })
+
 // 拖拽调整左侧宽度（结束时写入 localStorage）
 function startResize(e) {
   resizing = true
@@ -1003,28 +1040,58 @@ function goBack() {
   router.back()
 }
 
-async function triggerUpdateData() {
-  if (!symbol.value) return
+/** 是否缺少需要显示的分时等数据（根据 metadata 判断，无 ticks 或 kline 区间则视为缺失） */
+function needAutoFetchData() {
+  const s = (props.symbol || '').trim()
+  if (!s) return false
+  if (dataSourceStore.list?.length > 0 && dataSourceStore.currentId == null) return false
+  const meta = securityInfo.value?.metadata
+  const hasTicks = meta?.ticks && (meta.ticks.end_date != null || meta.ticks.start_date != null)
+  const hasKline = meta?.kline && (meta.kline.end_date != null || meta.kline.start_date != null)
+  return !hasTicks || !hasKline
+}
+
+/**
+ * 执行更新数据：提交任务、等待完成、成功则 reload。
+ * @param {boolean} silent 为 true 时不弹成功提示，且未选数据源时静默跳过
+ */
+async function doUpdateData(silent = false) {
+  const s = (props.symbol || '').trim()
+  if (!s) return
   const sourceType = dataSourceStore.currentDataSource?.source_type || 'qmt'
   const sourceId = dataSourceStore.currentId ?? null
   if (dataSourceStore.list?.length > 0 && !dataSourceStore.currentId) {
-    ElMessage.warning('请先在顶栏选择数据源')
+    if (!silent) ElMessage.warning('请先在顶栏选择数据源')
     return
   }
   updateDataLoading.value = true
   try {
-    const res = await securityApi.updateData(symbol.value, sourceType, sourceId)
+    const res = await securityApi.updateData(s, sourceType, sourceId)
     if (res?.hint) {
-      ElMessage.warning(res.hint)
-    } else if (res && (res.daily != null || res.weekly != null || res.monthly != null || res.ticks_dates != null)) {
-      ElMessage.success('数据已更新')
-      await refreshCharts()
+      if (!silent) ElMessage.warning(res.hint)
+      return
+    }
+    if (res?.task_id) {
+      const taskResult = await taskApi.waitForTask(res.task_id)
+      if (taskResult?.state === 'SUCCESS') {
+        if (!silent) ElMessage.success('数据已更新')
+        await reload()
+      } else if (taskResult?.state === 'FAILURE' || taskResult?.state === 'REVOKED') {
+        const msg = taskResult?.meta?.message || taskResult?.meta?.error || '任务未成功完成'
+        ElMessage.error(typeof msg === 'string' ? msg : (msg?.message || '任务未成功完成'))
+      } else {
+        if (!silent) ElMessage.warning('等待超时或任务未结束')
+      }
     }
   } catch (e) {
     ElMessage.error(e?.message || '更新数据失败')
   } finally {
     updateDataLoading.value = false
   }
+}
+
+async function triggerUpdateData() {
+  await doUpdateData(false)
 }
 
 async function refreshCharts() {
@@ -1058,8 +1125,7 @@ onMounted(async () => {
     })
     resizeObserver.observe(panelLeftRef.value)
   }
-  await fetchSecurityInfo()
-  await fetchQuote()
+  await reload()
 })
 
 function resizeCharts() {

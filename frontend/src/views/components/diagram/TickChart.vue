@@ -17,21 +17,31 @@
       </div>
     </div>
 
-    <!-- 右侧：五档盘口，固定宽度，原生 table -->
+    <!-- 右侧：五档盘口，数据来自 ticks 最后一条的 askPrice/askVol/bidPrice/bidVol -->
     <div class="intraday-side">
       <div class="side-block">
         <table class="five-level-table">
           <tbody>
-            <tr v-for="row in fiveLevelPlaceholder" :key="row.label">
+            <tr v-for="row in fiveLevelRows.slice(0, 5)" :key="row.label">
               <td class="cell label">{{ row.label }}</td>
-              <td class="cell price">{{ row.price }}</td>
+              <td class="cell price" :class="priceColorClass(row.price)">{{ row.price }}</td>
+              <td class="cell vol">{{ row.vol }}</td>
+            </tr>
+            <tr class="five-level-ratio-row">
+              <td colspan="3">
+                <div class="five-level-ratio-bar">
+                  <div class="five-level-ratio-buy" :style="{ width: (fiveLevelBuyRatio * 100) + '%' }"></div>
+                  <div class="five-level-ratio-sell" :style="{ width: (fiveLevelSellRatio * 100) + '%' }"></div>
+                </div>
+              </td>
+            </tr>
+            <tr v-for="row in fiveLevelRows.slice(5, 10)" :key="row.label">
+              <td class="cell label">{{ row.label }}</td>
+              <td class="cell price" :class="priceColorClass(row.price)">{{ row.price }}</td>
               <td class="cell vol">{{ row.vol }}</td>
             </tr>
           </tbody>
         </table>
-      </div>
-      <div class="side-block">
-        <div class="trade-placeholder">最新成交 - 待接口</div>
       </div>
     </div>
   </div>
@@ -87,23 +97,69 @@ const subChartAmounts = ref([])
 const subChartCallAuctionEndIndex = ref(-1)
 // 主图是否有右侧涨跌幅轴，副图 grid.right 与之对齐
 const subChartHasRightAxis = ref(false)
+// 副图每根柱子颜色：按当前分钟与上一分钟最后价比较，涨红跌绿平价白
+const subChartBarColors = ref([])
 
 let intradayChart = null
 let intradayVolChart = null
 
-// 五档、最新成交占位（待接口）
-const fiveLevelPlaceholder = ref([
-  { label: '卖5', price: '--', vol: '--' },
-  { label: '卖4', price: '--', vol: '--' },
-  { label: '卖3', price: '--', vol: '--' },
-  { label: '卖2', price: '--', vol: '--' },
-  { label: '卖1', price: '--', vol: '--' },
-  { label: '买1', price: '--', vol: '--' },
-  { label: '买2', price: '--', vol: '--' },
-  { label: '买3', price: '--', vol: '--' },
-  { label: '买4', price: '--', vol: '--' },
-  { label: '买5', price: '--', vol: '--' }
-])
+// 五档盘口：卖5~卖1、买1~买5，由 loadIntraday 中取 ticks 最后一条的 askPrice/askVol/bidPrice/bidVol 填充
+const FIVE_LEVEL_LABELS = ['卖5', '卖4', '卖3', '卖2', '卖1', '买1', '买2', '买3', '买4', '买5']
+function defaultFiveLevelRows() {
+  return FIVE_LEVEL_LABELS.map(label => ({ label, price: '--', vol: '--' }))
+}
+const fiveLevelRows = ref(defaultFiveLevelRows())
+// 昨收价，用于五档价格颜色：平价白、溢价红、折价绿
+const fiveLevelLastClose = ref(null)
+// 五档买盘/卖盘总量比例（0~1），用于买1与卖1之间的比例条
+const fiveLevelBuyRatio = ref(0.5)
+const fiveLevelSellRatio = ref(0.5)
+
+function priceColorClass(priceStr) {
+  if (priceStr === '--' || fiveLevelLastClose.value == null || !Number.isFinite(fiveLevelLastClose.value)) return 'price-equal'
+  const p = parseFloat(priceStr)
+  if (!Number.isFinite(p)) return 'price-equal'
+  if (p > fiveLevelLastClose.value) return 'price-up'
+  if (p < fiveLevelLastClose.value) return 'price-down'
+  return 'price-equal'
+}
+
+function formatFiveLevelVol(v) {
+  if (v == null || !Number.isFinite(Number(v))) return '--'
+  const n = Number(v)
+  if (n >= 1e8) return (n / 1e8).toFixed(2) + '\u4ebf'
+  if (n >= 1e4) return (n / 1e4).toFixed(2) + '\u4e07'
+  return String(Math.round(n))
+}
+
+function buildFiveLevelFromLastTick(last) {
+  const askPrice = Array.isArray(last.askPrice) ? last.askPrice : []
+  const askVol = Array.isArray(last.askVol) ? last.askVol : []
+  const bidPrice = Array.isArray(last.bidPrice) ? last.bidPrice : []
+  const bidVol = Array.isArray(last.bidVol) ? last.bidVol : []
+  const rows = []
+  for (let i = 4; i >= 0; i--) {
+    const p = askPrice[i] != null && Number.isFinite(Number(askPrice[i])) ? Number(askPrice[i]).toFixed(2) : '--'
+    const v = formatFiveLevelVol(askVol[i])
+    rows.push({ label: FIVE_LEVEL_LABELS[4 - i], price: p, vol: v })
+  }
+  for (let i = 0; i <= 4; i++) {
+    const p = bidPrice[i] != null && Number.isFinite(Number(bidPrice[i])) ? Number(bidPrice[i]).toFixed(2) : '--'
+    const v = formatFiveLevelVol(bidVol[i])
+    rows.push({ label: FIVE_LEVEL_LABELS[5 + i], price: p, vol: v })
+  }
+  return rows
+}
+
+function sumVol(arr) {
+  if (!Array.isArray(arr)) return 0
+  let s = 0
+  for (let i = 0; i < arr.length; i++) {
+    const v = Number(arr[i])
+    if (Number.isFinite(v)) s += v
+  }
+  return s
+}
 
 // 行情页黑底白字图表主题（与现有行情软件风格一致）
 const CHART_DARK = {
@@ -163,7 +219,10 @@ function applyVolChartOption() {
   const volumes = subChartVolumes.value
   const amounts = subChartAmounts.value
   const ind = subChartIndicator.value
-  const data = ind === 'amount' ? amounts : volumes
+  const rawData = ind === 'amount' ? amounts : volumes
+  const barData = subChartBarColors.value.length === rawData.length
+    ? rawData.map((val, i) => ({ value: val, itemStyle: { color: subChartBarColors.value[i] || '#e0e0e0' } }))
+    : rawData.map(val => ({ value: val, itemStyle: { color: '#e0e0e0' } }))
   const name = ind === 'amount' ? '成交额' : '成交量'
   const endIdx = subChartCallAuctionEndIndex.value
   const hasRight = subChartHasRightAxis.value
@@ -194,7 +253,7 @@ function applyVolChartOption() {
       }
     },
     series: [
-      { name, type: 'bar', data, itemStyle: { color: '#5c9eed' }, markArea: volPreMarketMarkArea }
+      { name, type: 'bar', data: barData, markArea: volPreMarketMarkArea }
     ]
   }, true)
 }
@@ -212,9 +271,14 @@ async function loadIntraday() {
     const volDom = intradayVolRef.value
     if (!priceDom || !volDom) return
     if (list.length === 0) {
+      fiveLevelRows.value = defaultFiveLevelRows()
+      fiveLevelLastClose.value = null
+      fiveLevelBuyRatio.value = 0.5
+      fiveLevelSellRatio.value = 0.5
       subChartTimes.value = []
       subChartVolumes.value = []
       subChartAmounts.value = []
+      subChartBarColors.value = []
       subChartCallAuctionEndIndex.value = -1
       subChartHasRightAxis.value = false
       if (!intradayChart) intradayChart = echarts.init(priceDom)
@@ -273,6 +337,15 @@ async function loadIntraday() {
         row[openInt].tickvol += tickvol
       }
     }
+    const lastTick = list[list.length - 1]
+    fiveLevelRows.value = buildFiveLevelFromLastTick(lastTick)
+    const lastCloseNum = list[0]?.lastClose != null ? parseFloat(list[0].lastClose) : null
+    fiveLevelLastClose.value = Number.isFinite(lastCloseNum) ? lastCloseNum : null
+    const bidTotal = sumVol(lastTick.bidVol)
+    const askTotal = sumVol(lastTick.askVol)
+    const total = bidTotal + askTotal
+    fiveLevelBuyRatio.value = total > 0 ? bidTotal / total : 0.5
+    fiveLevelSellRatio.value = total > 0 ? askTotal / total : 0.5
     const sorted = Array.from(minuteMap.entries()).sort((a, b) => a[0] - b[0])
     const times = sorted.map(([k]) => {
       const d = new Date(k * 60000)
@@ -304,6 +377,24 @@ async function loadIntraday() {
     subChartTimes.value = times
     subChartVolumes.value = volumesPerMinute
     subChartAmounts.value = amountsPerMinute
+    const barColors = []
+    const BAR_COLOR_UP = '#F56C6C'
+    const BAR_COLOR_DOWN = '#67C23A'
+    const BAR_COLOR_EQUAL = '#e0e0e0'
+    for (let i = 0; i < times.length; i++) {
+      const curr = pricesContinuous[i] != null ? pricesContinuous[i] : pricesCallAuction[i]
+      const prev = i > 0 ? (pricesContinuous[i - 1] != null ? pricesContinuous[i - 1] : pricesCallAuction[i - 1]) : null
+      if (prev == null || curr == null || !Number.isFinite(curr)) {
+        barColors.push(BAR_COLOR_EQUAL)
+      } else if (curr > prev) {
+        barColors.push(BAR_COLOR_UP)
+      } else if (curr < prev) {
+        barColors.push(BAR_COLOR_DOWN)
+      } else {
+        barColors.push(BAR_COLOR_EQUAL)
+      }
+    }
+    subChartBarColors.value = barColors
     const avgPrices = []
     let sum = 0
     let n = 0
@@ -336,7 +427,7 @@ async function loadIntraday() {
       yAxis: mainYAxisRight != null ? [mainYAxisLeft, mainYAxisRight] : mainYAxisLeft,
       series: [
         { name: '集合竞价', type: 'line', data: pricesCallAuction, smooth: false, symbol: 'none', connectNulls: false, lineStyle: { width: 2, color: '#9e9e9e' }, markArea: preMarketMarkArea, yAxisIndex: 0 },
-        { name: '连续交易', type: 'line', data: pricesContinuous, smooth: false, symbol: 'none', connectNulls: false, lineStyle: { width: 2, color: '#5c9eed' }, markLine: baselineMarkLine, yAxisIndex: 0 },
+        { name: '连续交易', type: 'line', data: pricesContinuous, smooth: false, symbol: 'none', connectNulls: false, lineStyle: { width: 2, color: '#e0e0e0' }, markLine: baselineMarkLine, yAxisIndex: 0 },
         { name: '均价', type: 'line', data: avgPrices, smooth: false, symbol: 'none', connectNulls: true, lineStyle: { width: 1, color: '#ffc107' }, yAxisIndex: 0 }
       ]
     }, true)
@@ -545,9 +636,38 @@ defineExpose({
   width: 60px;
 }
 
-.trade-placeholder {
-  font-size: 12px;
-  color: #808080;
-  padding: 4px 0;
+.five-level-table .cell.price.price-up {
+  color: #F56C6C;
+}
+.five-level-table .cell.price.price-down {
+  color: #67C23A;
+}
+.five-level-table .cell.price.price-equal {
+  color: #e0e0e0;
+}
+
+.five-level-ratio-row td {
+  padding: 2px 4px;
+  vertical-align: middle;
+  border-bottom: 1px solid #262626;
+}
+
+.five-level-ratio-bar {
+  height: 4px;
+  display: flex;
+  width: 100%;
+  border-radius: 2px;
+  overflow: hidden;
+  background: #262626;
+}
+
+.five-level-ratio-buy {
+  background: #F56C6C;
+  min-width: 0;
+}
+
+.five-level-ratio-sell {
+  background: #67C23A;
+  min-width: 0;
 }
 </style>

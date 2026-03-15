@@ -31,6 +31,20 @@ export const taskApi = {
     return api.get(`/tasks/${taskId}`)
   },
 
+  /**
+   * 阻塞等待任务结束（请求会保持到任务完成或超时），供各模块复用。
+   * @param {string} taskId 任务 ID
+   * @param {object} options 可选：timeout 最长等待秒数（默认 600），pollInterval 轮询间隔（可选，由后端使用）
+   * @returns {Promise<object>}  resolve 为最终任务信息 { state, meta, ... }，失败或超时由后端返回当前状态
+   */
+  waitForTask(taskId, options = {}) {
+    const { timeout = 600 } = options
+    return api.get(`/tasks/${taskId}/wait`, {
+      params: { timeout },
+      timeout: (timeout + 30) * 1000
+    })
+  },
+
   /** 停止任务 */
   stop(taskId) {
     return api.post(`/tasks/${taskId}/stop`)

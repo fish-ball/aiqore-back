@@ -4,9 +4,11 @@
 1. 获取当前注册的任务规格（说明/参数 schema）；
 2. 异步调用某个任务，返回 task_id；
 3. 查询任务状态与元数据/进度；
-4. 停止一个任务；
-5. 查看任务列表。
+4. 按 task_id 阻塞等待任务结束并返回结果；
+5. 停止一个任务；
+6. 查看任务列表。
 """
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -104,6 +106,40 @@ async def list_tasks_api(
             "offset": offset,
         },
         "message": "success",
+    }
+
+
+# 任务终态，到达后不再轮询
+_TERMINAL_STATES = frozenset({"SUCCESS", "FAILURE", "REVOKED"})
+
+
+@router.get("/{task_id}/wait")
+async def wait_for_task(
+    task_id: str,
+    timeout: int = Query(600, ge=10, le=7200, description="最长等待秒数"),
+    poll_interval: float = Query(1.5, ge=0.5, le=10, description="轮询间隔秒数"),
+) -> Dict[str, Any]:
+    """
+    阻塞等待指定任务结束，轮询任务状态直至终态或超时。
+    返回最终任务信息（含 state、meta 等），便于前端统一处理。
+    """
+    loop = asyncio.get_event_loop()
+    elapsed = 0.0
+    while elapsed < timeout:
+        info = await loop.run_in_executor(None, lambda: get_task_info(task_id, with_celery_state=True))
+        if not info:
+            raise HTTPException(status_code=404, detail="任务不存在或已过期")
+        state = info.get("state") or ""
+        if state in _TERMINAL_STATES:
+            return {"code": 0, "data": info, "message": "success"}
+        await asyncio.sleep(poll_interval)
+        elapsed += poll_interval
+    # 超时：返回当前状态，由前端决定是否继续轮询或提示
+    info = await loop.run_in_executor(None, lambda: get_task_info(task_id, with_celery_state=True))
+    return {
+        "code": 0,
+        "data": info or {"task_id": task_id, "state": "PENDING", "meta": {}},
+        "message": "等待超时，返回当前状态",
     }
 
 
