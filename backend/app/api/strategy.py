@@ -81,7 +81,7 @@ async def create_strategy(body: StrategyCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/strategies/{strategy_id}")
-async def get_strategy(strategy_id: int, db: Session = Depends(get_db)):
+async def get_strategy(strategy_id: str, db: Session = Depends(get_db)):
     """获取单条策略"""
     s = db.query(Strategy).filter(Strategy.id == strategy_id).first()
     if not s:
@@ -91,7 +91,7 @@ async def get_strategy(strategy_id: int, db: Session = Depends(get_db)):
 
 @router.put("/strategies/{strategy_id}")
 async def update_strategy(
-    strategy_id: int,
+    strategy_id: str,
     body: StrategyUpdate,
     db: Session = Depends(get_db),
 ):
@@ -113,7 +113,7 @@ async def update_strategy(
 
 
 @router.delete("/strategies/{strategy_id}")
-async def delete_strategy(strategy_id: int, db: Session = Depends(get_db)):
+async def delete_strategy(strategy_id: str, db: Session = Depends(get_db)):
     """删除策略"""
     s = db.query(Strategy).filter(Strategy.id == strategy_id).first()
     if not s:

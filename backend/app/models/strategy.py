@@ -1,7 +1,12 @@
 """策略模型：策略名称、策略类型、代码 script"""
-from sqlalchemy import Column, Integer, String, DateTime, Text
+import uuid
+from sqlalchemy import Column, String, DateTime, Text
 from sqlalchemy.sql import func
 from app.database import Base
+
+
+def _gen_uuid():
+    return str(uuid.uuid4())
 
 
 # 策略类型枚举，当前仅 backtrader
@@ -12,7 +17,7 @@ class Strategy(Base):
     """策略配置：名称、类型、脚本代码"""
     __tablename__ = "strategies"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(36), primary_key=True, default=_gen_uuid, index=True, comment="UUID 主键")
     name = Column(String(100), nullable=False, comment="策略名称")
     strategy_type = Column(String(32), nullable=False, index=True, comment="策略类型: backtrader 等")
     script = Column(Text, nullable=True, comment="策略代码 script")

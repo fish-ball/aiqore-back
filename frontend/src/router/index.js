@@ -11,6 +11,7 @@ import DataSourceConnections from '../views/DataSourceConnections.vue'
 import DataSourceDebug from '../views/DataSourceDebug.vue'
 import TaskManager from '../views/TaskManager.vue'
 import StrategyManagement from '../views/StrategyManagement.vue'
+import BacktestRecords from '../views/BacktestRecords.vue'
 
 const routes = [
   {
@@ -77,6 +78,11 @@ const routes = [
     path: '/strategies',
     name: 'StrategyManagement',
     component: StrategyManagement
+  },
+  {
+    path: '/backtest-records',
+    name: 'BacktestRecords',
+    component: BacktestRecords
   }
 ]
 

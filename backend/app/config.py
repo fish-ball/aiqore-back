@@ -35,6 +35,16 @@ class Settings(BaseSettings):
         if self.DATA_ROOT:
             return Path(self.DATA_ROOT).resolve()
         return _PROJECT_ROOT / "data"
+
+    # 回测输出根目录：约定 backend/data/backtest/{task_uuid}/
+    BACKTEST_OUTPUT: Optional[str] = None
+
+    @property
+    def BACKTEST_OUTPUT_ROOT(self) -> Path:
+        """回测图表等资产输出根目录，约定为 data/backtest/"""
+        if self.BACKTEST_OUTPUT:
+            return Path(self.BACKTEST_OUTPUT).resolve()
+        return self.DATA_ROOT_PATH / "backtest"
     
     # QMT配置
     QMT_HOST: str = "127.0.0.1"

@@ -379,6 +379,25 @@ _register(
     )
 )
 
+# === 回测任务 ===
+_register(
+    TaskSpec(
+        name="run_backtest",
+        celery_name="task_run_backtest",
+        title="执行回测任务",
+        description="根据已创建的 BackTestTask 记录执行回测（加载数据、运行 Backtrader 策略、写回结果）。",
+        category="backtest",
+        params=[
+            TaskParamSpec(
+                name="backtest_task_id",
+                type="string",
+                required=True,
+                description="回测任务 UUID，由「发起回测」接口创建后获得。",
+            ),
+        ],
+    )
+)
+
 
 def list_task_specs() -> List[TaskSpec]:
     """返回所有已注册任务规格列表。"""

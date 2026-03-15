@@ -94,6 +94,10 @@
             <el-icon><Operation /></el-icon>
             <span>策略管理</span>
           </el-menu-item>
+          <el-menu-item index="/backtest-records">
+            <el-icon><Histogram /></el-icon>
+            <span>回测记录</span>
+          </el-menu-item>
           <el-menu-item index="/analysis">
             <el-icon><DataAnalysis /></el-icon>
             <span>数据分析</span>

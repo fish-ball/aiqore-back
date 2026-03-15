@@ -4,5 +4,6 @@
 """
 
 from . import security_tasks  # noqa: F401
+from . import backtest_tasks  # noqa: F401
 
-__all__ = ["security_tasks"]
+__all__ = ["security_tasks", "backtest_tasks"]

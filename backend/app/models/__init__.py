@@ -17,6 +17,7 @@ from app.models.security import (
 )
 from app.models.sector import Sector
 from app.models.strategy import Strategy
+from app.models.backtest_task import BackTestTask
 
 __all__ = [
     "Account",
@@ -35,5 +36,6 @@ __all__ = [
     "SecurityFuture",
     "Sector",
     "Strategy",
+    "BackTestTask",
 ]
 
