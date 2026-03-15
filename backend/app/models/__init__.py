@@ -16,6 +16,7 @@ from app.models.security import (
     SecurityFuture,
 )
 from app.models.sector import Sector
+from app.models.strategy import Strategy
 
 __all__ = [
     "Account",
@@ -33,5 +34,6 @@ __all__ = [
     "SecurityOption",
     "SecurityFuture",
     "Sector",
+    "Strategy",
 ]
 

@@ -90,6 +90,10 @@
             <el-icon><Timer /></el-icon>
             <span>任务管理</span>
           </el-menu-item>
+          <el-menu-item index="/strategies">
+            <el-icon><Operation /></el-icon>
+            <span>策略管理</span>
+          </el-menu-item>
           <el-menu-item index="/analysis">
             <el-icon><DataAnalysis /></el-icon>
             <span>数据分析</span>

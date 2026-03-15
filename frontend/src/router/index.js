@@ -10,6 +10,7 @@ import Sectors from '../views/Sectors.vue'
 import DataSourceConnections from '../views/DataSourceConnections.vue'
 import DataSourceDebug from '../views/DataSourceDebug.vue'
 import TaskManager from '../views/TaskManager.vue'
+import StrategyManagement from '../views/StrategyManagement.vue'
 
 const routes = [
   {
@@ -71,6 +72,11 @@ const routes = [
     path: '/tasks',
     name: 'TaskManager',
     component: TaskManager
+  },
+  {
+    path: '/strategies',
+    name: 'StrategyManagement',
+    component: StrategyManagement
   }
 ]
 
