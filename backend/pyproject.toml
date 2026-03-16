@@ -24,6 +24,7 @@ dependencies = [
     "PyYAML>=6.0",
     "backtrader>=1.9.78.123",
     "ta-lib>=0.6.8",
+    "matplotlib>=3.9.4",
 ]
 
 [project.optional-dependencies]

@@ -2,6 +2,7 @@
 """
 Backtrader 回测引擎实现：从策略脚本字符串解析 bt.Strategy 子类，配置 Cerebro，执行并产出绩效与图表。
 """
+import logging
 import os
 import re
 from pathlib import Path
@@ -11,6 +12,9 @@ import backtrader as bt
 import pandas as pd
 
 from app.services.backtest.engine_base import BacktestEngineBase
+
+
+logger = logging.getLogger(__name__)
 
 
 def _strip_main_block(script: str) -> str:
@@ -293,6 +297,23 @@ class BacktraderEngine(BacktestEngineBase):
         trades = getattr(strat, "_trade_log", [])
         nav = getattr(strat, "_nav_log", [])
 
+        # 使用 pandas DataFrame 持久化交易明细与净值曲线，方便后续查看
+        try:
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
+            if trades:
+                trades_df = pd.DataFrame(trades)
+                trade_file_name = "trades.csv"
+                trades_df.to_csv(os.path.join(output_dir, trade_file_name), index=False, encoding="utf-8-sig")
+                metrics["trade_file"] = trade_file_name
+            if nav:
+                nav_df = pd.DataFrame(nav)
+                nav_file_name = "nav.csv"
+                nav_df.to_csv(os.path.join(output_dir, nav_file_name), index=False, encoding="utf-8-sig")
+                metrics["nav_file"] = nav_file_name
+        except Exception as e:
+            # 生成明细文件失败不影响整体回测结果，但打日志方便排查
+            logger.exception("保存回测明细文件失败 output_dir=%s: %s", output_dir, e)
+
         plot_files = []
         try:
             plot_result = dict(metrics)
@@ -306,7 +327,7 @@ class BacktraderEngine(BacktestEngineBase):
                 symbol=symbol,
                 title="Backtest",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception("绘制回测图失败 output_dir=%s: %s", output_dir, e)
         metrics["plot_files"] = plot_files
         return metrics

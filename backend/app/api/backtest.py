@@ -1,18 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-回测 API：发起回测、列表、详情、删除；图表按约定路径 backend/data/backtest/{task_id}/ 提供。
+回测 API：发起回测、列表、详情、删除；图表与明细按约定路径 backend/data/backtest/{task_id}/ 提供。
 """
 import logging
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
-
-logger = logging.getLogger(__name__)
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.backtest_task import BackTestTask
@@ -148,6 +149,22 @@ async def get_backtest_task(task_id: str, db: Session = Depends(get_db)):
         if s:
             strategy_name = s.name
     return {"code": 0, "data": _task_to_item(task, strategy_name), "message": "success"}
+
+
+@router.get("/tasks/{task_id}/trades")
+async def get_backtest_trades(task_id: str) -> dict:
+    """获取回测任务的交易明细（由回测引擎以 trades.csv 形式输出）。"""
+    output_dir = settings.BACKTEST_OUTPUT_ROOT / task_id
+    csv_path = output_dir / "trades.csv"
+    if not csv_path.is_file():
+        raise HTTPException(status_code=404, detail="未找到该任务的交易明细文件")
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception as e:
+        logger.exception("读取交易明细失败 task_id=%s: %s", task_id, e)
+        raise HTTPException(status_code=500, detail="读取交易明细失败")
+    records: List[Dict[str, Any]] = df.to_dict(orient="records")
+    return {"code": 0, "data": records, "message": "success"}
 
 
 @router.delete("/tasks/{task_id}")

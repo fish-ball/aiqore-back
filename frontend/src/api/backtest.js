@@ -19,6 +19,11 @@ export const backtestApi = {
     return api.get(`/backtest/tasks/${taskId}`)
   },
 
+  /** 获取回测任务交易明细 */
+  getTrades(taskId) {
+    return api.get(`/backtest/tasks/${taskId}/trades`)
+  },
+
   /** 删除回测任务 */
   delete(taskId) {
     return api.delete(`/backtest/tasks/${taskId}`)
