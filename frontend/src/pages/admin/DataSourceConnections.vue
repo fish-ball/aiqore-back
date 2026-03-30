@@ -3,7 +3,7 @@
     <div class="page-header">
       <h2>数据源连接</h2>
       <el-button type="primary" @click="openCreate">
-        <el-icon><Plus /></el-icon>
+        <el-icon><IconPlus /></el-icon>
         新建连接
       </el-button>
     </div>
@@ -174,7 +174,6 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
 import { dataSourceApi } from '../../api/dataSource'
 
 const router = useRouter()

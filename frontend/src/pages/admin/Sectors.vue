@@ -4,11 +4,11 @@
       <h2>板块管理</h2>
       <div>
         <el-button type="primary" @click="syncSectors" :loading="syncing">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><IconRefresh /></el-icon>
           {{ syncing ? '同步中...' : '同步板块' }}
         </el-button>
         <el-button @click="refreshData">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><IconRefresh /></el-icon>
           刷新
         </el-button>
       </div>
@@ -96,7 +96,6 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
 import sectorApi from '../../api/sector'
 import { securityApi } from '../../api/security'
 

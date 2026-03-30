@@ -12,7 +12,7 @@
           />
         </el-select>
         <el-button type="primary" @click="refreshData">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><IconRefresh /></el-icon>
           刷新
         </el-button>
       </div>

@@ -7,7 +7,7 @@
           回测记录
         </el-button>
         <el-button type="primary" @click="openCreate">
-          <el-icon><Plus /></el-icon>
+          <el-icon><IconPlus /></el-icon>
           新建策略
         </el-button>
       </div>
@@ -120,7 +120,6 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
 import { strategyApi } from '../../api/strategy'
 import { backtestApi } from '../../api/backtest'
 

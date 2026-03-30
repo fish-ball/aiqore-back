@@ -65,8 +65,6 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAccountStore } from '../../stores/account'
 import { tradeApi } from '../../api/trade'
-import { Wallet, Box, TrendCharts, Document } from '@element-plus/icons-vue'
-
 const router = useRouter()
 const accountStore = useAccountStore()
 const loading = ref(false)
@@ -79,13 +77,13 @@ const stats = computed(() => [
   {
     title: '账户总数',
     value: accounts.value.length,
-    icon: 'Wallet',
+    icon: 'IconWallet',
     color: '#409EFF'
   },
   {
     title: '总资产',
     value: accounts.value.reduce((sum, acc) => sum + parseFloat(acc.current_balance || 0), 0).toFixed(2),
-    icon: 'TrendCharts',
+    icon: 'IconTrendCharts',
     color: '#67C23A'
   },
   {
@@ -97,7 +95,7 @@ const stats = computed(() => [
   {
     title: '交易记录',
     value: '--',
-    icon: 'Document',
+    icon: 'IconDocument',
     color: '#F56C6C'
   }
 ])

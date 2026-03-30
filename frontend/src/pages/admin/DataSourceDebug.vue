@@ -8,7 +8,7 @@
     </div>
 
     <template v-if="loading">
-      <el-card style="margin-top: 16px"><el-icon class="is-loading"><Loading /></el-icon> 加载连接信息...</el-card>
+      <el-card style="margin-top: 16px"><el-icon class="is-loading"><IconLoading /></el-icon> 加载连接信息...</el-card>
     </template>
     <template v-else-if="!supportDebug">
       <el-card style="margin-top: 16px">
@@ -117,7 +117,6 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Loading } from '@element-plus/icons-vue'
 import { dataSourceApi } from '../../api/dataSource'
 
 const route = useRoute()

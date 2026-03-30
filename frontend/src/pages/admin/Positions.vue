@@ -12,7 +12,7 @@
           />
         </el-select>
         <el-button type="primary" @click="syncPositions" :disabled="!selectedAccountId">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><IconRefresh /></el-icon>
           同步持仓
         </el-button>
       </div>

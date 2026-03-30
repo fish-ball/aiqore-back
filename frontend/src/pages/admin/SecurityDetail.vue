@@ -19,7 +19,7 @@
           刷新
         </el-button>
         <el-button size="small" @click="goBack">
-          <el-icon><ArrowLeft /></el-icon>
+          <el-icon><IconArrowLeft /></el-icon>
           返回
         </el-button>
       </div>
@@ -90,7 +90,6 @@
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft } from '@element-plus/icons-vue'
 import { securityApi } from '../../api/security'
 import { taskApi } from '../../api/task'
 import { marketApi } from '../../api/market'

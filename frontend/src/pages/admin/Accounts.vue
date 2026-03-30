@@ -3,7 +3,7 @@
     <div class="page-header">
       <h2>账户管理</h2>
       <el-button type="primary" @click="showCreateDialog = true">
-        <el-icon><Plus /></el-icon>
+        <el-icon><IconPlus /></el-icon>
         新建账户
       </el-button>
     </div>

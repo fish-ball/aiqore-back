@@ -12,7 +12,7 @@
           />
         </el-select>
         <el-button type="primary" @click="showRecordDialog = true" :disabled="!selectedAccountId">
-          <el-icon><Plus /></el-icon>
+          <el-icon><IconPlus /></el-icon>
           记录交易
         </el-button>
       </div>

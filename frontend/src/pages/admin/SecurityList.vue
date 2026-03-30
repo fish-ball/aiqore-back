@@ -84,7 +84,7 @@
               :disabled="updating || !dataSourceStore.currentId"
               v-if="!activeSector"
             >
-              <el-icon><Download /></el-icon>
+              <el-icon><IconDownload /></el-icon>
               {{ updating ? '提交中...' : '从数据源更新' }}
             </el-button>
             <el-button
@@ -95,18 +95,18 @@
               :disabled="updating || !dataSourceStore.currentId"
               v-if="activeSector"
             >
-              <el-icon><Download /></el-icon>
+              <el-icon><IconDownload /></el-icon>
               {{ updating ? '同步中...' : '同步该板块' }}
             </el-button>
             <el-button type="primary" size="small" @click="refreshData">
-              <el-icon><Refresh /></el-icon>
+              <el-icon><IconRefresh /></el-icon>
               刷新
             </el-button>
           </div>
         </div>
         <span class="filter-bar-toggle" @click="filterPanelExpanded = !filterPanelExpanded">
           {{ filterPanelExpanded ? '折叠' : '展开' }}
-          <el-icon class="filter-bar-toggle-icon"><ArrowDown /></el-icon>
+          <el-icon class="filter-bar-toggle-icon"><IconArrowDown /></el-icon>
         </span>
       </div>
       <div class="filter-panel-body" v-show="filterPanelExpanded">
