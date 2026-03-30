@@ -1,60 +1,56 @@
 import api from './index'
 
-/**
- * 数据源连接 API（QMT/聚宽/tushare 等连接配置）
- */
 export const dataSourceApi = {
-  getList(params = {}) {
+  getList(params: Record<string, unknown> = {}) {
     return api.get('/data-source/list', { params })
   },
 
-  getOne(id) {
+  getOne(id: number | string) {
     return api.get(`/data-source/connections/${id}`)
   },
 
-  create(body) {
+  create(body: Record<string, unknown>) {
     return api.post('/data-source/connections', body)
   },
 
-  update(id, body) {
+  update(id: number | string, body: Record<string, unknown>) {
     return api.put(`/data-source/connections/${id}`, body)
   },
 
-  delete(id) {
+  delete(id: number | string) {
     return api.delete(`/data-source/connections/${id}`)
   },
 
-  /** 测试连接有效性 */
-  test(id) {
+  test(id: number | string) {
     return api.post(`/data-source/connections/${id}/test`)
   },
 
-  /** 接口调试（当前仅 miniQMT 支持） */
-  debugSectors(id) {
+  debugSectors(id: number | string) {
     return api.get(`/data-source/connections/${id}/debug/sectors`)
   },
-  debugStocksInSector(id, sector) {
+  debugStocksInSector(id: number | string, sector: string) {
     return api.post(`/data-source/connections/${id}/debug/stocks-in-sector`, { sector })
   },
-  debugInstrumentDetail(id, symbol) {
+  debugInstrumentDetail(id: number | string, symbol: string) {
     return api.post(`/data-source/connections/${id}/debug/instrument-detail`, { symbol })
   },
-  debugMarketData(id, symbol, period = '1d', count = 100) {
+  debugMarketData(id: number | string, symbol: string, period = '1d', count = 100) {
     return api.post(`/data-source/connections/${id}/debug/market-data`, { symbol, period, count })
   },
-  debugRealtimeQuote(id, symbols) {
+  debugRealtimeQuote(id: number | string, symbols: string) {
     return api.post(`/data-source/connections/${id}/debug/realtime-quote`, { symbols })
   },
-  debugStockList(id, payload = {}) {
+  debugStockList(id: number | string, payload: Record<string, unknown> = {}) {
     return api.post(`/data-source/connections/${id}/debug/stock-list`, payload)
   },
-  debugPositions(id, account_id) {
+  debugPositions(id: number | string, account_id: number | string) {
     return api.post(`/data-source/connections/${id}/debug/positions`, { account_id })
   },
-  debugAccountInfo(id, account_id) {
+  debugAccountInfo(id: number | string, account_id: number | string) {
     return api.post(`/data-source/connections/${id}/debug/account-info`, { account_id })
   },
-  debugSearchStocks(id, keyword) {
+  debugSearchStocks(id: number | string, keyword: string) {
     return api.post(`/data-source/connections/${id}/debug/search-stocks`, { keyword })
   }
 }
+

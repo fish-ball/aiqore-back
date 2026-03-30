@@ -1,26 +1,24 @@
 import api from './index'
 
-/**
- * 策略管理 API（策略名称 / 策略类型 / 代码 script）
- */
 export const strategyApi = {
-  getList(params = {}) {
+  getList(params: Record<string, unknown> = {}) {
     return api.get('/strategy/list', { params })
   },
 
-  getOne(id) {
+  getOne(id: number | string) {
     return api.get(`/strategy/strategies/${id}`)
   },
 
-  create(body) {
+  create(body: Record<string, unknown>) {
     return api.post('/strategy/strategies', body)
   },
 
-  update(id, body) {
+  update(id: number | string, body: Record<string, unknown>) {
     return api.put(`/strategy/strategies/${id}`, body)
   },
 
-  delete(id) {
+  delete(id: number | string) {
     return api.delete(`/strategy/strategies/${id}`)
   }
 }
+

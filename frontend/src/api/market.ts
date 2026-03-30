@@ -1,13 +1,20 @@
 import api from './index'
 
 export const marketApi = {
-  getQuote(symbols) {
+  getQuote(symbols: string) {
     return api.get('/market/quote', {
       params: { symbols }
     })
   },
-  
-  getKline(symbol, period = '1d', count = 100, startDate = null, endDate = null, adjustType = null) {
+
+  getKline(
+    symbol: string,
+    period = '1d',
+    count = 100,
+    startDate: string | null = null,
+    endDate: string | null = null,
+    adjustType: string | null = null
+  ) {
     return api.get('/market/kline', {
       params: {
         symbol,
@@ -20,7 +27,7 @@ export const marketApi = {
     })
   },
 
-  getTicks(symbol, tradeDate, forceUpdate = false) {
+  getTicks(symbol: string, tradeDate: string, forceUpdate = false) {
     return api.get('/market/ticks', {
       params: {
         symbol,
@@ -30,13 +37,13 @@ export const marketApi = {
     })
   },
 
-  getDividFactors(symbol) {
+  getDividFactors(symbol: string) {
     return api.get('/market/divid-factors', {
       params: { symbol }
     })
   },
 
-  searchStocks(keyword) {
+  searchStocks(keyword: string) {
     return api.get('/market/search', {
       params: { keyword }
     })

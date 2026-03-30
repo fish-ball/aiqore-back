@@ -1,38 +1,35 @@
 import api from './index'
 
 export const tradeApi = {
-  // 账户相关
   getAccounts() {
     return api.get('/trade/accounts')
   },
-  
-  getAccount(accountId) {
+
+  getAccount(accountId: number | string) {
     return api.get(`/trade/account/${accountId}`)
   },
-  
-  createAccount(data) {
+
+  createAccount(data: Record<string, unknown>) {
     return api.post('/trade/account', data)
   },
-  
-  syncAccount(accountId) {
+
+  syncAccount(accountId: number | string) {
     return api.post(`/trade/account/${accountId}/sync`)
   },
-  
-  // 持仓相关
-  getPositions(accountId) {
+
+  getPositions(accountId: number | string) {
     return api.get(`/trade/account/${accountId}/positions`)
   },
-  
-  syncPositions(accountId) {
+
+  syncPositions(accountId: number | string) {
     return api.post(`/trade/account/${accountId}/positions/sync`)
   },
-  
-  // 交易记录
-  getTrades(accountId, params = {}) {
+
+  getTrades(accountId: number | string, params: Record<string, unknown> = {}) {
     return api.get(`/trade/account/${accountId}/trades`, { params })
   },
-  
-  recordTrade(accountId, data) {
+
+  recordTrade(accountId: number | string, data: Record<string, unknown>) {
     return api.post(`/trade/account/${accountId}/trade`, data)
   }
 }

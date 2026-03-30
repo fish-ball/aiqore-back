@@ -318,11 +318,22 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { securityApi } from '../api/security'
 import { marketApi } from '../api/market'
-import sectorApi from '../api/sector.js'
+import sectorApi from '../api/sector'
 import { useDataSourceStore } from '../stores/dataSource'
 import type { Pagination } from '../types/common'
 import type { Sector, SectorCategoryGrouped } from '../types/sector'
 import type { Security, SecurityQuote, SecurityTableRow } from '../types/security'
+
+/** 板块分类排序权重（与其它处逻辑保持一致） */
+const CATEGORY_ORDER: Record<string, number> = {
+  股票: 1,
+  基金: 2,
+  ETF: 2,
+  债券: 3,
+  指数: 4,
+  期货: 5,
+  期权: 6
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -351,18 +362,17 @@ const sectorsByCategory = computed<SectorCategoryGrouped>(() => {
     }
     grouped[category].push(sector)
   })
-  // 按分类排序
-  const categoryOrder = { '股票': 1, '基金': 2, 'ETF': 2, '债券': 3, '指数': 4, '期货': 5, '期权': 6 }
   return Object.keys(grouped)
     .sort((a, b) => {
-      const orderA = categoryOrder[a] || 99
-      const orderB = categoryOrder[b] || 99
+      const orderA = CATEGORY_ORDER[a] ?? 99
+      const orderB = CATEGORY_ORDER[b] ?? 99
       return orderA - orderB
     })
-    .reduce((acc, category) => {
-      acc[category] = grouped[category].sort((a, b) => (b.security_count || 0) - (a.security_count || 0))
+    .reduce((acc: SectorCategoryGrouped, category) => {
+      const list = grouped[category]!
+      acc[category] = list.sort((a, b) => (b.security_count || 0) - (a.security_count || 0))
       return acc
-    }, {})
+    }, {} as SectorCategoryGrouped)
 })
 
 const pagination = ref<Pagination>({
@@ -434,9 +444,8 @@ const fetchSectors = async () => {
     sectors.value = items as Sector[]
     // 按分类排序，主要板块在前
     sectors.value.sort((a, b) => {
-      const categoryOrder = { '股票': 1, '基金': 2, 'ETF': 2, '债券': 3, '指数': 4, '期货': 5, '期权': 6 }
-      const orderA = categoryOrder[a.category] || 99
-      const orderB = categoryOrder[b.category] || 99
+      const orderA = CATEGORY_ORDER[a.category ?? ''] ?? 99
+      const orderB = CATEGORY_ORDER[b.category ?? ''] ?? 99
       if (orderA !== orderB) return orderA - orderB
       return (b.security_count || 0) - (a.security_count || 0)
     })
@@ -478,8 +487,8 @@ const fetchSecurities = async () => {
         try {
           const quotes = (await marketApi.getQuote(symbolsStr)) as unknown as SecurityQuote[] | undefined
           if (Array.isArray(quotes)) {
-            quotes.forEach(quote => {
-              quotesMap[quote.symbol] = quote
+            quotes.forEach((quote) => {
+              if (quote.symbol) quotesMap[quote.symbol] = quote
             })
           }
         } catch (error) {
@@ -539,7 +548,7 @@ const handleSearch = async () => {
           const quotes = (await marketApi.getQuote(symbolsStr)) as unknown as SecurityQuote[] | undefined
           if (Array.isArray(quotes)) {
             quotes.forEach((quote) => {
-              quotesMap[quote.symbol] = quote
+              if (quote.symbol) quotesMap[quote.symbol] = quote
             })
           }
         } catch (error) {
@@ -580,7 +589,7 @@ const handleSearch = async () => {
 }
 
 // 根据显示名或名称查找板块的 name（用于快捷筛选与下方板块选项等价）
-const getSectorNameByLabel = (label) => {
+const getSectorNameByLabel = (label: string) => {
   let s = sectors.value.find((item) => (item.display_name || item.name) === label)
   if (!s) {
     s = sectors.value.find((item) => {
@@ -592,8 +601,8 @@ const getSectorNameByLabel = (label) => {
 }
 
 // 当前是否处于某快捷筛选项（与下方板块筛选项一致：A股=沪深A股，上证=上证A股，深证=深证A股）
-const isQuickFilterActive = (type) => {
-  const labelMap = { all: '沪深A股', SH: '上证A股', SZ: '深证A股' }
+const isQuickFilterActive = (type: string) => {
+  const labelMap: Record<string, string> = { all: '沪深A股', SH: '上证A股', SZ: '深证A股' }
   const label = labelMap[type]
   if (label) {
     const sectorName = getSectorNameByLabel(label)
@@ -607,9 +616,9 @@ const isQuickFilterActive = (type) => {
 }
 
 // 快捷筛选：自选留白；A股=沪深A股，上证=上证A股，深证=深证A股，其余=对应板块
-const handleQuickFilter = (type) => {
+const handleQuickFilter = (type: string) => {
   if (type === '自选') return
-  const labelMap = { all: '沪深A股', SH: '上证A股', SZ: '深证A股' }
+  const labelMap: Record<string, string> = { all: '沪深A股', SH: '上证A股', SZ: '深证A股' }
   const label = labelMap[type] || (type === '创业板' || type === '科创板' ? type : null)
   if (label) {
     const sectorName = getSectorNameByLabel(label)
@@ -623,7 +632,7 @@ const handleQuickFilter = (type) => {
   }
 }
 
-const handleSectorChange = (sectorName) => {
+const handleSectorChange = (sectorName: string) => {
   activeSector.value = sectorName
   pagination.value.page = 1
   if (searchKeyword.value) {
@@ -632,7 +641,7 @@ const handleSectorChange = (sectorName) => {
   fetchSecurities()
 }
 
-const handleMarketChange = (market) => {
+const handleMarketChange = (market: string) => {
   filterMarket.value = market
   pagination.value.page = 1
   if (searchKeyword.value) {
@@ -657,7 +666,7 @@ const handlePageChange = () => {
   }
 }
 
-const handleRowDoubleClick = (row) => {
+const handleRowDoubleClick = (row: SecurityTableRow) => {
   router.push(`/security/${row.symbol}`)
 }
 
@@ -699,9 +708,10 @@ const submitUpdateTask = async () => {
       updateDialogVisible.value = false
       ElMessage.success('任务已提交，正在后台处理')
     }
-  } catch (error) {
-    if (!error.message || !error.message.includes('正在运行中')) {
-      ElMessage.error('提交失败: ' + (error.message || '未知错误'))
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : '未知错误'
+    if (!msg.includes('正在运行中')) {
+      ElMessage.error('提交失败: ' + msg)
     }
   } finally {
     updating.value = false
@@ -729,16 +739,17 @@ const updateSectorFromDataSource = async () => {
         fetchSectors()
       }, 2000)
     }
-  } catch (error) {
-    if (!error.message || !error.message.includes('正在运行中')) {
-      ElMessage.error('同步失败: ' + (error.message || '未知错误'))
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : '未知错误'
+    if (!msg.includes('正在运行中')) {
+      ElMessage.error('同步失败: ' + msg)
     }
   } finally {
     updating.value = false
   }
 }
 
-const updateOneSecurity = async (row) => {
+const updateOneSecurity = async (row: SecurityTableRow) => {
   if (!dataSourceStore.currentId) {
     ElMessage.warning('请先在顶栏选择当前数据源')
     return
@@ -751,11 +762,18 @@ const updateOneSecurity = async (row) => {
     if (idx >= 0) {
       const detail = (await securityApi.getDetail(row.symbol)) as unknown as { name?: string; market?: string } | null
       if (detail) {
-        tableData.value[idx] = { ...tableData.value[idx], name: detail.name || tableData.value[idx].name, market: detail.market || tableData.value[idx].market }
+        const prev = tableData.value[idx]!
+        const next: SecurityTableRow = {
+          ...prev,
+          name: detail.name ?? prev.name,
+          market: (detail.market ?? prev.market) as SecurityTableRow['market']
+        }
+        tableData.value[idx] = next
       }
     }
-  } catch (error) {
-    ElMessage.error('更新失败: ' + (error.message || '未知错误'))
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : '未知错误'
+    ElMessage.error('更新失败: ' + msg)
   } finally {
     updatingSymbol.value = null
   }

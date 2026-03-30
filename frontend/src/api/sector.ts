@@ -1,24 +1,22 @@
-import api from './index.js'
+import api from './index'
 
-export default {
-  // 获取板块列表
-  getList(params = {}) {
+export const sectorApi = {
+  getList(params: Record<string, unknown> = {}) {
     return api.get('/sector/list', { params })
   },
-  
-  // 同步板块
+
   sync() {
     return api.post('/sector/sync')
   },
-  
-  // 获取板块统计
+
   getStatistics() {
     return api.get('/sector/statistics')
   },
-  
-  // 获取板块详情
-  getDetail(sectorName) {
+
+  getDetail(sectorName: string) {
     return api.get(`/sector/${sectorName}`)
   }
 }
+
+export default sectorApi
 

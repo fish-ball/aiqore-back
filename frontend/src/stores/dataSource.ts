@@ -44,7 +44,8 @@ export const useDataSourceStore = defineStore('dataSource', () => {
       list.value = items as DataSourceConnection[]
       const id = currentId.value
       if (id != null && !list.value.some((item) => item.id === id)) {
-        currentId.value = list.value.length ? list.value[0].id : null
+        const first = list.value[0]
+        currentId.value = first ? first.id : null
         persistCurrent()
       }
     } catch (error) {
