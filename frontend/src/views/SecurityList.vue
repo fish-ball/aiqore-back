@@ -312,7 +312,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -320,28 +320,31 @@ import { securityApi } from '../api/security'
 import { marketApi } from '../api/market'
 import sectorApi from '../api/sector.js'
 import { useDataSourceStore } from '../stores/dataSource'
+import type { Pagination } from '../types/common'
+import type { Sector, SectorCategoryGrouped } from '../types/sector'
+import type { Security, SecurityQuote, SecurityTableRow } from '../types/security'
 
 const router = useRouter()
 const route = useRoute()
 const dataSourceStore = useDataSourceStore()
 
 // 从路由参数获取板块
-const activeSector = ref(route.query.sector || '')
+const activeSector = ref<string>((route.query.sector as string) || '')
 const loading = ref(false)
 const updating = ref(false)
-const tableData = ref([])
-const filterMarket = ref('')
-const searchKeyword = ref('')
-const sectors = ref([])
+const tableData = ref<SecurityTableRow[]>([])
+const filterMarket = ref<string>('')
+const searchKeyword = ref<string>('')
+const sectors = ref<Sector[]>([])
 const filterPanelExpanded = ref(false)
-const updatingSymbol = ref(null)
+const updatingSymbol = ref<string | null>(null)
 const updateDialogVisible = ref(false)
-const updateForm = ref({ market: '', sector: '' })
+const updateForm = ref<{ market: string; sector: string }>({ market: '', sector: '' })
 
 // 按分类分组板块
-const sectorsByCategory = computed(() => {
-  const grouped = {}
-  sectors.value.forEach(sector => {
+const sectorsByCategory = computed<SectorCategoryGrouped>(() => {
+  const grouped: SectorCategoryGrouped = {}
+  sectors.value.forEach((sector) => {
     const category = sector.category || '其他'
     if (!grouped[category]) {
       grouped[category] = []
@@ -362,22 +365,22 @@ const sectorsByCategory = computed(() => {
     }, {})
 })
 
-const pagination = ref({
+const pagination = ref<Pagination>({
   page: 1,
   pageSize: 100,
   total: 0
 })
 
-const formatPrice = (value) => {
-  return parseFloat(value || 0).toFixed(2)
+const formatPrice = (value: number | string | null | undefined) => {
+  return Number(value ?? 0).toFixed(2)
 }
 
-const formatChangePercent = (value) => {
-  return parseFloat(value || 0).toFixed(2)
+const formatChangePercent = (value: number | string | null | undefined) => {
+  return Number(value ?? 0).toFixed(2)
 }
 
-const formatVolume = (value) => {
-  const num = parseFloat(value || 0)
+const formatVolume = (value: number | string | null | undefined) => {
+  const num = Number(value ?? 0)
   if (num >= 100000000) {
     return `${(num / 100000000).toFixed(2)}亿`
   } else if (num >= 10000) {
@@ -386,8 +389,8 @@ const formatVolume = (value) => {
   return num.toFixed(0)
 }
 
-const formatAmount = (value) => {
-  const num = parseFloat(value || 0)
+const formatAmount = (value: number | string | null | undefined) => {
+  const num = Number(value ?? 0)
   if (num >= 100000000) {
     return `¥${(num / 100000000).toFixed(2)}亿`
   } else if (num >= 10000) {
@@ -396,30 +399,30 @@ const formatAmount = (value) => {
   return `¥${num.toFixed(2)}`
 }
 
-const getPriceColor = (row) => {
+const getPriceColor = (row: Pick<SecurityTableRow, 'change'>) => {
   if (row.change > 0) return '#F56C6C'
   if (row.change < 0) return '#67C23A'
   return '#909399'
 }
 
 // 排序方法
-const sortByPrice = (a, b) => {
+const sortByPrice = (a: SecurityTableRow, b: SecurityTableRow) => {
   return (a.last_price || 0) - (b.last_price || 0)
 }
 
-const sortByChange = (a, b) => {
+const sortByChange = (a: SecurityTableRow, b: SecurityTableRow) => {
   return (a.change || 0) - (b.change || 0)
 }
 
-const sortByChangePercent = (a, b) => {
+const sortByChangePercent = (a: SecurityTableRow, b: SecurityTableRow) => {
   return (a.change_percent || 0) - (b.change_percent || 0)
 }
 
-const sortByVolume = (a, b) => {
+const sortByVolume = (a: SecurityTableRow, b: SecurityTableRow) => {
   return (a.volume || 0) - (b.volume || 0)
 }
 
-const sortByAmount = (a, b) => {
+const sortByAmount = (a: SecurityTableRow, b: SecurityTableRow) => {
   return (a.amount || 0) - (b.amount || 0)
 }
 
@@ -427,7 +430,8 @@ const sortByAmount = (a, b) => {
 const fetchSectors = async () => {
   try {
     const response = await sectorApi.getList({ is_active: 1 })
-    sectors.value = response.items || []
+    const items = (response && (response as any).items) || []
+    sectors.value = items as Sector[]
     // 按分类排序，主要板块在前
     sectors.value.sort((a, b) => {
       const categoryOrder = { '股票': 1, '基金': 2, 'ETF': 2, '债券': 3, '指数': 4, '期货': 5, '期权': 6 }
@@ -444,7 +448,7 @@ const fetchSectors = async () => {
 const fetchSecurities = async () => {
   loading.value = true
   try {
-    const params = {
+    const params: Record<string, unknown> = {
       limit: pagination.value.pageSize,
       offset: (pagination.value.page - 1) * pagination.value.pageSize
     }
@@ -458,21 +462,21 @@ const fetchSecurities = async () => {
       params.sector = activeSector.value
     }
     
-    const response = await securityApi.getList(params)
+    const response = (await securityApi.getList(params)) as unknown as { items?: Security[]; total?: number }
     const securities = response.items || []
     
     // 获取所有证券代码
     const symbols = securities.map(s => s.symbol)
     
     // 分批获取实时行情（每批50个，避免URL过长）
-    const quotesMap = {}
+    const quotesMap: Record<string, SecurityQuote> = {}
     if (symbols.length > 0) {
       const batchSize = 50
       for (let i = 0; i < symbols.length; i += batchSize) {
         const batch = symbols.slice(i, i + batchSize)
         const symbolsStr = batch.join(',')
         try {
-          const quotes = await marketApi.getQuote(symbolsStr)
+          const quotes = (await marketApi.getQuote(symbolsStr)) as unknown as SecurityQuote[] | undefined
           if (Array.isArray(quotes)) {
             quotes.forEach(quote => {
               quotesMap[quote.symbol] = quote
@@ -485,8 +489,8 @@ const fetchSecurities = async () => {
     }
     
     // 合并数据
-    tableData.value = securities.map(security => {
-      const quote = quotesMap[security.symbol] || {}
+    tableData.value = securities.map((security) => {
+      const quote: SecurityQuote = quotesMap[security.symbol] || {}
       return {
         symbol: security.symbol,
         name: security.name || quote.name || '',
@@ -520,21 +524,21 @@ const handleSearch = async () => {
   
   loading.value = true
   try {
-    const securities = await securityApi.search(searchKeyword.value, 200)
+    const securities = (await securityApi.search(searchKeyword.value, 200)) as unknown as Security[]
     
     if (securities.length > 0) {
-      const symbols = securities.map(s => s.symbol)
+      const symbols = securities.map((s) => s.symbol)
       
       // 分批获取行情
-      const quotesMap = {}
+      const quotesMap: Record<string, SecurityQuote> = {}
       const batchSize = 50
       for (let i = 0; i < symbols.length; i += batchSize) {
         const batch = symbols.slice(i, i + batchSize)
         const symbolsStr = batch.join(',')
         try {
-          const quotes = await marketApi.getQuote(symbolsStr)
+          const quotes = (await marketApi.getQuote(symbolsStr)) as unknown as SecurityQuote[] | undefined
           if (Array.isArray(quotes)) {
-            quotes.forEach(quote => {
+            quotes.forEach((quote) => {
               quotesMap[quote.symbol] = quote
             })
           }
@@ -543,8 +547,8 @@ const handleSearch = async () => {
         }
       }
       
-      tableData.value = securities.map(security => {
-        const quote = quotesMap[security.symbol] || {}
+      tableData.value = securities.map<SecurityTableRow>((security) => {
+        const quote: SecurityQuote = quotesMap[security.symbol] || {}
         return {
           symbol: security.symbol,
           name: security.name || quote.name || '',
@@ -685,12 +689,12 @@ function openUpdateDialog() {
 const submitUpdateTask = async () => {
   updating.value = true
   try {
-    const result = await securityApi.update(
+    const result = (await securityApi.update(
       updateForm.value.market || null,
       updateForm.value.sector || null,
       sourceType(),
       sourceId()
-    )
+    )) as unknown as { task_id?: string }
     if (result && result.task_id) {
       updateDialogVisible.value = false
       ElMessage.success('任务已提交，正在后台处理')
@@ -712,12 +716,12 @@ const updateSectorFromDataSource = async () => {
   }
   updating.value = true
   try {
-    const result = await securityApi.update(
+    const result = (await securityApi.update(
       filterMarket.value || null,
       activeSector.value,
       sourceType(),
       sourceId()
-    )
+    )) as unknown as { task_id?: string }
     if (result && result.task_id) {
       ElMessage.success('任务已提交，正在后台处理')
       setTimeout(() => {
@@ -745,9 +749,9 @@ const updateOneSecurity = async (row) => {
     ElMessage.success('已更新 ' + (row.name || row.symbol))
     const idx = tableData.value.findIndex((r) => r.symbol === row.symbol)
     if (idx >= 0) {
-      const detail = await securityApi.getDetail(row.symbol)
+      const detail = (await securityApi.getDetail(row.symbol)) as unknown as { name?: string; market?: string } | null
       if (detail) {
-        tableData.value[idx] = { ...tableData.value[idx], name: detail.name, market: detail.market }
+        tableData.value[idx] = { ...tableData.value[idx], name: detail.name || tableData.value[idx].name, market: detail.market || tableData.value[idx].market }
       }
     }
   } catch (error) {

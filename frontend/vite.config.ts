@@ -11,7 +11,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    open: false,  // 禁止启动时自动打开浏览器
+    open: false,
     proxy: {
       '/api': {
         target: 'http://localhost:8000',

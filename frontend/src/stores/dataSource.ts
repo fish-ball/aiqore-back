@@ -1,26 +1,36 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import { dataSourceApi } from '../api/dataSource'
+
+type DataSourceId = number
+
+interface DataSourceConnection {
+  id: DataSourceId
+  source_type?: string
+  [key: string]: unknown
+}
 
 const STORAGE_KEY = 'aiqore_current_data_source_id'
 
-function loadCurrentIdFromStorage() {
+function loadCurrentIdFromStorage(): DataSourceId | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw != null && raw !== '') {
-      const n = parseInt(raw, 10)
+      const n = Number.parseInt(raw, 10)
       if (!Number.isNaN(n)) return n
     }
-  } catch (_) {}
+  } catch {
+    // localStorage 可能在某些环境不可用
+  }
   return null
 }
 
 export const useDataSourceStore = defineStore('dataSource', () => {
-  const list = ref([])
+  const list = ref<DataSourceConnection[]>([])
   const loading = ref(false)
-  const currentId = ref(loadCurrentIdFromStorage())
+  const currentId = ref<DataSourceId | null>(loadCurrentIdFromStorage())
 
-  const currentDataSource = computed(() => {
+  const currentDataSource = computed<DataSourceConnection | null>(() => {
     const id = currentId.value
     if (id == null) return null
     return list.value.find((item) => item.id === id) || null
@@ -30,7 +40,8 @@ export const useDataSourceStore = defineStore('dataSource', () => {
     loading.value = true
     try {
       const res = await dataSourceApi.getList({ is_active: true })
-      list.value = (res && res.items) ? res.items : []
+      const items = (res && (res as any).items) ? (res as any).items : []
+      list.value = items as DataSourceConnection[]
       const id = currentId.value
       if (id != null && !list.value.some((item) => item.id === id)) {
         currentId.value = list.value.length ? list.value[0].id : null
@@ -44,7 +55,7 @@ export const useDataSourceStore = defineStore('dataSource', () => {
     }
   }
 
-  function setCurrent(id) {
+  function setCurrent(id: DataSourceId | null) {
     currentId.value = id
     persistCurrent()
   }
@@ -56,7 +67,9 @@ export const useDataSourceStore = defineStore('dataSource', () => {
       } else {
         localStorage.removeItem(STORAGE_KEY)
       }
-    } catch (_) {}
+    } catch {
+      // localStorage 可能在某些环境不可用
+    }
   }
 
   return {
@@ -68,3 +81,4 @@ export const useDataSourceStore = defineStore('dataSource', () => {
     setCurrent
   }
 })
+

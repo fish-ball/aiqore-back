@@ -2,15 +2,20 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { tradeApi } from '../api/trade'
 
+interface Account {
+  id?: number | string
+  [key: string]: unknown
+}
+
 export const useAccountStore = defineStore('account', () => {
-  const accounts = ref([])
-  const currentAccount = ref(null)
+  const accounts = ref<Account[]>([])
+  const currentAccount = ref<Account | null>(null)
   const loading = ref(false)
 
   const fetchAccounts = async () => {
     loading.value = true
     try {
-      accounts.value = await tradeApi.getAccounts()
+      accounts.value = (await tradeApi.getAccounts()) as unknown as Account[]
     } catch (error) {
       console.error('获取账户列表失败:', error)
     } finally {
@@ -18,10 +23,10 @@ export const useAccountStore = defineStore('account', () => {
     }
   }
 
-  const fetchAccount = async (accountId) => {
+  const fetchAccount = async (accountId: number | string) => {
     loading.value = true
     try {
-      currentAccount.value = await tradeApi.getAccount(accountId)
+      currentAccount.value = (await tradeApi.getAccount(accountId)) as unknown as Account
     } catch (error) {
       console.error('获取账户详情失败:', error)
     } finally {
@@ -29,10 +34,10 @@ export const useAccountStore = defineStore('account', () => {
     }
   }
 
-  const createAccount = async (accountData) => {
+  const createAccount = async (accountData: Record<string, unknown>) => {
     loading.value = true
     try {
-      const account = await tradeApi.createAccount(accountData)
+      const account = (await tradeApi.createAccount(accountData)) as unknown as Account
       await fetchAccounts()
       return account
     } catch (error) {

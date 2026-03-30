@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import Dashboard from '../views/Dashboard.vue'
 import Accounts from '../views/Accounts.vue'
 import Positions from '../views/Positions.vue'
@@ -13,7 +13,7 @@ import TaskManager from '../views/TaskManager.vue'
 import StrategyManagement from '../views/StrategyManagement.vue'
 import BacktestRecords from '../views/BacktestRecords.vue'
 
-const routes = [
+const routes: RouteRecordRaw[] = [
   {
     path: '/',
     redirect: '/dashboard'
