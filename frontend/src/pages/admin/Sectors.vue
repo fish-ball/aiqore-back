@@ -97,8 +97,8 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import sectorApi from '../api/sector'
-import { securityApi } from '../api/security'
+import sectorApi from '../../api/sector'
+import { securityApi } from '../../api/security'
 
 const router = useRouter()
 
@@ -162,7 +162,7 @@ const syncSectorSecurities = async (sectorName) => {
 
 const viewSectorSecurities = (sectorName) => {
   router.push({
-    name: 'SecurityList',
+    name: 'admin-securities',
     query: { sector: sectorName }
   })
 }

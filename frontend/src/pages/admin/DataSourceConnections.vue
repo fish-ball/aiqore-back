@@ -175,7 +175,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { dataSourceApi } from '../api/dataSource'
+import { dataSourceApi } from '../../api/dataSource'
 
 const router = useRouter()
 

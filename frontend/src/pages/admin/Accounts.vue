@@ -51,8 +51,8 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAccountStore } from '../stores/account'
-import { tradeApi } from '../api/trade'
+import { useAccountStore } from '../../stores/account'
+import { tradeApi } from '../../api/trade'
 
 const router = useRouter()
 const accountStore = useAccountStore()

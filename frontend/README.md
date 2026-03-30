@@ -65,7 +65,7 @@ frontend/
 │   ├── stores/           # Pinia 状态管理
 │   │   ├── index.js      # Pinia 实例
 │   │   └── account.js    # 账户状态
-│   ├── views/            # 页面组件
+│   ├── pages/            # 页面组件
 │   │   ├── Dashboard.vue # 仪表盘
 │   │   ├── Accounts.vue  # 账户管理
 │   │   ├── Positions.vue # 持仓管理

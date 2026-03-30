@@ -316,13 +316,13 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { securityApi } from '../api/security'
-import { marketApi } from '../api/market'
-import sectorApi from '../api/sector'
-import { useDataSourceStore } from '../stores/dataSource'
-import type { Pagination } from '../types/common'
-import type { Sector, SectorCategoryGrouped } from '../types/sector'
-import type { Security, SecurityQuote, SecurityTableRow } from '../types/security'
+import { securityApi } from '../../api/security'
+import { marketApi } from '../../api/market'
+import sectorApi from '../../api/sector'
+import { useDataSourceStore } from '../../stores/dataSource'
+import type { Pagination } from '../../types/common'
+import type { Sector, SectorCategoryGrouped } from '../../types/sector'
+import type { Security, SecurityQuote, SecurityTableRow } from '../../types/security'
 
 /** 板块分类排序权重（与其它处逻辑保持一致） */
 const CATEGORY_ORDER: Record<string, number> = {

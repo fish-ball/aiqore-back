@@ -123,8 +123,8 @@
 
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
-import { useAccountStore } from '../stores/account'
-import { analysisApi } from '../api/analysis'
+import { useAccountStore } from '../../stores/account'
+import { analysisApi } from '../../api/analysis'
 import * as echarts from 'echarts'
 
 const accountStore = useAccountStore()

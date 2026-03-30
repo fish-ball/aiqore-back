@@ -100,8 +100,8 @@
 
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
-import { useAccountStore } from '../stores/account'
-import { tradeApi } from '../api/trade'
+import { useAccountStore } from '../../stores/account'
+import { tradeApi } from '../../api/trade'
 
 const accountStore = useAccountStore()
 const loading = ref(false)

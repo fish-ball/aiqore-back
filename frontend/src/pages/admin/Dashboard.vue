@@ -63,8 +63,8 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAccountStore } from '../stores/account'
-import { tradeApi } from '../api/trade'
+import { useAccountStore } from '../../stores/account'
+import { tradeApi } from '../../api/trade'
 import { Wallet, Box, TrendCharts, Document } from '@element-plus/icons-vue'
 
 const router = useRouter()

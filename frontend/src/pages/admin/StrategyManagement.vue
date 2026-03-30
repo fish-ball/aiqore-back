@@ -121,8 +121,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { strategyApi } from '../api/strategy'
-import { backtestApi } from '../api/backtest'
+import { strategyApi } from '../../api/strategy'
+import { backtestApi } from '../../api/backtest'
 
 const router = useRouter()
 const loading = ref(false)

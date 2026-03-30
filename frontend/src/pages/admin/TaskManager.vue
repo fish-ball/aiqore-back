@@ -255,7 +255,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { taskApi } from '../api/task'
+import { taskApi } from '../../api/task'
 
 const taskSpecs = ref([])
 const selectedTaskName = ref('')

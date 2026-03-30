@@ -135,7 +135,7 @@
 import { ref, watch, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { backtestApi } from '../api/backtest'
+import { backtestApi } from '../../api/backtest'
 
 const route = useRoute()
 const loading = ref(false)

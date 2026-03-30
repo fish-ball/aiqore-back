@@ -1,0 +1,32 @@
+:root {
+  font-size: 14px;
+
+  // >> text-color
+  --text-color: var(--el-text-color-primary);
+  --text-color-light: var(--el-text-color-regular);
+  --text-color-lighter: var(--el-text-color-secondary);
+
+  // >> el-header
+  --el-header-height: 48px;
+  --el-header-padding-x: 20px;
+  --el-header-padding: 0 var(--el-header-padding-x);
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+#app {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: row;
+}
+
+* {
+  outline: none;
+}

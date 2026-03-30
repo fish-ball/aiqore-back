@@ -118,7 +118,7 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
-import { dataSourceApi } from '../api/dataSource'
+import { dataSourceApi } from '../../api/dataSource'
 
 const route = useRoute()
 const router = useRouter()
