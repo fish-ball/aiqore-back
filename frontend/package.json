@@ -1,13 +1,19 @@
 {
   "name": "aiqore-frontend",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "type-check": "vue-tsc --noEmit",
-    "lint": "eslint src --ext .js,.ts,.vue"
+    "test:unit": "vitest",
+    "build-only": "vite build",
+    "type-check": "vue-tsc --build",
+    "lint": "run-s lint:*",
+    "lint:oxlint": "oxlint . --fix",
+    "lint:eslint": "eslint . --fix --cache",
+    "format": "oxfmt src/"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
@@ -17,22 +23,37 @@
     "element-plus": "^2.4.4",
     "moment": "^2.30.1",
     "pinia": "^3.0.4",
-    "vue": "^3.3.4",
-    "vue-echarts": "^6.6.1",
+    "vue": "^3.5.0",
     "vue-router": "^4.2.5"
   },
   "devDependencies": {
-    "@types/node": "^25.5.0",
-    "@typescript-eslint/eslint-plugin": "^8.57.1",
-    "@typescript-eslint/parser": "^8.57.1",
-    "@vitejs/plugin-vue": "^4.5.0",
-    "@vue/tsconfig": "^0.9.0",
-    "eslint": "^10.0.3",
-    "eslint-plugin-vue": "^10.8.0",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.57.1",
-    "vite": "^5.0.0",
-    "vue-eslint-parser": "^10.4.0",
-    "vue-tsc": "^3.2.6"
+    "@tsconfig/node24": "^24.0.4",
+    "@types/jsdom": "^28.0.0",
+    "@types/node": "^24.10.13",
+    "@vitejs/plugin-basic-ssl": "^2.1.4",
+    "@vitejs/plugin-vue": "^6.0.4",
+    "@vitejs/plugin-vue-jsx": "^5.1.4",
+    "@vitest/eslint-plugin": "^1.6.9",
+    "@vue/eslint-config-typescript": "^14.7.0",
+    "@vue/test-utils": "^2.4.6",
+    "@vue/tsconfig": "^0.8.1",
+    "eslint": "^10.0.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-oxlint": "~1.50.0",
+    "eslint-plugin-vue": "~10.8.0",
+    "jiti": "^2.6.1",
+    "jsdom": "^28.1.0",
+    "npm-run-all2": "^8.0.4",
+    "oxfmt": "^0.35.0",
+    "oxlint": "~1.50.0",
+    "sass-embedded": "^1.97.3",
+    "typescript": "~5.9.3",
+    "vite": "^6.3.5",
+    "vite-plugin-vue-devtools": "^7.7.6",
+    "vitest": "^3.2.0",
+    "vue-tsc": "^2.1.10"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
   }
 }
