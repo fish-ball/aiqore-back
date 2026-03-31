@@ -14,6 +14,7 @@
 | [6-QMT集成](./6-QMT集成.md) | 国金 QMT 接入、证券同步、配置与故障排查 |
 | [7-异步任务](./7-异步任务.md) | Celery + Redis 配置、已实现任务清单、启动、使用与扩展 |
 | [8-数据源抽象-前端对接](./8-数据源抽象-前端对接.md) | 数据源连接配置入口、同步任务发起参数化（与后端接口联动） |
+| [9-vue-core与REST对接约定-AccountList](./9-vue-core与REST对接约定-AccountList.md) | AccountList 重构沉淀：vue-core 列表页模式、路由与 REST 资源对接约定 |
 
 ## 文档维护说明
 
