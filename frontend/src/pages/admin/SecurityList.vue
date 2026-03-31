@@ -667,7 +667,10 @@ const handlePageChange = () => {
 }
 
 const handleRowDoubleClick = (row: SecurityTableRow) => {
-  router.push(`/security/${row.symbol}`)
+  router.push({
+    name: 'admin-security-detail',
+    params: { symbol: row.symbol },
+  })
 }
 
 const refreshData = () => {

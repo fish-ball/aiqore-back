@@ -38,9 +38,9 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        path: 'positions',
-        name: 'admin-positions',
-        component: () => import('./admin/Positions.vue'),
+        path: 'position',
+        name: 'admin-position-list',
+        component: () => import('./admin/PositionList.vue'),
         meta: {
           title: '持仓管理',
           icon: 'box',

@@ -118,6 +118,26 @@ async def get_positions(account_id: int, db: Session = Depends(get_db)):
     return {"code": 0, "data": positions, "message": "success"}
 
 
+@router.get("/position")
+async def get_position_list(
+    page: int = Query(default=1, ge=1, description="页码（从1开始）"),
+    page_size: int = Query(default=10, ge=1, le=200, description="每页条数"),
+    account_id: Optional[int] = Query(default=None, description="按账户过滤"),
+    db: Session = Depends(get_db),
+):
+    """获取持仓列表（分页，单数资源）"""
+    query = db.query(Position).filter(Position.quantity > 0)
+    if account_id is not None:
+        query = query.filter(Position.account_id == account_id)
+    total = query.count()
+    offset = (page - 1) * page_size
+    items = query.order_by(Position.id.desc()).offset(offset).limit(page_size).all()
+    return {
+        "count": total,
+        "results": items,
+    }
+
+
 @router.post("/account/{account_id}/positions/sync")
 async def sync_positions(account_id: int, db: Session = Depends(get_db)):
     """同步持仓信息（从QMT）"""

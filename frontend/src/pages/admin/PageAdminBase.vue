@@ -66,7 +66,7 @@
             <el-icon><IconWallet /></el-icon>
             <span>账户管理</span>
           </el-menu-item>
-          <el-menu-item index="/positions">
+          <el-menu-item index="/position">
             <el-icon><IconBox /></el-icon>
             <span>持仓管理</span>
           </el-menu-item>
@@ -177,7 +177,10 @@ const searchSecurities = async (queryString, cb) => {
 // 选择证券
 const handleSelectSecurity = (item) => {
   if (item && item.symbol) {
-    router.push(`/security/${item.symbol}`)
+    router.push({
+      name: 'admin-security-detail',
+      params: { symbol: item.symbol },
+    })
     searchKeyword.value = ''
   }
 }

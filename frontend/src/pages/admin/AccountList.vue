@@ -8,32 +8,28 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import ListView from '@iottest/vue-core/src/libs/data-view/components/ListView.vue'
 import { api } from '@iottest/vue-core/src/libs/api'
+import { formatMoneyValue } from '../../utils/formatter'
 
 const router = useRouter()
 const listViewRef = ref()
 
 const accountResource = api('trade/account')
 
-const formatMoneyValue = (value) => {
-  return `¥${Number.parseFloat(value || 0).toFixed(2)}`
-}
-
 const formatDateValue = (value) => {
   if (!value) return '--'
   return new Date(value).toLocaleString('zh-CN')
 }
 
-const viewAccount = (accountId) => {
-  router.push(`/analysis?accountId=${accountId}`)
-}
-
 const viewPositions = (accountId) => {
-  router.push(`/positions?accountId=${accountId}`)
+  router.push({
+    name: 'admin-position-list',
+    query: { account_id: String(accountId) },
+  })
 }
 
 const syncAccount = async (accountId) => {
   try {
-    await accountResource.post({ id: accountId, action: 'sync' })
+    await accountResource.post({ id: accountId, action: 'sync' }, {})
     ElMessage.success('同步成功')
     await listViewRef.value?.reload()
   } catch {

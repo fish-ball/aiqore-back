@@ -165,7 +165,7 @@ const form = ref({
 })
 
 function goBack() {
-  router.push('/data-sources')
+  router.push({ name: 'admin-data-sources' })
 }
 
 async function fetchConnection() {
