@@ -70,7 +70,7 @@
             <el-icon><IconBox /></el-icon>
             <span>持仓管理</span>
           </el-menu-item>
-          <el-menu-item index="/trades">
+          <el-menu-item index="/trade">
             <el-icon><IconDocument /></el-icon>
             <span>交易记录</span>
           </el-menu-item>

@@ -30,12 +30,12 @@
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | /api/trade/account | 创建账户 |
-| GET | /api/trade/accounts | 获取所有账户 |
+| GET | /api/trade/account | 账户列表（分页） |
 | GET | /api/trade/account/{account_id} | 获取账户详情 |
 | POST | /api/trade/account/{account_id}/sync | 从 QMT 同步账户 |
-| GET | /api/trade/account/{account_id}/trades | 交易记录 |
-| POST | /api/trade/account/{account_id}/trade | 记录一笔交易 |
-| GET | /api/trade/account/{account_id}/positions | 持仓列表 |
+| GET | /api/trade/trade | 交易记录列表（分页） |
+| POST | /api/trade/trade | 记录一笔交易 |
+| GET | /api/trade/position | 持仓列表（分页） |
 | POST | /api/trade/account/{account_id}/positions/sync | 从 QMT 同步持仓 |
 
 ### 行情（/api/market）
@@ -114,12 +114,12 @@
 - **响应**  
   - `data`: 账户对象（含 id, account_id, name, initial_capital, current_balance, available_balance 等）
 
-#### GET /api/trade/accounts 获取所有账户
+#### GET /api/trade/account 获取账户列表（分页）
 
 - **请求**  
-  - 无 Query
+  - Query: `page`(int, 默认 1), `page_size`(int, 默认 10)
 - **响应**  
-  - `data`: 账户对象数组
+  - `{ count, results }`
 
 #### GET /api/trade/account/{account_id} 获取账户详情
 
@@ -135,12 +135,12 @@
 - **响应**  
   - `data`: 同步后的账户信息；404/500 表示账户不存在或同步失败
 
-#### GET /api/trade/account/{account_id}/positions 持仓列表
+#### GET /api/trade/position 持仓列表（分页）
 
 - **请求**  
-  - 路径参数: `account_id`(int)
+  - Query: `page`(int, 默认 1), `page_size`(int, 默认 10), `account_id`(int, 可选)
 - **响应**  
-  - `data`: 持仓对象数组（symbol, quantity, cost_price, market_value, profit_loss 等）
+  - `{ count, results }`，每项含 `symbol, quantity, cost_price, market_value, profit_loss` 等
 
 #### POST /api/trade/account/{account_id}/positions/sync 从 QMT 同步持仓
 
@@ -149,19 +149,17 @@
 - **响应**  
   - `data`: 持仓对象数组
 
-#### GET /api/trade/account/{account_id}/trades 交易记录
+#### GET /api/trade/trade 交易记录列表（分页）
 
 - **请求**  
-  - 路径参数: `account_id`(int)  
-  - Query: `limit`(int, 默认 100), `offset`(int, 默认 0)
+  - Query: `page`(int, 默认 1), `page_size`(int, 默认 10), `account_id`(int, 可选)
 - **响应**  
-  - `data`: `{ "items": 交易数组, "total": 总数, "limit": limit, "offset": offset }`
+  - `{ count, results }`
 
-#### POST /api/trade/account/{account_id}/trade 记录一笔交易
+#### POST /api/trade/trade 记录一笔交易
 
 - **请求**  
-  - 路径参数: `account_id`(int)  
-  - Body (JSON): `symbol`, `symbol_name`(可选), `direction`("买入"/"卖出"), `price`, `quantity`, `trade_time`(ISO 8601), `commission`(可选, 默认 0), `tax`(可选, 默认 0), `remark`(可选)
+  - Body (JSON): `account_id`(int), `symbol`, `symbol_name`(可选), `direction`("买入"/"卖出"), `price`, `quantity`, `trade_time`(ISO 8601), `commission`(可选, 默认 0), `tax`(可选, 默认 0), `remark`(可选)
 - **响应**  
   - `data`: 交易记录对象
 
@@ -402,9 +400,10 @@ curl -X POST "http://localhost:8000/api/trade/account" \
 ### 记录交易
 
 ```bash
-curl -X POST "http://localhost:8000/api/trade/account/1/trade" \
+curl -X POST "http://localhost:8000/api/trade/trade" \
   -H "Content-Type: application/json" \
   -d '{
+    "account_id": 1,
     "symbol": "000001.SZ",
     "symbol_name": "平安银行",
     "direction": "买入",

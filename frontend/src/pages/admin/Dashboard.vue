@@ -64,12 +64,13 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAccountStore } from '../../stores/account'
-import { tradeApi } from '../../api/trade'
+import { api } from '@iottest/vue-core/src/libs/api'
 const router = useRouter()
 const accountStore = useAccountStore()
 const loading = ref(false)
 const tradesLoading = ref(false)
 const recentTrades = ref([])
+const tradeResource = api('trade/trade')
 
 const accounts = computed(() => accountStore.accounts)
 
@@ -122,8 +123,8 @@ const fetchRecentTrades = async () => {
   tradesLoading.value = true
   try {
     const accountId = accounts.value[0].id
-    const data = await tradeApi.getTrades(accountId, { limit: 5 })
-    recentTrades.value = data.items || []
+    const resp = await tradeResource.get({}, { page: 1, page_size: 5, account_id: accountId })
+    recentTrades.value = Array.isArray(resp?.data?.results) ? resp.data.results : []
   } catch (error) {
     console.error('获取交易记录失败:', error)
   } finally {

@@ -48,9 +48,9 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        path: 'trades',
-        name: 'admin-trades',
-        component: () => import('./admin/Trades.vue'),
+        path: 'trade',
+        name: 'admin-trade-list',
+        component: () => import('./admin/TradeList.vue'),
         meta: {
           title: '交易记录',
           icon: 'document',

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { tradeApi } from '../api/trade'
+import { api } from '@iottest/vue-core/src/libs/api'
 
 interface Account {
   id?: number | string
@@ -11,11 +12,13 @@ export const useAccountStore = defineStore('account', () => {
   const accounts = ref<Account[]>([])
   const currentAccount = ref<Account | null>(null)
   const loading = ref(false)
+  const accountResource = api('trade/account')
 
   const fetchAccounts = async () => {
     loading.value = true
     try {
-      accounts.value = (await tradeApi.getAccounts()) as unknown as Account[]
+      const resp = await accountResource.get({}, { page: 1, page_size: 200 })
+      accounts.value = Array.isArray(resp?.data?.results) ? (resp.data.results as Account[]) : []
     } catch (error) {
       console.error('获取账户列表失败:', error)
     } finally {
