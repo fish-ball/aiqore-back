@@ -28,9 +28,9 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        path: 'accounts',
-        name: 'admin-accounts',
-        component: () => import('./admin/Accounts.vue'),
+        path: 'account',
+        name: 'admin-account-list',
+        component: () => import('./admin/AccountList.vue'),
         meta: {
           title: '账户管理',
           icon: 'wallet',

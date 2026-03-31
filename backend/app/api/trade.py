@@ -1,5 +1,5 @@
 """交易API"""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -56,11 +56,21 @@ async def create_account(account_data: AccountCreate, db: Session = Depends(get_
     return {"code": 0, "data": account, "message": "success"}
 
 
-@router.get("/accounts")
-async def get_accounts(db: Session = Depends(get_db)):
-    """获取所有账户"""
-    accounts = db.query(Account).filter(Account.is_active == 1).all()
-    return {"code": 0, "data": accounts, "message": "success"}
+@router.get("/account")
+async def get_accounts(
+    page: int = Query(default=1, ge=1, description="页码（从1开始）"),
+    page_size: int = Query(default=10, ge=1, le=200, description="每页条数"),
+    db: Session = Depends(get_db),
+):
+    """获取账户列表（分页，单数资源）"""
+    query = db.query(Account).filter(Account.is_active == 1)
+    total = query.count()
+    offset = (page - 1) * page_size
+    accounts = query.order_by(Account.id.desc()).offset(offset).limit(page_size).all()
+    return {
+        "count": total,
+        "results": accounts,
+    }
 
 
 @router.get("/account/{account_id}")
@@ -84,6 +94,18 @@ async def sync_account(account_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="同步失败")
     
     return {"code": 0, "data": synced_account, "message": "success"}
+
+
+@router.delete("/account/{account_id}")
+async def delete_account(account_id: int, db: Session = Depends(get_db)):
+    """删除账户（硬删除）"""
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="账户不存在")
+
+    db.delete(account)
+    db.commit()
+    return {"id": account_id, "deleted": True}
 
 
 @router.get("/account/{account_id}/positions")

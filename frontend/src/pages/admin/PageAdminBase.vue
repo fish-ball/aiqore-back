@@ -62,7 +62,7 @@
             <el-icon><IconOdometer /></el-icon>
             <span>仪表盘</span>
           </el-menu-item>
-          <el-menu-item index="/accounts">
+          <el-menu-item index="/account">
             <el-icon><IconWallet /></el-icon>
             <span>账户管理</span>
           </el-menu-item>

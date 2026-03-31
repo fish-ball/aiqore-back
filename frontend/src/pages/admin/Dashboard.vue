@@ -110,7 +110,7 @@ const formatDate = (row, column, cellValue) => {
 }
 
 const viewAccount = (accountId) => {
-  router.push(`/accounts?id=${accountId}`)
+  router.push(`/account?id=${accountId}`)
 }
 
 const fetchRecentTrades = async () => {

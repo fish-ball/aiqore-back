@@ -6,9 +6,9 @@ import type { RestResource } from '@iottest/vue-core/src/libs/api'
 export default {
   name: 'AIQore 个人投资管理系统',
   routes,
-  apiRoot: '/api/v1',
+  apiRoot: '/api',
   // 统一在末尾追加 `/`，与后端路由风格保持一致，避免 307 跳转
-  urlFormat: '{id}{/action}/',
+  urlFormat: '{id}{/action}',
   axiosOptions: {
     timeout: 60000, // 60秒超时
   },
