@@ -123,6 +123,7 @@
 
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useAccountStore } from '../../stores/account'
 import { analysisApi } from '../../api/analysis'
 import * as echarts from 'echarts'

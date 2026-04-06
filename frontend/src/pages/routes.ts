@@ -111,7 +111,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'tasks',
         name: 'admin-tasks',
-        component: () => import('./admin/TaskManager.vue'),
+        component: () => import('./admin/TaskList.vue'),
         meta: {
           title: '任务管理',
           icon: 'timer',
@@ -121,7 +121,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'strategies',
         name: 'admin-strategies',
-        component: () => import('./admin/StrategyManagement.vue'),
+        component: () => import('./admin/StrategyList.vue'),
         meta: {
           title: '策略管理',
           icon: 'operation',
@@ -131,7 +131,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'backtest-records',
         name: 'admin-backtest-records',
-        component: () => import('./admin/BacktestRecords.vue'),
+        component: () => import('./admin/BacktestRecordList.vue'),
         meta: {
           title: '回测记录',
           icon: 'histogram',

@@ -2,16 +2,24 @@
   <EmptyView :title="title" :subtitle="subtitle">
     <template #actions v-if="$table">
       <template v-if="!finalOptions.embedListActions">
-        <ActionButtonGroup
-          v-if="batchActions.length"
-          :actions="batchActions"
-          :args="[selectedItems, { options: props, $table }]"
-        ></ActionButtonGroup>
-        <ActionButtonGroup
-          v-if="listActions.length || defaultActions.length"
-          :actions="[...listActions, ...defaultActions]"
-          :args="[{ options: props, $table }]"
-        ></ActionButtonGroup>
+        <div class="list-view-toolbar-row">
+          <div
+            v-if="$slots['toolbar-actions'] || $slots.toolbarActions"
+            class="list-view-toolbar-custom"
+          >
+            <slot name="toolbar-actions" :table="$table" :page="page" :page-size="pageSize" />
+          </div>
+          <ActionButtonGroup
+            v-if="batchActions.length"
+            :actions="batchActions"
+            :args="[selectedItems, { options: props, $table }]"
+          ></ActionButtonGroup>
+          <ActionButtonGroup
+            v-if="listActions.length || defaultActions.length"
+            :actions="[...listActions, ...defaultActions]"
+            :args="[{ options: props, $table }]"
+          ></ActionButtonGroup>
+        </div>
       </template>
     </template>
     <slot name="before" :table="$table" :page="page" :page-size="pageSize" />
@@ -23,7 +31,7 @@
       @queryUpdated="queryUpdated"
       v-bind="props"
     >
-      <template v-for="(_, name) in $slots" #[name]="slotData">
+      <template v-for="name in forwardedSlotNames" :key="name" #[name]="slotData">
         <slot :name="name" v-bind="slotData" />
       </template>
     </ListViewTable>
@@ -31,13 +39,15 @@
   </EmptyView>
 </template>
 
-<script setup lang="ts" generic="T">
+<script setup lang="ts">
 /**
  * 与 @iottest/vue-core 的 ListView 行为一致，但不调用 router.replace 同步分页与筛选。
  * 原版在 watch(page,pageSize) 与 queryUpdated 中写回 URL，在嵌套路由 + Transition（out-in）下
  * 易与后续导航冲突，表现为离开页面后子路由区域白屏且无控制台报错。
+ *
+ * 不使用 generic="T"：与 vue-core 的 ListView 一致，且避免泛型 SFC 在 HMR/模板编译下偶发丢失绑定。
  */
-import { ref, reactive, watchEffect, computed } from 'vue'
+import { ref, reactive, watchEffect, computed, useSlots } from 'vue'
 import EmptyView from '@iottest/vue-core/src/libs/data-view/components/EmptyView.vue'
 import ListViewTable from '@iottest/vue-core/src/libs/data-view/components/ListViewTable.vue'
 import {
@@ -53,12 +63,16 @@ import type { ListViewQuery } from '@iottest/vue-core/src/libs/data-view/types/f
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+const slots = useSlots()
+
+/** 仅转发表格列插槽；顶栏 toolbar-actions / before / after 不得进入表格，否则会污染 GenericTable */
+const TABLE_SLOT_EXCLUDE = new Set(['before', 'after', 'toolbar-actions', 'toolbarActions'])
 
 const $table = ref()
 const page = ref<number>(1)
 const pageSize = ref<number>(10)
 
-const props = withDefaults(defineProps<ModelListViewOptions<T>>(), {
+const props = withDefaults(defineProps<ModelListViewOptions<unknown>>(), {
   pk: 'id',
   options: () => ({}),
   initQuery: () => ({}),
@@ -81,7 +95,7 @@ Object.entries(props.options).map(([key, value]) => {
   })
 })
 
-const defaultActions = reactive<TableListAction<T>[]>([
+const defaultActions = reactive<TableListAction<unknown>[]>([
   {
     label: '创建',
     display: () => finalOptions.canCreate ?? true,
@@ -101,7 +115,12 @@ const defaultActions = reactive<TableListAction<T>[]>([
   },
 ])
 
-const selectedItems = computed<T[]>(() => [])
+const selectedItems = computed<unknown[]>(() => [])
+
+/** 需转发给 ListViewTable 的插槽名（computed 放在 defineProps 之后，避免泛型 SFC 模板绑定丢失） */
+const forwardedSlotNames = computed(() =>
+  Object.keys(slots).filter((n) => !TABLE_SLOT_EXCLUDE.has(n)),
+)
 
 const emit = defineEmits<{
   loaded: [data: ListViewData]
@@ -118,12 +137,26 @@ defineExpose({
   get listViewQuery(): ListViewQuery {
     return ($table.value?.listViewQuery ?? {}) as ListViewQuery
   },
-  triggerEdit: (item: T) => $table.value?.triggerEdit(item),
-  triggerDelete: (item: T) => $table.value?.triggerDelete(item),
+  triggerEdit: (item: unknown) => $table.value?.triggerEdit(item),
+  triggerDelete: (item: unknown) => $table.value?.triggerDelete(item),
 })
 </script>
 
 <style scoped lang="scss">
+.list-view-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.list-view-toolbar-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .title {
   display: inline-block;
   font-size: 16px;
