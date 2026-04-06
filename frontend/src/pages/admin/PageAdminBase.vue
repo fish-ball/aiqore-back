@@ -106,11 +106,8 @@
       </el-aside>
       
       <el-main class="app-main" :class="{ 'app-main--full': isSecurityDetailPage }">
-        <router-view v-slot="{ Component }">
-          <transition name="fade" mode="out-in">
-            <component :is="Component" />
-          </transition>
-        </router-view>
+        <!-- 不使用 transition，避免子路由切换时中间区域卡在空白（out-in 与动态组件组合易出问题） -->
+        <router-view />
       </el-main>
     </el-container>
   </el-container>
@@ -244,16 +241,6 @@ const handleSelectSecurity = (item) => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
 }
 
 .search-item {

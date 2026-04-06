@@ -81,7 +81,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'sectors',
         name: 'admin-sectors',
-        component: () => import('./admin/Sectors.vue'),
+        component: () => import('./admin/SectorList.vue'),
         meta: {
           title: '板块管理',
           icon: 'list',
@@ -91,7 +91,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'data-sources',
         name: 'admin-data-sources',
-        component: () => import('./admin/DataSourceConnections.vue'),
+        component: () => import('./admin/DataSourceConnectionList.vue'),
         meta: {
           title: '数据源连接',
           icon: 'connection',

@@ -5,7 +5,7 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import ListView from '@iottest/vue-core/src/libs/data-view/components/ListView.vue'
+import ListView from '../../components/ListViewNoRouteSync.vue'
 import { api } from '@iottest/vue-core/src/libs/api'
 import { formatMoneyValue, formatPercentValue } from '../../utils/formatter'
 

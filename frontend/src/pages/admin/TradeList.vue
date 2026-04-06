@@ -4,7 +4,7 @@
 
 <script setup>
 import { reactive, ref } from 'vue'
-import ListView from '@iottest/vue-core/src/libs/data-view/components/ListView.vue'
+import ListView from '../../components/ListViewNoRouteSync.vue'
 import { api } from '@iottest/vue-core/src/libs/api'
 import { formatMoneyValue } from '../../utils/formatter'
 
