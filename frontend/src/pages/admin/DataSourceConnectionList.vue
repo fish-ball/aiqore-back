@@ -316,7 +316,7 @@ const listViewOptions = reactive({
     {
       key: 'source_type',
       label: '类型',
-      width: 120,
+      width: 160,
       slotName: 'ds_source_type',
       filtering: {
         type: 'select',

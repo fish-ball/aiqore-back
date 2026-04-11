@@ -1,115 +1,117 @@
 <template>
   <div class="data-source-debug">
-    <div class="page-header">
-      <div>
-        <el-button text @click="goBack" style="margin-right: 8px">返回列表</el-button>
-        <h2>接口调试：{{ connectionName || '加载中...' }}</h2>
-      </div>
-    </div>
+    <EmptyView title="接口调试" :subtitle="pageSubtitle">
+      <template #actions>
+        <el-button text @click="goBack">返回列表</el-button>
+      </template>
 
-    <template v-if="loading">
-      <el-card style="margin-top: 16px"><el-icon class="is-loading"><IconLoading /></el-icon> 加载连接信息...</el-card>
-    </template>
-    <template v-else-if="!supportDebug">
-      <el-card style="margin-top: 16px">
-        <el-alert type="info" :closable="false">
-          当前仅支持 miniQMT 类型数据源的接口调试。该连接类型为「{{ sourceTypeLabel }}」，请使用 miniQMT/QMT 连接进行调试。
-        </el-alert>
-      </el-card>
-    </template>
-    <template v-else>
-      <el-card style="margin-top: 16px">
-        <el-tabs v-model="activeTab" tab-position="left" class="debug-tabs">
-          <el-tab-pane
-            v-for="tab in tabs"
-            :key="tab.key"
-            :name="tab.key"
-            :label="tab.label"
-          >
-            <template #label>
-              <span>{{ tab.label }}</span>
-            </template>
-            <div class="tab-content">
-              <div class="tab-form">
-                <el-form label-width="100px" label-position="top">
-                  <template v-if="tab.key === 'test'">
-                    <el-form-item label="说明">
-                      <span class="form-hint">检测当前连接是否可用（xtquant 路径与账号）。</span>
-                    </el-form-item>
-                  </template>
-                  <template v-else-if="tab.key === 'sectors'">
-                    <el-form-item label="说明">
-                      <span class="form-hint">获取板块列表（如 沪深A股、创业板 等）。</span>
-                    </el-form-item>
-                  </template>
-                  <template v-else-if="tab.key === 'stocks-in-sector'">
-                    <el-form-item label="板块名称" required>
-                      <el-input v-model="form.sector" placeholder="如 沪深A股" clearable />
-                    </el-form-item>
-                  </template>
-                  <template v-else-if="tab.key === 'instrument-detail'">
-                    <el-form-item label="标的代码" required>
-                      <el-input v-model="form.symbol" placeholder="如 000001.SZ" clearable />
-                    </el-form-item>
-                  </template>
-                  <template v-else-if="tab.key === 'market-data'">
-                    <el-form-item label="标的代码" required>
-                      <el-input v-model="form.symbolKline" placeholder="如 000001.SZ" clearable />
-                    </el-form-item>
-                    <el-form-item label="周期">
-                      <el-select v-model="form.period" placeholder="周期" style="width: 100%">
-                        <el-option label="1d" value="1d" />
-                        <el-option label="1m" value="1m" />
-                      </el-select>
-                    </el-form-item>
-                    <el-form-item label="条数">
-                      <el-input-number v-model="form.count" :min="1" :max="2000" style="width: 100%" />
-                    </el-form-item>
-                  </template>
-                  <template v-else-if="tab.key === 'realtime-quote'">
-                    <el-form-item label="标的代码（多个用逗号分隔）" required>
-                      <el-input v-model="form.symbolsText" type="textarea" :rows="2" placeholder="如 000001.SZ,600000.SH" />
-                    </el-form-item>
-                  </template>
-                  <template v-else-if="tab.key === 'stock-list'">
-                    <el-form-item label="市场（可选）">
-                      <el-select v-model="form.market" placeholder="不选为全部" clearable style="width: 100%">
-                        <el-option label="SH" value="SH" />
-                        <el-option label="SZ" value="SZ" />
-                        <el-option label="BJ" value="BJ" />
-                      </el-select>
-                    </el-form-item>
-                    <el-form-item label="板块（可选）">
-                      <el-input v-model="form.sectorStockList" placeholder="如 沪深A股，不填则按市场或全量" clearable />
-                    </el-form-item>
-                  </template>
-                  <template v-else-if="tab.key === 'positions'">
-                    <el-form-item label="资金账号" required>
-                      <el-input v-model="form.account_id" placeholder="与 miniQMT 登录账号一致" clearable />
-                    </el-form-item>
-                  </template>
-                  <template v-else-if="tab.key === 'account-info'">
-                    <el-form-item label="资金账号" required>
-                      <el-input v-model="form.account_id_info" placeholder="与 miniQMT 登录账号一致" clearable />
-                    </el-form-item>
-                  </template>
-                  <template v-else-if="tab.key === 'search-stocks'">
-                    <el-form-item label="关键词" required>
-                      <el-input v-model="form.keyword" placeholder="代码或名称关键词" clearable />
-                    </el-form-item>
-                  </template>
-                </el-form>
-                <el-button type="primary" @click="sendRequest(tab)" :loading="requestLoading">发送请求</el-button>
+      <template v-if="loading">
+        <div class="debug-body debug-body--state">
+          <el-icon class="is-loading"><IconLoading /></el-icon>
+          <span>加载连接信息...</span>
+        </div>
+      </template>
+      <template v-else-if="!supportDebug">
+        <div class="debug-body">
+          <el-alert type="info" :closable="false">
+            当前仅支持 miniQMT 类型数据源的接口调试。该连接类型为「{{ sourceTypeLabel }}」，请使用 miniQMT/QMT 连接进行调试。
+          </el-alert>
+        </div>
+      </template>
+      <template v-else>
+        <div class="debug-body">
+          <el-tabs v-model="activeTab" tab-position="left" class="debug-tabs">
+            <el-tab-pane
+              v-for="tab in tabs"
+              :key="tab.key"
+              :name="tab.key"
+              :label="tab.label"
+            >
+              <template #label>
+                <span>{{ tab.label }}</span>
+              </template>
+              <div class="tab-content">
+                <div class="tab-form">
+                  <el-form label-width="100px" label-position="top">
+                    <template v-if="tab.key === 'test'">
+                      <el-form-item label="说明">
+                        <span class="form-hint">检测当前连接是否可用（xtquant 路径与账号）。</span>
+                      </el-form-item>
+                    </template>
+                    <template v-else-if="tab.key === 'sectors'">
+                      <el-form-item label="说明">
+                        <span class="form-hint">获取板块列表（如 沪深A股、创业板 等）。</span>
+                      </el-form-item>
+                    </template>
+                    <template v-else-if="tab.key === 'stocks-in-sector'">
+                      <el-form-item label="板块名称" required>
+                        <el-input v-model="form.sector" placeholder="如 沪深A股" clearable />
+                      </el-form-item>
+                    </template>
+                    <template v-else-if="tab.key === 'instrument-detail'">
+                      <el-form-item label="标的代码" required>
+                        <el-input v-model="form.symbol" placeholder="如 000001.SZ" clearable />
+                      </el-form-item>
+                    </template>
+                    <template v-else-if="tab.key === 'market-data'">
+                      <el-form-item label="标的代码" required>
+                        <el-input v-model="form.symbolKline" placeholder="如 000001.SZ" clearable />
+                      </el-form-item>
+                      <el-form-item label="周期">
+                        <el-select v-model="form.period" placeholder="周期" style="width: 100%">
+                          <el-option label="1d" value="1d" />
+                          <el-option label="1m" value="1m" />
+                        </el-select>
+                      </el-form-item>
+                      <el-form-item label="条数">
+                        <el-input-number v-model="form.count" :min="1" :max="2000" style="width: 100%" />
+                      </el-form-item>
+                    </template>
+                    <template v-else-if="tab.key === 'realtime-quote'">
+                      <el-form-item label="标的代码（多个用逗号分隔）" required>
+                        <el-input v-model="form.symbolsText" type="textarea" :rows="2" placeholder="如 000001.SZ,600000.SH" />
+                      </el-form-item>
+                    </template>
+                    <template v-else-if="tab.key === 'stock-list'">
+                      <el-form-item label="市场（可选）">
+                        <el-select v-model="form.market" placeholder="不选为全部" clearable style="width: 100%">
+                          <el-option label="SH" value="SH" />
+                          <el-option label="SZ" value="SZ" />
+                          <el-option label="BJ" value="BJ" />
+                        </el-select>
+                      </el-form-item>
+                      <el-form-item label="板块（可选）">
+                        <el-input v-model="form.sectorStockList" placeholder="如 沪深A股，不填则按市场或全量" clearable />
+                      </el-form-item>
+                    </template>
+                    <template v-else-if="tab.key === 'positions'">
+                      <el-form-item label="资金账号" required>
+                        <el-input v-model="form.account_id" placeholder="与 miniQMT 登录账号一致" clearable />
+                      </el-form-item>
+                    </template>
+                    <template v-else-if="tab.key === 'account-info'">
+                      <el-form-item label="资金账号" required>
+                        <el-input v-model="form.account_id_info" placeholder="与 miniQMT 登录账号一致" clearable />
+                      </el-form-item>
+                    </template>
+                    <template v-else-if="tab.key === 'search-stocks'">
+                      <el-form-item label="关键词" required>
+                        <el-input v-model="form.keyword" placeholder="代码或名称关键词" clearable />
+                      </el-form-item>
+                    </template>
+                  </el-form>
+                  <el-button type="primary" @click="sendRequest(tab)" :loading="requestLoading">发送请求</el-button>
+                </div>
+                <div class="tab-result">
+                  <div class="result-label">返回结果（JSON）</div>
+                  <pre class="result-json">{{ resultJson || '发送请求后在此显示返回的 JSON' }}</pre>
+                </div>
               </div>
-              <div class="tab-result">
-                <div class="result-label">返回结果（JSON）</div>
-                <pre class="result-json">{{ resultJson || '发送请求后在此显示返回的 JSON' }}</pre>
-              </div>
-            </div>
-          </el-tab-pane>
-        </el-tabs>
-      </el-card>
-    </template>
+            </el-tab-pane>
+          </el-tabs>
+        </div>
+      </template>
+    </EmptyView>
   </div>
 </template>
 
@@ -117,6 +119,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import EmptyView from '@iottest/vue-core/src/libs/data-view/components/EmptyView.vue'
 import { dataSourceApi } from '../../api/dataSource'
 
 const route = useRoute()
@@ -131,6 +134,12 @@ const supportDebug = computed(() => sourceType.value === 'qmt')
 const sourceTypeLabel = computed(() => {
   const m = { qmt: 'miniQMT/QMT', joinquant: '聚宽', tushare: 'Tushare' }
   return m[sourceType.value] || sourceType.value
+})
+
+/** 与原先 h2 副标题一致：连接名称或加载提示 */
+const pageSubtitle = computed(() => {
+  if (loading.value) return '加载中...'
+  return connectionName.value || ''
 })
 
 const tabs = [
@@ -283,21 +292,40 @@ watch(connectionId, fetchConnection, { immediate: true })
 </script>
 
 <style scoped>
-.data-source-debug .page-header {
+.data-source-debug {
+  height: 100%;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.data-source-debug :deep(.empty-view) {
+  min-height: 0;
+}
+
+.debug-body {
+  margin-top: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.debug-body--state {
   align-items: center;
+  gap: 8px;
+  padding: 24px 0;
+  color: var(--el-text-color-secondary);
 }
-.data-source-debug h2 {
-  margin: 0;
-  font-size: 18px;
-}
+
 .form-hint {
   color: var(--el-text-color-secondary);
   font-size: 12px;
 }
 .debug-tabs {
   min-height: 420px;
+  flex: 1;
+  min-width: 0;
 }
 .debug-tabs :deep(.el-tabs__header) {
   margin-right: 16px;
