@@ -90,15 +90,21 @@
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { securityApi } from '../../api/security'
-import { taskApi } from '../../api/task'
-import { marketApi } from '../../api/market'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 import { useDataSourceStore } from '../../stores/dataSource'
 import DividFactorsTable from '../components/diagram/DividFactorsTable.vue'
 import TickChart from '../components/diagram/TickChart.vue'
 import KlineChart from '../components/diagram/KlineChart.vue'
 
 const dataSourceStore = useDataSourceStore()
+
+const securityResource = api('security')
+const securityUpdateDataResource = api('security/update-data')
+const marketQuoteResource = api('market/quote')
+const marketKlineResource = api('market/kline')
+const marketTicksResource = api('market/ticks')
+const tasksWaitResource = api('tasks', { axiosOptions: { timeout: 630000 } })
 
 // localStorage 键名：证券详情页左右切分宽度、左侧上下切分底部高度
 const STORAGE_LEFT_PANEL_WIDTH = 'security-detail-left-panel-width'
@@ -338,7 +344,8 @@ async function fetchSecurityInfo() {
   const s = (props.symbol || '').trim()
   if (!s) return
   try {
-    const info = await securityApi.getDetail(s)
+    const resp = await securityResource.get({ id: s }, {})
+    const info = unwrapEnvelope(resp)
     securityInfo.value = info
     securityDetailLoaded.value = true
   } catch (error) {
@@ -351,7 +358,8 @@ async function fetchQuote() {
   const s = (props.symbol || '').trim()
   if (!s) { quoteLoading.value = false; return }
   try {
-    const quotes = await marketApi.getQuote(s)
+    const qResp = await marketQuoteResource.get({}, { symbols: s })
+    const quotes = unwrapEnvelope(qResp)
     if (Array.isArray(quotes) && quotes.length > 0) {
       quote.value = quotes[0]
     } else if (quotes && quotes.symbol) {
@@ -626,7 +634,8 @@ async function fetchKlineForTab(period, count = 250) {
   if (!s) return []
   try {
     // 不传 start_date/end_date，后端返回全部 K 线，由前端控制显示范围
-    const res = await marketApi.getKline(s, period, count)
+    const kResp = await marketKlineResource.get({}, { symbol: s, period, count })
+    const res = unwrapEnvelope(kResp)
     return Array.isArray(res) ? res : []
   } catch (e) {
     console.error('获取K线失败:', e)
@@ -853,7 +862,8 @@ async function loadIntraday() {
   if (!s) return
   try {
     const today = new Date().toISOString().slice(0, 10)
-    const data = await marketApi.getTicks(s, today)
+    const tResp = await marketTicksResource.get({}, { symbol: s, trade_date: today, force_update: false })
+    const data = unwrapEnvelope(tResp)
     const list = Array.isArray(data) ? data : []
     await nextTick()
     const priceDom = intradayChartRef.value
@@ -1065,13 +1075,17 @@ async function doUpdateData(silent = false) {
   }
   updateDataLoading.value = true
   try {
-    const res = await securityApi.updateData(s, sourceType, sourceId)
+    const udBody = { symbol: s, source_type: sourceType }
+    if (sourceId != null && sourceId !== '') udBody.source_id = Number(sourceId)
+    const postResp = await securityUpdateDataResource.post({}, udBody)
+    const res = unwrapEnvelope(postResp)
     if (res?.hint) {
       if (!silent) ElMessage.warning(res.hint)
       return
     }
     if (res?.task_id) {
-      const taskResult = await taskApi.waitForTask(res.task_id)
+      const waitResp = await tasksWaitResource.get({ id: res.task_id, action: 'wait' }, { timeout: 600 })
+      const taskResult = unwrapEnvelope(waitResp)
       if (taskResult?.state === 'SUCCESS') {
         if (!silent) ElMessage.success('数据已更新')
         await reload()

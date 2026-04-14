@@ -37,7 +37,10 @@
 import { ref, watch, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import moment from 'moment'
-import { marketApi } from '../../../api/market'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../../../config/unwrapEnvelope'
+
+const marketDividFactorsResource = api('market/divid-factors')
 
 const props = defineProps({
   // 证券代码，例如 000001.SZ
@@ -88,7 +91,8 @@ async function fetchData() {
   }
   loading.value = true
   try {
-    const res = await marketApi.getDividFactors(s)
+    const dfResp = await marketDividFactorsResource.get({}, { symbol: s })
+    const res = unwrapEnvelope(dfResp)
     rows.value = Array.isArray(res) ? res : []
   } catch (error) {
     console.error('获取除权除息数据失败:', error)

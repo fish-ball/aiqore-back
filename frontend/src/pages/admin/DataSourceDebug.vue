@@ -120,7 +120,10 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import EmptyView from '@iottest/vue-core/src/libs/data-view/components/EmptyView.vue'
-import { dataSourceApi } from '../../api/dataSource'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../../config/unwrapEnvelope'
+
+const dataSourceConnResource = api('data-source/connections')
 
 const route = useRoute()
 const router = useRouter()
@@ -180,7 +183,8 @@ function goBack() {
 async function fetchConnection() {
   loading.value = true
   try {
-    const item = await dataSourceApi.getOne(connectionId.value)
+    const resp = await dataSourceConnResource.get({ id: connectionId.value }, {})
+    const item = unwrapEnvelope(resp)
     if (item) {
       connectionName.value = item.name || ''
       sourceType.value = item.source_type || ''
@@ -234,47 +238,74 @@ async function sendRequest(tab) {
   try {
     let data
     switch (key) {
-      case 'test':
-        data = await dataSourceApi.test(id)
+      case 'test': {
+        const r = await dataSourceConnResource.post({ id, action: 'test' }, {})
+        data = unwrapEnvelope(r)
         break
-      case 'sectors':
-        data = await dataSourceApi.debugSectors(id)
+      }
+      case 'sectors': {
+        const r = await dataSourceConnResource.get({ id, action: 'debug/sectors' }, {})
+        data = unwrapEnvelope(r)
         break
-      case 'stocks-in-sector':
-        data = await dataSourceApi.debugStocksInSector(id, form.value.sector.trim())
+      }
+      case 'stocks-in-sector': {
+        const r = await dataSourceConnResource.post({ id, action: 'debug/stocks-in-sector' }, {
+          sector: form.value.sector.trim(),
+        })
+        data = unwrapEnvelope(r)
         break
-      case 'instrument-detail':
-        data = await dataSourceApi.debugInstrumentDetail(id, (form.value.symbol || '').trim())
+      }
+      case 'instrument-detail': {
+        const r = await dataSourceConnResource.post({ id, action: 'debug/instrument-detail' }, {
+          symbol: (form.value.symbol || '').trim(),
+        })
+        data = unwrapEnvelope(r)
         break
-      case 'market-data':
-        data = await dataSourceApi.debugMarketData(
-          id,
-          (form.value.symbolKline || '').trim(),
-          form.value.period,
-          form.value.count
-        )
+      }
+      case 'market-data': {
+        const r = await dataSourceConnResource.post({ id, action: 'debug/market-data' }, {
+          symbol: (form.value.symbolKline || '').trim(),
+          period: form.value.period,
+          count: form.value.count,
+        })
+        data = unwrapEnvelope(r)
         break
+      }
       case 'realtime-quote': {
         const symbols = (form.value.symbolsText || '').trim().split(/[,，\s]+/).filter(Boolean)
-        data = await dataSourceApi.debugRealtimeQuote(id, symbols)
+        const r = await dataSourceConnResource.post({ id, action: 'debug/realtime-quote' }, { symbols })
+        data = unwrapEnvelope(r)
         break
       }
       case 'stock-list': {
         const payload = {}
         if (form.value.market?.trim()) payload.market = form.value.market.trim()
         if (form.value.sectorStockList?.trim()) payload.sector = form.value.sectorStockList.trim()
-        data = await dataSourceApi.debugStockList(id, payload)
+        const r = await dataSourceConnResource.post({ id, action: 'debug/stock-list' }, payload)
+        data = unwrapEnvelope(r)
         break
       }
-      case 'positions':
-        data = await dataSourceApi.debugPositions(id, form.value.account_id.trim())
+      case 'positions': {
+        const r = await dataSourceConnResource.post({ id, action: 'debug/positions' }, {
+          account_id: form.value.account_id.trim(),
+        })
+        data = unwrapEnvelope(r)
         break
-      case 'account-info':
-        data = await dataSourceApi.debugAccountInfo(id, form.value.account_id_info.trim())
+      }
+      case 'account-info': {
+        const r = await dataSourceConnResource.post({ id, action: 'debug/account-info' }, {
+          account_id: form.value.account_id_info.trim(),
+        })
+        data = unwrapEnvelope(r)
         break
-      case 'search-stocks':
-        data = await dataSourceApi.debugSearchStocks(id, form.value.keyword.trim())
+      }
+      case 'search-stocks': {
+        const r = await dataSourceConnResource.post({ id, action: 'debug/search-stocks' }, {
+          keyword: form.value.keyword.trim(),
+        })
+        data = unwrapEnvelope(r)
         break
+      }
       default:
         data = null
     }

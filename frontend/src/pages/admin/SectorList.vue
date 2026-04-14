@@ -28,10 +28,12 @@ import { reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ListView from '../../components/ListViewNoRouteSync.vue'
-import sectorApi from '../../api/sector'
-import { securityApi } from '../../api/security'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 
 const router = useRouter()
+const sectorSyncResource = api('sector/sync')
+const securityUpdateResource = api('security/update')
 
 const formatDateValue = (value) => {
   if (!value) return '--'
@@ -67,7 +69,8 @@ const syncSectorSecurities = async (sectorName) => {
     if (e === 'cancel') return
     throw e
   }
-  const result = await securityApi.update(null, sectorName, 'qmt', null)
+  const uResp = await securityUpdateResource.post({}, { source_type: 'qmt', sector: sectorName })
+  const result = unwrapEnvelope(uResp)
   if (result && result.task_id) {
     ElMessage.success('同步任务已提交，请查看任务列表')
   } else {
@@ -84,7 +87,12 @@ const syncAllSectors = async (ctx) => {
     if (e === 'cancel') return
     throw e
   }
-  const response = await sectorApi.sync()
+  const resp = await sectorSyncResource.post({}, {})
+  const body = resp.data
+  if (body?.code !== 0) {
+    throw new Error(body?.message || '同步失败')
+  }
+  const response = body.data || {}
   ElMessage.success(
     `同步完成: 新增 ${response.created || 0} 个，更新 ${response.updated || 0} 个`,
   )
@@ -93,7 +101,7 @@ const syncAllSectors = async (ctx) => {
 
 const listViewOptions = reactive({
   title: '板块管理',
-  model: 'sector',
+  model: 'sector/list',
   options: {
     canCreate: false,
     canEdit: false,
@@ -103,26 +111,6 @@ const listViewOptions = reactive({
   },
   elTableProps: {
     height: 600,
-  },
-  hooks: {
-    actionLoadData: async (page, pageSize, query) => {
-      const params = {}
-      if (query.category) params.category = query.category
-      if (query.market && query.market !== '__cross__') {
-        params.market = query.market
-      }
-      const resp = await sectorApi.getList(params)
-      let items = resp.items || []
-      if (query.market === '__cross__') {
-        items = items.filter((r) => !r.market)
-      }
-      const total = items.length
-      const start = (page - 1) * pageSize
-      return {
-        results: items.slice(start, start + pageSize),
-        count: total,
-      }
-    },
   },
   fields: [
     {

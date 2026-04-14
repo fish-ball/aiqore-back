@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { dataSourceApi } from '../api/dataSource'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../config/unwrapEnvelope'
 
 type DataSourceId = number
 
@@ -36,11 +37,14 @@ export const useDataSourceStore = defineStore('dataSource', () => {
     return list.value.find((item) => item.id === id) || null
   })
 
+  const dataSourceListResource = api('data-source/list')
+
   const fetchList = async () => {
     loading.value = true
     try {
-      const res = await dataSourceApi.getList({ is_active: true })
-      const items = (res && (res as any).items) ? (res as any).items : []
+      const resp = await dataSourceListResource.get({}, { is_active: true })
+      const res = unwrapEnvelope(resp) as { items?: DataSourceConnection[] }
+      const items = Array.isArray(res?.items) ? res.items : []
       list.value = items as DataSourceConnection[]
       const id = currentId.value
       if (id != null && !list.value.some((item) => item.id === id)) {

@@ -68,7 +68,10 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { taskApi } from '../../api/task'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../../config/unwrapEnvelope'
+
+const tasksRunResource = api('tasks/run')
 
 const props = defineProps({
   spec: { type: Object, default: null },
@@ -184,7 +187,8 @@ async function submit() {
 
   submitting.value = true
   try {
-    const data = await taskApi.run(spec.name, params)
+    const resp = await tasksRunResource.post({}, { task_name: spec.name, params })
+    const data = unwrapEnvelope(resp)
     ElMessage.success(`任务已提交，ID: ${data.task_id}`)
   } finally {
     submitting.value = false

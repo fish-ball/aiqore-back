@@ -125,8 +125,11 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '../../stores/account'
-import { analysisApi } from '../../api/analysis'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 import * as echarts from 'echarts'
+
+const analysisAccountResource = api('analysis/account')
 
 const accountStore = useAccountStore()
 const loading = ref(false)
@@ -165,7 +168,11 @@ const fetchSummary = async () => {
   if (!selectedAccountId.value) return
   
   try {
-    summary.value = await analysisApi.getAccountSummary(selectedAccountId.value)
+    const resp = await analysisAccountResource.get(
+      { id: selectedAccountId.value, action: 'summary' },
+      {},
+    )
+    summary.value = unwrapEnvelope(resp)
   } catch (error) {
     console.error('获取账户汇总失败:', error)
   }
@@ -175,7 +182,11 @@ const fetchPositionAnalysis = async () => {
   if (!selectedAccountId.value) return
   
   try {
-    positionAnalysis.value = await analysisApi.getPositionAnalysis(selectedAccountId.value)
+    const resp = await analysisAccountResource.get(
+      { id: selectedAccountId.value, action: 'positions' },
+      {},
+    )
+    positionAnalysis.value = unwrapEnvelope(resp)
   } catch (error) {
     console.error('获取持仓分析失败:', error)
   }
@@ -185,7 +196,8 @@ const fetchTradeStats = async () => {
   if (!selectedAccountId.value) return
   
   try {
-    tradeStats.value = await analysisApi.getTradeStatistics(selectedAccountId.value)
+    const resp = await analysisAccountResource.get({ id: selectedAccountId.value, action: 'trade-stats' }, {})
+    tradeStats.value = unwrapEnvelope(resp)
   } catch (error) {
     console.error('获取交易统计失败:', error)
   }
@@ -196,7 +208,11 @@ const fetchProfitTrend = async () => {
   
   loading.value = true
   try {
-    profitTrend.value = await analysisApi.getProfitTrend(selectedAccountId.value, trendDays.value)
+    const resp = await analysisAccountResource.get(
+      { id: selectedAccountId.value, action: 'profit-trend' },
+      { days: trendDays.value },
+    )
+    profitTrend.value = unwrapEnvelope(resp)
     
     if (!trendChart) {
       const chartDom = document.getElementById('trend-chart')

@@ -19,15 +19,17 @@
 <script setup>
 import { h, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import ListView from '../../components/ListViewNoRouteSync.vue'
 import EmbedForm from '@iottest/vue-core/src/libs/data-view/components/EmbedForm.vue'
 import { openDialog } from '@iottest/vue-core/src/libs/dialogs'
-import { dataSourceApi } from '../../api/dataSource'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 import DataSourceTypePicker from './DataSourceTypePicker.vue'
 
 const router = useRouter()
 const listViewRef = ref(null)
+const dataSourceConnResource = api('data-source/connections')
 
 const reloadTable = async () => {
   await listViewRef.value?.reload()
@@ -41,21 +43,6 @@ const sourceTypeLabel = (t) => {
 const formatDate = (v) => {
   if (!v) return '--'
   return new Date(v).toLocaleString('zh-CN')
-}
-
-const loadDataSourceList = async (page, pageSize, query) => {
-  const params = {}
-  if (query.source_type) params.source_type = query.source_type
-  if (query.is_active === 'true') params.is_active = true
-  else if (query.is_active === 'false') params.is_active = false
-  const res = await dataSourceApi.getList(params)
-  const items = res?.items ? res.items : []
-  const total = items.length
-  const start = (page - 1) * pageSize
-  return {
-    results: items.slice(start, start + pageSize),
-    count: total,
-  }
 }
 
 function formTitle(sourceType, edit) {
@@ -196,16 +183,16 @@ function openDataSourceFormDialog(item, fields, title) {
             description: validated.description?.trim() || null,
           }
           if (validated.id != null && validated.id !== '') {
-            await dataSourceApi.update(validated.id, payload)
+            await dataSourceConnResource.put({ id: validated.id }, payload)
             ElMessage.success('更新成功')
           } else {
-            await dataSourceApi.create(payload)
+            await dataSourceConnResource.post({}, payload)
             ElMessage.success('创建成功')
           }
           dialog.close()
           resolve()
         } catch {
-          // EmbedForm 校验失败已弹窗；接口错误由 axios 拦截器提示
+          // EmbedForm 校验失败已弹窗；接口错误由全局请求处理或本页 catch 提示
         }
       },
       onCancel(dialog) {
@@ -254,7 +241,8 @@ const goDebug = (row) => {
 
 const handleTest = async (row) => {
   try {
-    const res = await dataSourceApi.test(row.id)
+    const resp = await dataSourceConnResource.post({ id: row.id, action: 'test' }, {})
+    const res = unwrapEnvelope(resp)
     const ok = res?.ok ?? false
     const msg = res?.message ?? (ok ? '连接成功' : '连接失败')
     if (ok) {
@@ -279,36 +267,19 @@ const openEdit = (row) => {
   })()
 }
 
-const handleDelete = async (row) => {
-  try {
-    await ElMessageBox.confirm(`确定删除连接「${row.name}」吗？`, '确认删除', {
-      type: 'warning',
-    })
-    await dataSourceApi.delete(row.id)
-    ElMessage.success('已删除')
-    await reloadTable()
-  } catch (e) {
-    if (e !== 'cancel') {
-      throw e
-    }
-  }
-}
-
 const listViewOptions = reactive({
   title: '数据源连接',
-  model: 'data-source',
+  // 列表由 config 请求 data-source/list；model 与表单/删除等用 data-source/connections
+  model: 'data-source/connections',
   options: {
     canCreate: false,
     canEdit: false,
-    canDelete: false,
+    canDelete: true,
     inlineEdit: false,
     actionColumnWidth: 300,
   },
   elTableProps: {
     height: 560,
-  },
-  hooks: {
-    actionLoadData: loadDataSourceList,
   },
   fields: [
     { key: 'id', label: 'ID', width: 70 },
@@ -382,11 +353,6 @@ const listViewOptions = reactive({
     {
       label: '编辑',
       action: (item) => openEdit(item),
-    },
-    {
-      label: '删除',
-      buttonType: 'danger',
-      action: async (item) => handleDelete(item),
     },
   ],
 })

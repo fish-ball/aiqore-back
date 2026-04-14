@@ -19,15 +19,16 @@
 <script setup>
 import { h, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import ListView from '../../components/ListViewNoRouteSync.vue'
 import EmbedForm from '@iottest/vue-core/src/libs/data-view/components/EmbedForm.vue'
 import { openDialog } from '@iottest/vue-core/src/libs/dialogs'
-import { strategyApi } from '../../api/strategy'
+import { api } from '@iottest/vue-core/src/libs/api'
 import StrategyBacktestForm from './StrategyBacktestForm.vue'
 
 const router = useRouter()
 const listViewRef = ref(null)
+const strategyStrategiesResource = api('strategy/strategies')
 
 const reloadTable = async () => {
   await listViewRef.value?.reload()
@@ -46,17 +47,6 @@ const formatDate = (v) => {
 function scriptPreview(script) {
   if (!script) return '--'
   return script.length > 80 ? `${script.slice(0, 80)}...` : script
-}
-
-const loadStrategyList = async (page, pageSize) => {
-  const res = await strategyApi.getList()
-  const items = res?.items ? res.items : []
-  const total = items.length
-  const start = (page - 1) * pageSize
-  return {
-    results: items.slice(start, start + pageSize),
-    count: total,
-  }
 }
 
 function buildStrategyFields() {
@@ -133,16 +123,16 @@ function openStrategyFormDialog(item, title) {
             script: validated.script?.trim() || null,
           }
           if (validated.id != null && validated.id !== '') {
-            await strategyApi.update(validated.id, payload)
+            await strategyStrategiesResource.put({ id: validated.id }, payload)
             ElMessage.success('更新成功')
           } else {
-            await strategyApi.create(payload)
+            await strategyStrategiesResource.post({}, payload)
             ElMessage.success('创建成功')
           }
           dialog.close()
           resolve()
         } catch {
-          /* EmbedForm 校验失败已弹窗；接口错误由 axios 拦截器提示 */
+          /* EmbedForm 校验失败已弹窗；接口错误由全局请求处理或本页 catch 提示 */
         }
       },
       onCancel(dialog) {
@@ -214,36 +204,19 @@ function openBacktestDialog(row) {
   })
 }
 
-const handleDelete = async (row) => {
-  try {
-    await ElMessageBox.confirm(`确定删除策略「${row.name}」吗？`, '确认删除', {
-      type: 'warning',
-    })
-    await strategyApi.delete(row.id)
-    ElMessage.success('已删除')
-    await reloadTable()
-  } catch (e) {
-    if (e !== 'cancel') {
-      throw e
-    }
-  }
-}
-
 const listViewOptions = reactive({
   title: '策略管理',
-  model: 'strategy',
+  // 列表数据由 config.hooks.listViewLoadData 请求 strategy/list；model 与删除等资源用 strategy/strategies
+  model: 'strategy/strategies',
   options: {
     canCreate: false,
     canEdit: false,
-    canDelete: false,
+    canDelete: true,
     inlineEdit: false,
     actionColumnWidth: 240,
   },
   elTableProps: {
     height: 520,
-  },
-  hooks: {
-    actionLoadData: loadStrategyList,
   },
   listActions: [
     {
@@ -298,11 +271,6 @@ const listViewOptions = reactive({
     {
       label: '编辑',
       action: async (item) => openEdit(item),
-    },
-    {
-      label: '删除',
-      buttonType: 'danger',
-      action: async (item) => handleDelete(item),
     },
   ],
 })

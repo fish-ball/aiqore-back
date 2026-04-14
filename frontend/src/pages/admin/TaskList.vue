@@ -42,11 +42,14 @@ import { h, reactive, ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { openDialog } from '@iottest/vue-core/src/libs/dialogs'
 import ListView from '../../components/ListViewNoRouteSync.vue'
-import { taskApi } from '../../api/task'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 import TaskRunForm from './TaskRunForm.vue'
 import TaskDetailPanel from './TaskDetailPanel.vue'
 
 const listViewRef = ref(null)
+const tasksResource = api('tasks')
+const tasksSpecsResource = api('tasks/specs')
 const taskSpecs = ref([])
 const selectedTaskName = ref('')
 
@@ -104,21 +107,11 @@ const reloadTable = async () => {
 
 async function fetchSpecs() {
   try {
-    const data = await taskApi.getSpecs()
+    const resp = await tasksSpecsResource.get({})
+    const data = unwrapEnvelope(resp)
     taskSpecs.value = Array.isArray(data) ? data : []
   } catch {
-    /* 拦截器已提示 */
-  }
-}
-
-const loadTaskList = async (page, pageSize) => {
-  const data = await taskApi.list({
-    limit: pageSize,
-    offset: (page - 1) * pageSize,
-  })
-  return {
-    results: data?.items || [],
-    count: data?.total || 0,
+    /* 全局请求错误处理 */
   }
 }
 
@@ -153,7 +146,8 @@ function openRunDialog() {
 async function showDetail(row) {
   if (!row?.task_id) return
   try {
-    const data = await taskApi.get(row.task_id)
+    const resp = await tasksResource.get({ id: row.task_id }, {})
+    const data = unwrapEnvelope(resp)
     openDialog({
       title: '任务详情',
       width: 700,
@@ -181,28 +175,8 @@ async function stopTask(row) {
     return
   }
   try {
-    await taskApi.stop(row.task_id)
+    await tasksResource.post({ id: row.task_id, action: 'stop' }, {})
     ElMessage.success('已请求停止任务')
-    await reloadTable()
-  } catch {
-    /* 拦截器 */
-  }
-}
-
-async function deleteTask(row) {
-  if (!row?.task_id) return
-  try {
-    await ElMessageBox.confirm('确定要从任务列表中删除该任务记录吗？仅删除本地记录，不影响 Celery 后端。', '删除确认', {
-      type: 'warning',
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-    })
-  } catch {
-    return
-  }
-  try {
-    await taskApi.delete(row.task_id)
-    ElMessage.success('已删除')
     await reloadTable()
   } catch {
     /* 拦截器 */
@@ -216,19 +190,17 @@ function canStop(row) {
 
 const listViewOptions = reactive({
   title: '任务管理',
-  model: 'task',
+  model: 'tasks',
+  pk: 'task_id',
   options: {
     canCreate: false,
     canEdit: false,
-    canDelete: false,
+    canDelete: true,
     inlineEdit: false,
     actionColumnWidth: 220,
   },
   elTableProps: {
     height: 520,
-  },
-  hooks: {
-    actionLoadData: loadTaskList,
   },
   fields: [
     { key: 'task_id', label: '任务ID', minWidth: 220 },
@@ -274,11 +246,6 @@ const listViewOptions = reactive({
       buttonType: 'danger',
       disabled: (item) => !canStop(item),
       action: async (item) => stopTask(item),
-    },
-    {
-      label: '删除',
-      buttonType: 'danger',
-      action: async (item) => deleteTask(item),
     },
   ],
 })

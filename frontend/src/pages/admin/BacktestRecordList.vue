@@ -32,19 +32,13 @@
 <script setup>
 import { h, reactive, ref, onMounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { openDialog } from '@iottest/vue-core/src/libs/dialogs'
 import ListView from '../../components/ListViewNoRouteSync.vue'
-import { backtestApi } from '../../api/backtest'
 import BacktestDetailPanel from './BacktestDetailPanel.vue'
 import BacktestTradesPanel from './BacktestTradesPanel.vue'
 
 const route = useRoute()
 const listViewRef = ref(null)
-
-const reloadTable = async () => {
-  await listViewRef.value?.reload()
-}
 
 const statusLabel = (s) => {
   const m = { pending: '待执行', running: '运行中', success: '成功', failure: '失败' }
@@ -64,20 +58,6 @@ const formatDate = (v) => {
 function formatPct(v) {
   if (v == null) return '-'
   return `${(v * 100).toFixed(2)}%`
-}
-
-const loadBacktestList = async (page, pageSize, query) => {
-  const params = {
-    limit: pageSize,
-    offset: (page - 1) * pageSize,
-  }
-  if (query?.strategy) params.strategy = query.strategy
-  if (query?.status) params.status = query.status
-  const res = await backtestApi.list(params)
-  return {
-    results: res?.items || [],
-    count: res?.total ?? 0,
-  }
 }
 
 function showDetail(row) {
@@ -100,25 +80,6 @@ function openTradesDialog(row) {
     showFooter: false,
     render: () => h(BacktestTradesPanel, { taskId: row.id }),
   })
-}
-
-const handleDelete = async (row) => {
-  try {
-    await ElMessageBox.confirm('确定要删除该回测记录吗？删除后不可恢复。', '确认删除', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-  } catch {
-    return
-  }
-  try {
-    await backtestApi.delete(row.id)
-    ElMessage.success('删除成功')
-    await reloadTable()
-  } catch (e) {
-    ElMessage.error(e?.response?.data?.detail || e?.message || '删除失败')
-  }
 }
 
 /** 与路由 query.strategy 同步到列表筛选 */
@@ -147,19 +108,16 @@ watch(
 
 const listViewOptions = reactive({
   title: '回测记录',
-  model: 'backtest',
+  model: 'backtest/tasks',
   options: {
     canCreate: false,
     canEdit: false,
-    canDelete: false,
+    canDelete: true,
     inlineEdit: false,
     actionColumnWidth: 140,
   },
   elTableProps: {
     height: 480,
-  },
-  hooks: {
-    actionLoadData: loadBacktestList,
   },
   fields: [
     {
@@ -236,11 +194,6 @@ const listViewOptions = reactive({
       label: '详情',
       buttonType: 'primary',
       action: async (item) => showDetail(item),
-    },
-    {
-      label: '删除',
-      buttonType: 'danger',
-      action: async (item) => handleDelete(item),
     },
   ],
 })

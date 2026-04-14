@@ -39,7 +39,10 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { backtestApi } from '../../api/backtest'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../../config/unwrapEnvelope'
+
+const backtestRunResource = api('backtest/run')
 
 const props = defineProps({
   strategyId: { type: String, default: '' },
@@ -84,7 +87,7 @@ async function submit() {
     ElMessage.warning('请选择结束日期')
     throw new Error('validation')
   }
-  const res = await backtestApi.run({
+  const resp = await backtestRunResource.post({}, {
     strategy_id: props.strategyId,
     symbol: form.value.symbol.trim(),
     start_date: form.value.start_date,
@@ -93,6 +96,7 @@ async function submit() {
     commission: form.value.commission,
     position_pct: form.value.position_pct,
   })
+  const res = unwrapEnvelope(resp)
   const taskId = res?.backtest_task_id
   ElMessage.success(taskId ? '回测已提交，请到回测记录查看' : '提交成功')
 }

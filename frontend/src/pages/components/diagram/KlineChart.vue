@@ -97,7 +97,11 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import * as echarts from 'echarts'
-import { marketApi } from '../../../api/market'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../../../config/unwrapEnvelope'
+
+const marketKlineResource = api('market/kline')
+const marketDividFactorsResource = api('market/divid-factors')
 
 const props = defineProps({
   // 证券代码，例如 000001.SZ
@@ -905,7 +909,8 @@ async function loadDividFactors() {
     return
   }
   try {
-    const res = await marketApi.getDividFactors(s)
+    const dfResp = await marketDividFactorsResource.get({}, { symbol: s })
+    const res = unwrapEnvelope(dfResp)
     const rows = Array.isArray(res) ? res : []
     dividFactors.value = rows
     const map = new Map()
@@ -985,7 +990,13 @@ async function fetchKline(count = 250) {
   const s = (props.symbol || '').trim()
   if (!s) return []
   try {
-    const res = await marketApi.getKline(s, props.period, count, null, null, adjustType.value)
+    const kResp = await marketKlineResource.get({}, {
+      symbol: s,
+      period: props.period,
+      count,
+      adjust_type: adjustType.value,
+    })
+    const res = unwrapEnvelope(kResp)
     return Array.isArray(res) ? res : []
   } catch (e) {
     console.error('获取K线失败:', e)

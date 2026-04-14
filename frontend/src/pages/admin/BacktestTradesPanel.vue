@@ -10,7 +10,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { backtestApi } from '../../api/backtest'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../../config/unwrapEnvelope'
+
+const backtestTasksResource = api('backtest/tasks')
 
 const props = defineProps({
   taskId: { type: String, required: true },
@@ -21,14 +24,9 @@ const trades = ref([])
 
 onMounted(async () => {
   try {
-    const res = await backtestApi.getTrades(props.taskId)
-    if (Array.isArray(res)) {
-      trades.value = res
-    } else if (res && Array.isArray(res.data)) {
-      trades.value = res.data
-    } else {
-      trades.value = []
-    }
+    const resp = await backtestTasksResource.get({ id: props.taskId, action: 'trades' }, {})
+    const res = unwrapEnvelope(resp)
+    trades.value = Array.isArray(res) ? res : []
   } catch (e) {
     trades.value = []
     ElMessage.error(e?.response?.data?.detail || e?.message || '获取交易明细失败')

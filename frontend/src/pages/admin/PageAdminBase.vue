@@ -119,7 +119,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '../../stores/account'
 import { useDataSourceStore } from '../../stores/dataSource'
-import { securityApi } from '../../api/security'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../../config/unwrapEnvelope'
+
+const securitySearchResource = api('security/search')
 
 const route = useRoute()
 const router = useRouter()
@@ -152,7 +155,8 @@ const searchSecurities = async (queryString, cb) => {
   }
   
   try {
-    const response = await securityApi.search(queryString.trim(), 10)
+    const resp = await securitySearchResource.get({}, { keyword: queryString.trim(), limit: 10 })
+    const response = unwrapEnvelope(resp)
     if (response && Array.isArray(response)) {
       // 格式化数据供 autocomplete 使用
       const suggestions = response.map(item => ({

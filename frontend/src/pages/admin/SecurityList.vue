@@ -316,13 +316,20 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { securityApi } from '../../api/security'
-import { marketApi } from '../../api/market'
-import sectorApi from '../../api/sector'
+import { api } from '@iottest/vue-core/src/libs/api'
+import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 import { useDataSourceStore } from '../../stores/dataSource'
 import type { Pagination } from '../../types/common'
 import type { Sector, SectorCategoryGrouped } from '../../types/sector'
 import type { Security, SecurityQuote, SecurityTableRow } from '../../types/security'
+
+const securityListResource = api('security/list')
+const securitySearchResource = api('security/search')
+const securityBySymbolResource = api('security')
+const securityUpdateResource = api('security/update')
+const securityUpdateOneResource = api('security/update-one')
+const marketQuoteResource = api('market/quote')
+const sectorListResource = api('sector/list')
 
 /** 板块分类排序权重（与其它处逻辑保持一致） */
 const CATEGORY_ORDER: Record<string, number> = {
@@ -439,8 +446,9 @@ const sortByAmount = (a: SecurityTableRow, b: SecurityTableRow) => {
 // 获取板块列表
 const fetchSectors = async () => {
   try {
-    const response = await sectorApi.getList({ is_active: 1 })
-    const items = (response && (response as any).items) || []
+    const resp = await sectorListResource.get({}, { is_active: 1 })
+    const response = unwrapEnvelope(resp) as { items?: Sector[] }
+    const items = response?.items || []
     sectors.value = items as Sector[]
     // 按分类排序，主要板块在前
     sectors.value.sort((a, b) => {
@@ -471,7 +479,8 @@ const fetchSecurities = async () => {
       params.sector = activeSector.value
     }
     
-    const response = (await securityApi.getList(params)) as unknown as { items?: Security[]; total?: number }
+    const listResp = await securityListResource.get({}, params)
+    const response = unwrapEnvelope(listResp) as { items?: Security[]; total?: number }
     const securities = response.items || []
     
     // 获取所有证券代码
@@ -485,7 +494,8 @@ const fetchSecurities = async () => {
         const batch = symbols.slice(i, i + batchSize)
         const symbolsStr = batch.join(',')
         try {
-          const quotes = (await marketApi.getQuote(symbolsStr)) as unknown as SecurityQuote[] | undefined
+          const qResp = await marketQuoteResource.get({}, { symbols: symbolsStr })
+          const quotes = unwrapEnvelope(qResp) as SecurityQuote[] | undefined
           if (Array.isArray(quotes)) {
             quotes.forEach((quote) => {
               if (quote.symbol) quotesMap[quote.symbol] = quote
@@ -533,7 +543,8 @@ const handleSearch = async () => {
   
   loading.value = true
   try {
-    const securities = (await securityApi.search(searchKeyword.value, 200)) as unknown as Security[]
+    const sResp = await securitySearchResource.get({}, { keyword: searchKeyword.value, limit: 200 })
+    const securities = unwrapEnvelope(sResp) as Security[]
     
     if (securities.length > 0) {
       const symbols = securities.map((s) => s.symbol)
@@ -545,7 +556,8 @@ const handleSearch = async () => {
         const batch = symbols.slice(i, i + batchSize)
         const symbolsStr = batch.join(',')
         try {
-          const quotes = (await marketApi.getQuote(symbolsStr)) as unknown as SecurityQuote[] | undefined
+          const qResp = await marketQuoteResource.get({}, { symbols: symbolsStr })
+          const quotes = unwrapEnvelope(qResp) as SecurityQuote[] | undefined
           if (Array.isArray(quotes)) {
             quotes.forEach((quote) => {
               if (quote.symbol) quotesMap[quote.symbol] = quote
@@ -701,12 +713,13 @@ function openUpdateDialog() {
 const submitUpdateTask = async () => {
   updating.value = true
   try {
-    const result = (await securityApi.update(
-      updateForm.value.market || null,
-      updateForm.value.sector || null,
-      sourceType(),
-      sourceId()
-    )) as unknown as { task_id?: string }
+    const body: Record<string, unknown> = { source_type: sourceType() }
+    if (updateForm.value.market) body.market = updateForm.value.market
+    if (updateForm.value.sector) body.sector = updateForm.value.sector
+    const sid = sourceId()
+    if (sid != null) body.source_id = Number(sid)
+    const uResp = await securityUpdateResource.post({}, body)
+    const result = unwrapEnvelope(uResp) as { task_id?: string }
     if (result && result.task_id) {
       updateDialogVisible.value = false
       ElMessage.success('任务已提交，正在后台处理')
@@ -729,12 +742,12 @@ const updateSectorFromDataSource = async () => {
   }
   updating.value = true
   try {
-    const result = (await securityApi.update(
-      filterMarket.value || null,
-      activeSector.value,
-      sourceType(),
-      sourceId()
-    )) as unknown as { task_id?: string }
+    const body: Record<string, unknown> = { source_type: sourceType(), sector: activeSector.value }
+    if (filterMarket.value) body.market = filterMarket.value
+    const sid = sourceId()
+    if (sid != null) body.source_id = Number(sid)
+    const uResp = await securityUpdateResource.post({}, body)
+    const result = unwrapEnvelope(uResp) as { task_id?: string }
     if (result && result.task_id) {
       ElMessage.success('任务已提交，正在后台处理')
       setTimeout(() => {
@@ -759,11 +772,16 @@ const updateOneSecurity = async (row: SecurityTableRow) => {
   }
   updatingSymbol.value = row.symbol
   try {
-    await securityApi.updateOne(row.symbol, sourceType(), sourceId())
+    const oneBody: Record<string, unknown> = { symbol: row.symbol, source_type: sourceType() }
+    const sidOne = sourceId()
+    if (sidOne != null) oneBody.source_id = Number(sidOne)
+    const oneResp = await securityUpdateOneResource.post({}, oneBody)
+    unwrapEnvelope(oneResp)
     ElMessage.success('已更新 ' + (row.name || row.symbol))
     const idx = tableData.value.findIndex((r) => r.symbol === row.symbol)
     if (idx >= 0) {
-      const detail = (await securityApi.getDetail(row.symbol)) as unknown as { name?: string; market?: string } | null
+      const dResp = await securityBySymbolResource.get({ id: row.symbol }, {})
+      const detail = unwrapEnvelope(dResp) as { name?: string; market?: string } | null
       if (detail) {
         const prev = tableData.value[idx]!
         const next: SecurityTableRow = {
