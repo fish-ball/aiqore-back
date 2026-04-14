@@ -11,7 +11,6 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 
 const backtestTasksResource = api('backtest/tasks')
 
@@ -25,7 +24,7 @@ const trades = ref([])
 onMounted(async () => {
   try {
     const resp = await backtestTasksResource.get({ id: props.taskId, action: 'trades' }, {})
-    const res = unwrapEnvelope(resp)
+    const res = resp.data
     trades.value = Array.isArray(res) ? res : []
   } catch (e) {
     trades.value = []

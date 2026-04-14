@@ -38,7 +38,6 @@ import { ref, watch, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import moment from 'moment'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { unwrapEnvelope } from '../../../config/unwrapEnvelope'
 
 const marketDividFactorsResource = api('market/divid-factors')
 
@@ -92,7 +91,7 @@ async function fetchData() {
   loading.value = true
   try {
     const dfResp = await marketDividFactorsResource.get({}, { symbol: s })
-    const res = unwrapEnvelope(dfResp)
+    const res = dfResp.data
     rows.value = Array.isArray(res) ? res : []
   } catch (error) {
     console.error('获取除权除息数据失败:', error)

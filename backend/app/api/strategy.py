@@ -1,7 +1,7 @@
 """策略管理 API：增删查改，策略名称 / 策略类型 / 代码 script"""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, Tuple, List
 from pydantic import BaseModel, Field
 
 from app.database import get_db
@@ -47,18 +47,43 @@ def _model_to_item(m: Strategy) -> dict:
     }
 
 
-@router.get("/list")
-async def list_strategies(
-    strategy_type: Optional[str] = Query(None, description="按策略类型筛选"),
-    db: Session = Depends(get_db),
-):
-    """获取策略列表，支持按类型筛选"""
+def _query_strategies_page(
+    db: Session,
+    strategy_type: Optional[str],
+    page: int,
+    page_size: int,
+) -> Tuple[List[dict], int]:
     q = db.query(Strategy)
     if strategy_type is not None:
         q = q.filter(Strategy.strategy_type == strategy_type)
-    rows = q.order_by(Strategy.id).all()
-    items = [_model_to_item(r) for r in rows]
-    return {"code": 0, "data": {"items": items, "total": len(items)}, "message": "success"}
+    total = q.count()
+    offset = (page - 1) * page_size
+    rows = q.order_by(Strategy.id).offset(offset).limit(page_size).all()
+    return [_model_to_item(r) for r in rows], total
+
+
+@router.get("/strategies")
+async def list_strategies_collection(
+    page: int = Query(1, ge=1, description="页码（从 1 起）"),
+    page_size: int = Query(50, ge=1, le=500, description="每页条数"),
+    strategy_type: Optional[str] = Query(None, description="按策略类型筛选"),
+    db: Session = Depends(get_db),
+):
+    """策略列表（分页），与 vue-core ListView 约定一致。"""
+    results, count = _query_strategies_page(db, strategy_type, page, page_size)
+    return {"results": results, "count": count}
+
+
+@router.get("/list")
+async def list_strategies(
+    page: int = Query(1, ge=1, description="页码（从 1 起）"),
+    page_size: int = Query(50, ge=1, le=500, description="每页条数"),
+    strategy_type: Optional[str] = Query(None, description="按策略类型筛选"),
+    db: Session = Depends(get_db),
+):
+    """兼容旧路径，与 GET /strategies 相同。"""
+    results, count = _query_strategies_page(db, strategy_type, page, page_size)
+    return {"results": results, "count": count}
 
 
 @router.post("/strategies")
@@ -77,7 +102,7 @@ async def create_strategy(body: StrategyCreate, db: Session = Depends(get_db)):
     db.add(strategy)
     db.commit()
     db.refresh(strategy)
-    return {"code": 0, "data": _model_to_item(strategy), "message": "success"}
+    return _model_to_item(strategy)
 
 
 @router.get("/strategies/{strategy_id}")
@@ -86,7 +111,7 @@ async def get_strategy(strategy_id: str, db: Session = Depends(get_db)):
     s = db.query(Strategy).filter(Strategy.id == strategy_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="策略不存在")
-    return {"code": 0, "data": _model_to_item(s), "message": "success"}
+    return _model_to_item(s)
 
 
 @router.put("/strategies/{strategy_id}")
@@ -109,7 +134,7 @@ async def update_strategy(
         setattr(s, k, v)
     db.commit()
     db.refresh(s)
-    return {"code": 0, "data": _model_to_item(s), "message": "success"}
+    return _model_to_item(s)
 
 
 @router.delete("/strategies/{strategy_id}")
@@ -120,4 +145,4 @@ async def delete_strategy(strategy_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="策略不存在")
     db.delete(s)
     db.commit()
-    return {"code": 0, "data": None, "message": "success"}
+    return {"deleted": True, "id": strategy_id}

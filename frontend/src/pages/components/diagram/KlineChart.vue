@@ -98,7 +98,6 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import * as echarts from 'echarts'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { unwrapEnvelope } from '../../../config/unwrapEnvelope'
 
 const marketKlineResource = api('market/kline')
 const marketDividFactorsResource = api('market/divid-factors')
@@ -910,7 +909,7 @@ async function loadDividFactors() {
   }
   try {
     const dfResp = await marketDividFactorsResource.get({}, { symbol: s })
-    const res = unwrapEnvelope(dfResp)
+    const res = dfResp.data
     const rows = Array.isArray(res) ? res : []
     dividFactors.value = rows
     const map = new Map()
@@ -996,7 +995,7 @@ async function fetchKline(count = 250) {
       count,
       adjust_type: adjustType.value,
     })
-    const res = unwrapEnvelope(kResp)
+    const res = kResp.data
     return Array.isArray(res) ? res : []
   } catch (e) {
     console.error('获取K线失败:', e)

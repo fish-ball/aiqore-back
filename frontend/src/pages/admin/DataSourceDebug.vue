@@ -121,7 +121,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import EmptyView from '@iottest/vue-core/src/libs/data-view/components/EmptyView.vue'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 
 const dataSourceConnResource = api('data-source/connections')
 
@@ -184,7 +183,7 @@ async function fetchConnection() {
   loading.value = true
   try {
     const resp = await dataSourceConnResource.get({ id: connectionId.value }, {})
-    const item = unwrapEnvelope(resp)
+    const item = resp.data
     if (item) {
       connectionName.value = item.name || ''
       sourceType.value = item.source_type || ''
@@ -240,26 +239,26 @@ async function sendRequest(tab) {
     switch (key) {
       case 'test': {
         const r = await dataSourceConnResource.post({ id, action: 'test' }, {})
-        data = unwrapEnvelope(r)
+        data = r.data
         break
       }
       case 'sectors': {
         const r = await dataSourceConnResource.get({ id, action: 'debug/sectors' }, {})
-        data = unwrapEnvelope(r)
+        data = r.data
         break
       }
       case 'stocks-in-sector': {
         const r = await dataSourceConnResource.post({ id, action: 'debug/stocks-in-sector' }, {
           sector: form.value.sector.trim(),
         })
-        data = unwrapEnvelope(r)
+        data = r.data
         break
       }
       case 'instrument-detail': {
         const r = await dataSourceConnResource.post({ id, action: 'debug/instrument-detail' }, {
           symbol: (form.value.symbol || '').trim(),
         })
-        data = unwrapEnvelope(r)
+        data = r.data
         break
       }
       case 'market-data': {
@@ -268,13 +267,13 @@ async function sendRequest(tab) {
           period: form.value.period,
           count: form.value.count,
         })
-        data = unwrapEnvelope(r)
+        data = r.data
         break
       }
       case 'realtime-quote': {
         const symbols = (form.value.symbolsText || '').trim().split(/[,，\s]+/).filter(Boolean)
         const r = await dataSourceConnResource.post({ id, action: 'debug/realtime-quote' }, { symbols })
-        data = unwrapEnvelope(r)
+        data = r.data
         break
       }
       case 'stock-list': {
@@ -282,28 +281,28 @@ async function sendRequest(tab) {
         if (form.value.market?.trim()) payload.market = form.value.market.trim()
         if (form.value.sectorStockList?.trim()) payload.sector = form.value.sectorStockList.trim()
         const r = await dataSourceConnResource.post({ id, action: 'debug/stock-list' }, payload)
-        data = unwrapEnvelope(r)
+        data = r.data
         break
       }
       case 'positions': {
         const r = await dataSourceConnResource.post({ id, action: 'debug/positions' }, {
           account_id: form.value.account_id.trim(),
         })
-        data = unwrapEnvelope(r)
+        data = r.data
         break
       }
       case 'account-info': {
         const r = await dataSourceConnResource.post({ id, action: 'debug/account-info' }, {
           account_id: form.value.account_id_info.trim(),
         })
-        data = unwrapEnvelope(r)
+        data = r.data
         break
       }
       case 'search-stocks': {
         const r = await dataSourceConnResource.post({ id, action: 'debug/search-stocks' }, {
           keyword: form.value.keyword.trim(),
         })
-        data = unwrapEnvelope(r)
+        data = r.data
         break
       }
       default:

@@ -29,7 +29,6 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ListView from '../../components/ListViewNoRouteSync.vue'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 
 const router = useRouter()
 const sectorSyncResource = api('sector/sync')
@@ -70,7 +69,7 @@ const syncSectorSecurities = async (sectorName) => {
     throw e
   }
   const uResp = await securityUpdateResource.post({}, { source_type: 'qmt', sector: sectorName })
-  const result = unwrapEnvelope(uResp)
+  const result = uResp.data
   if (result && result.task_id) {
     ElMessage.success('同步任务已提交，请查看任务列表')
   } else {
@@ -88,11 +87,7 @@ const syncAllSectors = async (ctx) => {
     throw e
   }
   const resp = await sectorSyncResource.post({}, {})
-  const body = resp.data
-  if (body?.code !== 0) {
-    throw new Error(body?.message || '同步失败')
-  }
-  const response = body.data || {}
+  const response = resp.data || {}
   ElMessage.success(
     `同步完成: 新增 ${response.created || 0} 个，更新 ${response.updated || 0} 个`,
   )

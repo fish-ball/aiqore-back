@@ -72,12 +72,8 @@ async def update_securities(body: UpdateSecuritiesBody):
         )
 
         return {
-            "code": 0,
-            "data": {
-                "task_id": task.id,
-                "status": "PENDING"
-            },
-            "message": "任务已提交，正在后台处理"
+            "task_id": task.id,
+            "status": "PENDING",
         }
     except HTTPException:
         raise
@@ -99,8 +95,11 @@ async def update_single_security(body: UpdateOneBody, db: Session = Depends(get_
             db, symbol=body.symbol, source_type=body.source_type or "qmt", source_id=body.source_id
         )
         if result.get("success"):
-            return {"code": 0, "data": result, "message": "更新成功"}
-        return {"code": 1, "data": result, "message": result.get("message", "更新失败")}
+            return result
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("message", "更新失败"),
+        )
     except Exception as e:
         logger.error(f"更新单证券失败: {e}")
         import traceback
@@ -110,12 +109,12 @@ async def update_single_security(body: UpdateOneBody, db: Session = Depends(get_
 
 @router.get("/list")
 async def get_securities(
+    page: int = Query(1, ge=1, description="页码（从 1 起）"),
+    page_size: int = Query(100, ge=1, le=500, description="每页条数"),
     market: Optional[str] = Query(None, description="市场代码"),
     sector: Optional[str] = Query(None, description="板块名称"),
     security_type: Optional[str] = Query(None, description="证券类型"),
-    limit: int = Query(100, description="返回数量限制"),
-    offset: int = Query(0, description="偏移量"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     获取证券列表
@@ -124,10 +123,11 @@ async def get_securities(
         market: 市场代码
         sector: 板块名称（需要通过板块服务查询该板块的证券）
         security_type: 证券类型
-        limit: 返回数量
-        offset: 偏移量
+        page_size: 每页条数
     """
     try:
+        offset = (page - 1) * page_size
+        limit = page_size
         query = db.query(Security).filter(Security.is_active == 1)
         
         if market:
@@ -147,24 +147,12 @@ async def get_securities(
                     if symbols:
                         query = query.filter(Security.symbol.in_(symbols))
                     else:
-                        return {
-                            "code": 0,
-                            "data": {"items": [], "total": 0, "limit": limit, "offset": offset},
-                            "message": "success"
-                        }
+                        return {"results": [], "count": 0}
                 else:
-                    return {
-                        "code": 0,
-                        "data": {"items": [], "total": 0, "limit": limit, "offset": offset},
-                        "message": "success"
-                    }
+                    return {"results": [], "count": 0}
             except Exception as e:
                 logger.warning(f"获取板块 '{sector}' 证券列表失败: {e}")
-                return {
-                    "code": 0,
-                    "data": {"items": [], "total": 0, "limit": limit, "offset": offset},
-                    "message": "success"
-                }
+                return {"results": [], "count": 0}
         
         total = query.count()
         securities = query.order_by(Security.symbol).offset(offset).limit(limit).all()
@@ -185,16 +173,7 @@ async def get_securities(
                 "updated_at": sec.updated_at.isoformat() if sec.updated_at else None
             })
         
-        return {
-            "code": 0,
-            "data": {
-                "items": items,
-                "total": total,
-                "limit": limit,
-                "offset": offset
-            },
-            "message": "success"
-        }
+        return {"results": items, "count": total}
     except Exception as e:
         import traceback
         logger.error(f"获取列表失败: {e}\n{traceback.format_exc()}")
@@ -252,12 +231,8 @@ def update_security_data(body: UpdateDataBody, db: Session = Depends(get_db)):
         )
 
         return {
-            "code": 0,
-            "data": {
-                "task_id": task.id,
-                "status": "PENDING",
-            },
-            "message": "任务已提交，正在后台处理",
+            "task_id": task.id,
+            "status": "PENDING",
         }
     except HTTPException:
         raise
@@ -282,13 +257,9 @@ async def get_task_status(task_id: str):
     meta = info if isinstance(info, dict) else {"result": info}
 
     return {
-        "code": 0,
-        "data": {
-            "task_id": task_id,
-            "state": state,
-            "meta": meta,
-        },
-        "message": "success",
+        "task_id": task_id,
+        "state": state,
+        "meta": meta,
     }
 
 
@@ -321,11 +292,7 @@ async def search_securities(
             "abbreviation": sec.abbreviation
         })
     
-    return {
-        "code": 0,
-        "data": items,
-        "message": "success"
-    }
+    return items
 
 
 @router.get("/{symbol}")
@@ -367,11 +334,7 @@ async def get_security(
             security.symbol,
         )
 
-        return {
-            "code": 0,
-            "data": security_dict,
-            "message": "success"
-        }
+        return security_dict
     except HTTPException:
         raise
     except Exception as e:

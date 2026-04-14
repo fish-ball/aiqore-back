@@ -21,13 +21,16 @@ async def sync_sectors():
         db = SessionLocal()
         try:
             result = sector_service.sync_sectors_from_qmt(db)
-            return {
-                "code": 0 if result.get("success") else 1,
-                "data": result,
-                "message": result.get("message", "同步完成")
-            }
+            if not result.get("success"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=result.get("message", "同步失败"),
+                )
+            return result
         finally:
             db.close()
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"同步板块失败: {e}")
         import traceback
@@ -37,23 +40,23 @@ async def sync_sectors():
 
 @router.get("/list")
 async def get_sectors(
+    page: int = Query(1, ge=1, description="页码（从 1 起）"),
+    page_size: int = Query(50, ge=1, le=500, description="每页条数"),
     category: Optional[str] = Query(None, description="板块分类"),
-    market: Optional[str] = Query(None, description="市场代码"),
+    market: Optional[str] = Query(None, description="市场代码，__cross__ 表示仅跨市场板块"),
     is_active: Optional[int] = Query(1, description="是否有效"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
-    获取板块列表
-    
-    Args:
-        category: 板块分类
-        market: 市场代码
-        is_active: 是否有效
+    获取板块列表（分页）
     """
     try:
-        sectors = sector_service.get_sectors(db, category, market, is_active)
-        
-        # 转换为字典格式
+        if market == "__cross__":
+            sectors = sector_service.get_sectors(db, category, None, is_active)
+            sectors = [s for s in sectors if not s.market]
+        else:
+            sectors = sector_service.get_sectors(db, category, market, is_active)
+
         items = []
         for sector in sectors:
             items.append({
@@ -69,15 +72,11 @@ async def get_sectors(
                 "created_at": sector.created_at.isoformat() if sector.created_at else None,
                 "updated_at": sector.updated_at.isoformat() if sector.updated_at else None
             })
-        
-        return {
-            "code": 0,
-            "data": {
-                "items": items,
-                "total": len(items)
-            },
-            "message": "success"
-        }
+
+        total = len(items)
+        offset = (page - 1) * page_size
+        results = items[offset:offset + page_size]
+        return {"results": results, "count": total}
     except Exception as e:
         logger.error(f"获取板块列表失败: {e}")
         import traceback
@@ -92,11 +91,7 @@ async def get_sector_statistics(db: Session = Depends(get_db)):
     """
     try:
         stats = sector_service.get_sector_statistics(db)
-        return {
-            "code": 0,
-            "data": stats,
-            "message": "success"
-        }
+        return stats
     except Exception as e:
         logger.error(f"获取统计信息失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取统计信息失败: {str(e)}")
@@ -109,7 +104,7 @@ async def get_sector(
 ):
     """
     获取板块详情
-    
+
     Args:
         sector_name: 板块名称
     """
@@ -117,8 +112,7 @@ async def get_sector(
         sector = sector_service.get_sector_by_name(db, sector_name)
         if not sector:
             raise HTTPException(status_code=404, detail="板块不存在")
-        
-        # 转换为字典格式
+
         sector_dict = {
             "id": sector.id,
             "name": sector.name,
@@ -132,15 +126,10 @@ async def get_sector(
             "created_at": sector.created_at.isoformat() if sector.created_at else None,
             "updated_at": sector.updated_at.isoformat() if sector.updated_at else None
         }
-        
-        return {
-            "code": 0,
-            "data": sector_dict,
-            "message": "success"
-        }
+
+        return sector_dict
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"获取板块详情失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取详情失败: {str(e)}")
-

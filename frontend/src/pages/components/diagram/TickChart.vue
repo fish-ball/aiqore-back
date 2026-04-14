@@ -52,7 +52,6 @@ import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { unwrapEnvelope } from '../../../config/unwrapEnvelope'
 
 const marketTicksResource = api('market/ticks')
 
@@ -268,7 +267,7 @@ async function loadIntraday() {
   try {
     const tradeDate = props.securityDetail?.metadata?.ticks?.end_date || new Date().toISOString().slice(0, 10)
     const tResp = await marketTicksResource.get({}, { symbol: s, trade_date: tradeDate, force_update: false })
-    const data = unwrapEnvelope(tResp)
+    const data = tResp.data
     const list = Array.isArray(data) ? data : []
     await nextTick()
     const priceDom = intradayChartRef.value

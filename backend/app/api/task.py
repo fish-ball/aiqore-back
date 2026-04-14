@@ -30,11 +30,10 @@ class RunTaskBody(BaseModel):
 
 
 @router.get("/specs")
-async def get_task_specs() -> Dict[str, Any]:
+async def get_task_specs() -> List[Dict[str, Any]]:
     """获取当前已注册的任务规格列表。"""
     specs: List[TaskSpec] = list_task_specs()
-    data = [spec.model_dump() for spec in specs]
-    return {"code": 0, "data": data, "message": "success"}
+    return [spec.model_dump() for spec in specs]
 
 
 def _build_kwargs_from_spec(spec: TaskSpec, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -75,7 +74,7 @@ async def run_task(body: RunTaskBody) -> Dict[str, Any]:
 
     async_result = celery_task.delay(**kwargs)
 
-    # 记录任务元数据，便于后续列表/查询
+    # 记录任务元数据，便于任务列表/查询
     save_task_info(
         task_id=async_result.id,
         task_name=spec.name,
@@ -83,30 +82,18 @@ async def run_task(body: RunTaskBody) -> Dict[str, Any]:
         params=kwargs,
     )
 
-    return {
-        "code": 0,
-        "data": {"task_id": async_result.id, "state": "PENDING"},
-        "message": "任务已提交，正在后台处理",
-    }
+    return {"task_id": async_result.id, "state": "PENDING"}
 
 
 @router.get("")
 async def list_tasks_api(
-    limit: int = Query(50, ge=1, le=200, description="返回数量限制"),
-    offset: int = Query(0, ge=0, description="偏移量"),
+    page: int = Query(1, ge=1, description="页码（从 1 起）"),
+    page_size: int = Query(50, ge=1, le=200, description="每页条数"),
 ) -> Dict[str, Any]:
     """查看任务列表（按创建时间倒序）。"""
-    items, total = list_tasks(limit=limit, offset=offset, with_celery_state=True)
-    return {
-        "code": 0,
-        "data": {
-            "items": items,
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-        },
-        "message": "success",
-    }
+    offset = (page - 1) * page_size
+    items, total = list_tasks(limit=page_size, offset=offset, with_celery_state=True)
+    return {"results": items, "count": total}
 
 
 # 任务终态，到达后不再轮询
@@ -131,16 +118,12 @@ async def wait_for_task(
             raise HTTPException(status_code=404, detail="任务不存在或已过期")
         state = info.get("state") or ""
         if state in _TERMINAL_STATES:
-            return {"code": 0, "data": info, "message": "success"}
+            return info
         await asyncio.sleep(poll_interval)
         elapsed += poll_interval
     # 超时：返回当前状态，由前端决定是否继续轮询或提示
     info = await loop.run_in_executor(None, lambda: get_task_info(task_id, with_celery_state=True))
-    return {
-        "code": 0,
-        "data": info or {"task_id": task_id, "state": "PENDING", "meta": {}},
-        "message": "等待超时，返回当前状态",
-    }
+    return info or {"task_id": task_id, "state": "PENDING", "meta": {}}
 
 
 @router.get("/{task_id}")
@@ -150,11 +133,7 @@ async def get_task_status(task_id: str) -> Dict[str, Any]:
     if not info:
         raise HTTPException(status_code=404, detail="任务不存在或已过期")
 
-    return {
-        "code": 0,
-        "data": info,
-        "message": "success",
-    }
+    return info
 
 
 @router.post("/{task_id}/stop")
@@ -167,11 +146,7 @@ async def stop_task(task_id: str) -> Dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"停止任务失败: {str(e)}")
 
-    return {
-        "code": 0,
-        "data": {"task_id": task_id, "state": "REVOKED"},
-        "message": "任务已请求停止",
-    }
+    return {"task_id": task_id, "state": "REVOKED"}
 
 
 @router.delete("/{task_id}")
@@ -181,10 +156,5 @@ async def delete_task_api(task_id: str) -> Dict[str, Any]:
     if not ok:
         raise HTTPException(status_code=500, detail="删除任务记录失败")
 
-    return {
-        "code": 0,
-        "data": {"task_id": task_id},
-        "message": "已删除",
-    }
-
+    return {"task_id": task_id, "deleted": True}
 

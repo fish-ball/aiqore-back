@@ -126,7 +126,6 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '../../stores/account'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 import * as echarts from 'echarts'
 
 const analysisAccountResource = api('analysis/account')
@@ -172,7 +171,7 @@ const fetchSummary = async () => {
       { id: selectedAccountId.value, action: 'summary' },
       {},
     )
-    summary.value = unwrapEnvelope(resp)
+    summary.value = resp.data
   } catch (error) {
     console.error('获取账户汇总失败:', error)
   }
@@ -186,7 +185,7 @@ const fetchPositionAnalysis = async () => {
       { id: selectedAccountId.value, action: 'positions' },
       {},
     )
-    positionAnalysis.value = unwrapEnvelope(resp)
+    positionAnalysis.value = resp.data
   } catch (error) {
     console.error('获取持仓分析失败:', error)
   }
@@ -197,7 +196,7 @@ const fetchTradeStats = async () => {
   
   try {
     const resp = await analysisAccountResource.get({ id: selectedAccountId.value, action: 'trade-stats' }, {})
-    tradeStats.value = unwrapEnvelope(resp)
+    tradeStats.value = resp.data
   } catch (error) {
     console.error('获取交易统计失败:', error)
   }
@@ -212,7 +211,7 @@ const fetchProfitTrend = async () => {
       { id: selectedAccountId.value, action: 'profit-trend' },
       { days: trendDays.value },
     )
-    profitTrend.value = unwrapEnvelope(resp)
+    profitTrend.value = resp.data
     
     if (!trendChart) {
       const chartDom = document.getElementById('trend-chart')

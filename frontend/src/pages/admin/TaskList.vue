@@ -43,7 +43,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { openDialog } from '@iottest/vue-core/src/libs/dialogs'
 import ListView from '../../components/ListViewNoRouteSync.vue'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 import TaskRunForm from './TaskRunForm.vue'
 import TaskDetailPanel from './TaskDetailPanel.vue'
 
@@ -108,7 +107,7 @@ const reloadTable = async () => {
 async function fetchSpecs() {
   try {
     const resp = await tasksSpecsResource.get({})
-    const data = unwrapEnvelope(resp)
+    const data = resp.data
     taskSpecs.value = Array.isArray(data) ? data : []
   } catch {
     /* 全局请求错误处理 */
@@ -147,7 +146,7 @@ async function showDetail(row) {
   if (!row?.task_id) return
   try {
     const resp = await tasksResource.get({ id: row.task_id }, {})
-    const data = unwrapEnvelope(resp)
+    const data = resp.data
     openDialog({
       title: '任务详情',
       width: 700,

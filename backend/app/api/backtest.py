@@ -105,17 +105,13 @@ async def run_backtest(body: BacktestRunBody, db: Session = Depends(get_db)):
     task.celery_task_id = async_result.id
     db.commit()
 
-    return {
-        "code": 0,
-        "data": {"backtest_task_id": task.id, "celery_task_id": async_result.id},
-        "message": "success",
-    }
+    return {"backtest_task_id": task.id, "celery_task_id": async_result.id}
 
 
 @router.get("/tasks")
 async def list_backtest_tasks(
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1, description="页码（从 1 起）"),
+    page_size: int = Query(50, ge=1, le=200, description="每页条数"),
     status: Optional[str] = Query(None, description="按状态筛选"),
     strategy: Optional[str] = Query(None, description="按策略 ID 筛选"),
     db: Session = Depends(get_db),
@@ -127,14 +123,15 @@ async def list_backtest_tasks(
     if strategy is not None:
         q = q.filter(BackTestTask.strategy_id == strategy)
     total = q.count()
-    rows = q.offset(offset).limit(limit).all()
+    offset = (page - 1) * page_size
+    rows = q.offset(offset).limit(page_size).all()
     strategy_ids = list({r.strategy_id for r in rows if r.strategy_id})
     strategy_names = {}
     if strategy_ids:
         for s in db.query(Strategy).filter(Strategy.id.in_(strategy_ids)).all():
             strategy_names[s.id] = s.name
-    items = [_task_to_item(r, strategy_names.get(r.strategy_id)) for r in rows]
-    return {"code": 0, "data": {"items": items, "total": total, "limit": limit, "offset": offset}, "message": "success"}
+    results = [_task_to_item(r, strategy_names.get(r.strategy_id)) for r in rows]
+    return {"results": results, "count": total}
 
 
 @router.get("/tasks/{task_id}")
@@ -148,7 +145,7 @@ async def get_backtest_task(task_id: str, db: Session = Depends(get_db)):
         s = db.query(Strategy).filter(Strategy.id == task.strategy_id).first()
         if s:
             strategy_name = s.name
-    return {"code": 0, "data": _task_to_item(task, strategy_name), "message": "success"}
+    return _task_to_item(task, strategy_name)
 
 
 @router.get("/tasks/{task_id}/trades")
@@ -164,7 +161,7 @@ async def get_backtest_trades(task_id: str) -> dict:
         logger.exception("读取交易明细失败 task_id=%s: %s", task_id, e)
         raise HTTPException(status_code=500, detail="读取交易明细失败")
     records: List[Dict[str, Any]] = df.to_dict(orient="records")
-    return {"code": 0, "data": records, "message": "success"}
+    return records
 
 
 @router.delete("/tasks/{task_id}")
@@ -181,7 +178,7 @@ async def delete_backtest_task(task_id: str, db: Session = Depends(get_db)):
             shutil.rmtree(output_dir)
         except OSError as e:
             logger.warning("删除回测产出目录失败 task_id=%s: %s", task_id, e)
-    return {"code": 0, "message": "success"}
+    return {"deleted": True, "id": task_id}
 
 
 @router.get("/output/{task_id}/{filename}")

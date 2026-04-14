@@ -243,7 +243,7 @@ async def get_realtime_quote(
     """
     symbol_list = [s.strip() for s in symbols.split(",")]
     quotes = market_service.get_realtime_quote(symbol_list, db)
-    return {"code": 0, "data": list(quotes.values()), "message": "success"}
+    return list(quotes.values())
 
 
 @router.get("/kline")
@@ -319,12 +319,8 @@ async def get_kline(
             )
 
             return {
-                "code": 0,
-                "data": {
-                    "task_id": task.id,
-                    "status": "PENDING",
-                },
-                "message": "任务已提交，正在后台处理",
+                "task_id": task.id,
+                "status": "PENDING",
             }
 
         adapter = get_default_qmt_adapter()
@@ -341,7 +337,7 @@ async def get_kline(
                 base_daily = _apply_forward_adjust_for_daily(base_daily, security_type, symbol)
             data = _aggregate_daily_to_period(base_daily, period)
 
-        return {"code": 0, "data": data, "message": "success"}
+        return data
 
     # 1 分钟分时（按单日 ticks）
     if period == "1m":
@@ -377,20 +373,16 @@ async def get_kline(
             )
 
             return {
-                "code": 0,
-                "data": {
-                    "task_id": task.id,
-                    "status": "PENDING",
-                },
-                "message": "任务已提交，正在后台处理",
+                "task_id": task.id,
+                "status": "PENDING",
             }
 
         adapter = get_default_qmt_adapter()
         data = get_ticks(security_type, symbol, trade_date, force_update=False, adapter=adapter)
-        return {"code": 0, "data": data, "message": "success"}
+        return data
 
     data = market_service.get_kline_data(symbol, period, count, start_date, end_date)
-    return {"code": 0, "data": data, "message": "success"}
+    return data
 
 
 def _ticks_to_jsonable(rows: list) -> list:
@@ -480,18 +472,14 @@ async def get_ticks(
         )
 
         return {
-            "code": 0,
-            "data": {
-                "task_id": task.id,
-                "status": "PENDING",
-            },
-            "message": "任务已提交，正在后台处理",
+            "task_id": task.id,
+            "status": "PENDING",
         }
 
     adapter = get_default_qmt_adapter()
     data = cache_get_ticks(security_type, symbol, trade_date, force_update=False, adapter=adapter)
     data = _ticks_to_jsonable(data)
-    return {"code": 0, "data": data, "message": "success"}
+    return data
 
 
 @router.get("/divid-factors")
@@ -518,7 +506,7 @@ async def get_divid_factors(
     if not isinstance(path, Path):
         path = Path(path)
     if not path.is_file():
-        return {"code": 0, "data": [], "message": "success"}
+        return []
 
     try:
         import pandas as pd
@@ -528,7 +516,7 @@ async def get_divid_factors(
             data = []
         else:
             data = df.to_dict("records")
-        return {"code": 0, "data": data, "message": "success"}
+        return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取除权数据失败: {e}")
 
@@ -542,5 +530,5 @@ async def search_stocks(
     搜索股票
     """
     stocks = market_service.search_stocks(keyword, db)
-    return {"code": 0, "data": stocks, "message": "success"}
+    return stocks
 

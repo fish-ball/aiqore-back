@@ -1,6 +1,5 @@
 """调试API - 用于查看QMT实际返回的数据结构"""
-from fastapi import APIRouter, Query
-from typing import List
+from fastapi import APIRouter, Query, HTTPException
 import logging
 from app.services.data_source.adapter.qmt import _ensure_xtdata
 from app.config import settings
@@ -19,7 +18,7 @@ async def debug_qmt_quote(symbols: str = Query(..., description="证券代码，
         symbol_list = [s.strip() for s in symbols.split(",")]
         xtdata = _ensure_xtdata(settings.XT_QUANT_PATH)
         if not xtdata:
-            return {"code": 1, "data": None, "message": "xtquant 未加载"}
+            raise HTTPException(status_code=503, detail="xtquant 未加载")
         quotes_raw = xtdata.get_full_tick(symbol_list)
         result = {"raw_type": str(type(quotes_raw)), "raw_data": {}}
         if quotes_raw:
@@ -35,8 +34,10 @@ async def debug_qmt_quote(symbols: str = Query(..., description="证券代码，
                         result["raw_data"][symbol]["attributes"] = [a for a in dir(tick) if not a.startswith("_")]
                     else:
                         result["raw_data"][symbol]["data"] = str(tick)
-        return {"code": 0, "data": result, "message": "success"}
+        return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"调试接口失败: {e}")
         import traceback
-        return {"code": 1, "data": None, "message": f"错误: {str(e)}\n{traceback.format_exc()}"}
+        raise HTTPException(status_code=500, detail=f"错误: {str(e)}\n{traceback.format_exc()}")

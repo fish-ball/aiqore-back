@@ -317,7 +317,6 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 import { useDataSourceStore } from '../../stores/dataSource'
 import type { Pagination } from '../../types/common'
 import type { Sector, SectorCategoryGrouped } from '../../types/sector'
@@ -446,9 +445,9 @@ const sortByAmount = (a: SecurityTableRow, b: SecurityTableRow) => {
 // 获取板块列表
 const fetchSectors = async () => {
   try {
-    const resp = await sectorListResource.get({}, { is_active: 1 })
-    const response = unwrapEnvelope(resp) as { items?: Sector[] }
-    const items = response?.items || []
+    const resp = await sectorListResource.get({}, { is_active: 1, page: 1, page_size: 500 })
+    const response = resp.data as { results?: Sector[] }
+    const items = response?.results || []
     sectors.value = items as Sector[]
     // 按分类排序，主要板块在前
     sectors.value.sort((a, b) => {
@@ -466,8 +465,8 @@ const fetchSecurities = async () => {
   loading.value = true
   try {
     const params: Record<string, unknown> = {
-      limit: pagination.value.pageSize,
-      offset: (pagination.value.page - 1) * pagination.value.pageSize
+      page: pagination.value.page,
+      page_size: pagination.value.pageSize,
     }
     
     if (filterMarket.value) {
@@ -480,8 +479,8 @@ const fetchSecurities = async () => {
     }
     
     const listResp = await securityListResource.get({}, params)
-    const response = unwrapEnvelope(listResp) as { items?: Security[]; total?: number }
-    const securities = response.items || []
+    const response = listResp.data as { results?: Security[]; count?: number }
+    const securities = response.results || []
     
     // 获取所有证券代码
     const symbols = securities.map(s => s.symbol)
@@ -495,7 +494,7 @@ const fetchSecurities = async () => {
         const symbolsStr = batch.join(',')
         try {
           const qResp = await marketQuoteResource.get({}, { symbols: symbolsStr })
-          const quotes = unwrapEnvelope(qResp) as SecurityQuote[] | undefined
+          const quotes = qResp.data as SecurityQuote[] | undefined
           if (Array.isArray(quotes)) {
             quotes.forEach((quote) => {
               if (quote.symbol) quotesMap[quote.symbol] = quote
@@ -526,7 +525,7 @@ const fetchSecurities = async () => {
       }
     })
     
-    pagination.value.total = response.total || 0
+    pagination.value.total = response.count ?? 0
   } catch (error) {
     console.error('获取证券列表失败:', error)
     ElMessage.error('获取证券列表失败')
@@ -544,7 +543,7 @@ const handleSearch = async () => {
   loading.value = true
   try {
     const sResp = await securitySearchResource.get({}, { keyword: searchKeyword.value, limit: 200 })
-    const securities = unwrapEnvelope(sResp) as Security[]
+    const securities = sResp.data as Security[]
     
     if (securities.length > 0) {
       const symbols = securities.map((s) => s.symbol)
@@ -557,7 +556,7 @@ const handleSearch = async () => {
         const symbolsStr = batch.join(',')
         try {
           const qResp = await marketQuoteResource.get({}, { symbols: symbolsStr })
-          const quotes = unwrapEnvelope(qResp) as SecurityQuote[] | undefined
+          const quotes = qResp.data as SecurityQuote[] | undefined
           if (Array.isArray(quotes)) {
             quotes.forEach((quote) => {
               if (quote.symbol) quotesMap[quote.symbol] = quote
@@ -719,7 +718,7 @@ const submitUpdateTask = async () => {
     const sid = sourceId()
     if (sid != null) body.source_id = Number(sid)
     const uResp = await securityUpdateResource.post({}, body)
-    const result = unwrapEnvelope(uResp) as { task_id?: string }
+    const result = uResp.data as { task_id?: string }
     if (result && result.task_id) {
       updateDialogVisible.value = false
       ElMessage.success('任务已提交，正在后台处理')
@@ -747,7 +746,7 @@ const updateSectorFromDataSource = async () => {
     const sid = sourceId()
     if (sid != null) body.source_id = Number(sid)
     const uResp = await securityUpdateResource.post({}, body)
-    const result = unwrapEnvelope(uResp) as { task_id?: string }
+    const result = uResp.data as { task_id?: string }
     if (result && result.task_id) {
       ElMessage.success('任务已提交，正在后台处理')
       setTimeout(() => {
@@ -775,13 +774,12 @@ const updateOneSecurity = async (row: SecurityTableRow) => {
     const oneBody: Record<string, unknown> = { symbol: row.symbol, source_type: sourceType() }
     const sidOne = sourceId()
     if (sidOne != null) oneBody.source_id = Number(sidOne)
-    const oneResp = await securityUpdateOneResource.post({}, oneBody)
-    unwrapEnvelope(oneResp)
+    await securityUpdateOneResource.post({}, oneBody)
     ElMessage.success('已更新 ' + (row.name || row.symbol))
     const idx = tableData.value.findIndex((r) => r.symbol === row.symbol)
     if (idx >= 0) {
       const dResp = await securityBySymbolResource.get({ id: row.symbol }, {})
-      const detail = unwrapEnvelope(dResp) as { name?: string; market?: string } | null
+      const detail = dResp.data as { name?: string; market?: string } | null
       if (detail) {
         const prev = tableData.value[idx]!
         const next: SecurityTableRow = {

@@ -91,7 +91,6 @@ import { ref, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 import { useDataSourceStore } from '../../stores/dataSource'
 import DividFactorsTable from '../components/diagram/DividFactorsTable.vue'
 import TickChart from '../components/diagram/TickChart.vue'
@@ -345,7 +344,7 @@ async function fetchSecurityInfo() {
   if (!s) return
   try {
     const resp = await securityResource.get({ id: s }, {})
-    const info = unwrapEnvelope(resp)
+    const info = resp.data
     securityInfo.value = info
     securityDetailLoaded.value = true
   } catch (error) {
@@ -359,7 +358,7 @@ async function fetchQuote() {
   if (!s) { quoteLoading.value = false; return }
   try {
     const qResp = await marketQuoteResource.get({}, { symbols: s })
-    const quotes = unwrapEnvelope(qResp)
+    const quotes = qResp.data
     if (Array.isArray(quotes) && quotes.length > 0) {
       quote.value = quotes[0]
     } else if (quotes && quotes.symbol) {
@@ -635,7 +634,7 @@ async function fetchKlineForTab(period, count = 250) {
   try {
     // 不传 start_date/end_date，后端返回全部 K 线，由前端控制显示范围
     const kResp = await marketKlineResource.get({}, { symbol: s, period, count })
-    const res = unwrapEnvelope(kResp)
+    const res = kResp.data
     return Array.isArray(res) ? res : []
   } catch (e) {
     console.error('获取K线失败:', e)
@@ -863,7 +862,7 @@ async function loadIntraday() {
   try {
     const today = new Date().toISOString().slice(0, 10)
     const tResp = await marketTicksResource.get({}, { symbol: s, trade_date: today, force_update: false })
-    const data = unwrapEnvelope(tResp)
+    const data = tResp.data
     const list = Array.isArray(data) ? data : []
     await nextTick()
     const priceDom = intradayChartRef.value
@@ -1078,14 +1077,14 @@ async function doUpdateData(silent = false) {
     const udBody = { symbol: s, source_type: sourceType }
     if (sourceId != null && sourceId !== '') udBody.source_id = Number(sourceId)
     const postResp = await securityUpdateDataResource.post({}, udBody)
-    const res = unwrapEnvelope(postResp)
+    const res = postResp.data
     if (res?.hint) {
       if (!silent) ElMessage.warning(res.hint)
       return
     }
     if (res?.task_id) {
       const waitResp = await tasksWaitResource.get({ id: res.task_id, action: 'wait' }, { timeout: 600 })
-      const taskResult = unwrapEnvelope(waitResp)
+      const taskResult = waitResp.data
       if (taskResult?.state === 'SUCCESS') {
         if (!silent) ElMessage.success('数据已更新')
         await reload()

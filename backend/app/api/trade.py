@@ -151,7 +151,7 @@ async def sync_account(account_id: int, db: Session = Depends(get_db)):
     if not synced_account:
         raise HTTPException(status_code=500, detail="同步失败")
     
-    return {"code": 0, "data": synced_account, "message": "success"}
+    return synced_account
 
 
 @router.delete("/account/{account_id}")
@@ -194,7 +194,7 @@ async def sync_positions(account_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="账户不存在")
     
     positions = trade_service.sync_positions(db, account.account_id)
-    return {"code": 0, "data": positions, "message": "success"}
+    return positions
 
 
 @router.get("/trade")

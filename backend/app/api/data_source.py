@@ -73,21 +73,48 @@ def _model_to_item(m: DataSourceConnection) -> dict:
     }
 
 
-@router.get("/list")
-async def list_connections(
-    source_type: Optional[str] = Query(None, description="按数据源类型筛选"),
-    is_active: Optional[bool] = Query(None, description="按是否启用筛选"),
-    db: Session = Depends(get_db),
+def _list_connections_query(
+    db: Session,
+    source_type: Optional[str],
+    is_active: Optional[bool],
+    page: int,
+    page_size: int,
 ):
-    """获取数据源连接列表，支持按类型、启用状态筛选"""
     q = db.query(DataSourceConnection)
     if source_type is not None:
         q = q.filter(DataSourceConnection.source_type == source_type)
     if is_active is not None:
         q = q.filter(DataSourceConnection.is_active == is_active)
-    rows = q.order_by(DataSourceConnection.id).all()
-    items = [_model_to_item(r) for r in rows]
-    return {"code": 0, "data": {"items": items, "total": len(items)}, "message": "success"}
+    total = q.count()
+    offset = (page - 1) * page_size
+    rows = q.order_by(DataSourceConnection.id).offset(offset).limit(page_size).all()
+    return [_model_to_item(r) for r in rows], total
+
+
+@router.get("/list")
+async def list_connections(
+    page: int = Query(1, ge=1, description="页码（从 1 起）"),
+    page_size: int = Query(50, ge=1, le=500, description="每页条数"),
+    source_type: Optional[str] = Query(None, description="按数据源类型筛选"),
+    is_active: Optional[bool] = Query(None, description="按是否启用筛选"),
+    db: Session = Depends(get_db),
+):
+    """获取数据源连接列表（兼容旧路径）。"""
+    results, count = _list_connections_query(db, source_type, is_active, page, page_size)
+    return {"results": results, "count": count}
+
+
+@router.get("/connections")
+async def list_connections_collection(
+    page: int = Query(1, ge=1, description="页码（从 1 起）"),
+    page_size: int = Query(50, ge=1, le=500, description="每页条数"),
+    source_type: Optional[str] = Query(None, description="按数据源类型筛选"),
+    is_active: Optional[bool] = Query(None, description="按是否启用筛选"),
+    db: Session = Depends(get_db),
+):
+    """数据源连接列表（集合 GET），与 vue-core ListView 约定一致。"""
+    results, count = _list_connections_query(db, source_type, is_active, page, page_size)
+    return {"results": results, "count": count}
 
 
 @router.post("/connections")
@@ -113,7 +140,7 @@ async def create_connection(body: DataSourceConnectionCreate, db: Session = Depe
     db.add(conn)
     db.commit()
     db.refresh(conn)
-    return {"code": 0, "data": _model_to_item(conn), "message": "success"}
+    return _model_to_item(conn)
 
 
 @router.get("/connections/{connection_id}")
@@ -122,7 +149,7 @@ async def get_connection(connection_id: int, db: Session = Depends(get_db)):
     conn = db.query(DataSourceConnection).filter(DataSourceConnection.id == connection_id).first()
     if not conn:
         raise HTTPException(status_code=404, detail="连接不存在")
-    return {"code": 0, "data": _model_to_item(conn), "message": "success"}
+    return _model_to_item(conn)
 
 
 @router.put("/connections/{connection_id}")
@@ -142,7 +169,7 @@ async def update_connection(
         setattr(conn, k, v)
     db.commit()
     db.refresh(conn)
-    return {"code": 0, "data": _model_to_item(conn), "message": "success"}
+    return _model_to_item(conn)
 
 
 @router.delete("/connections/{connection_id}")
@@ -153,7 +180,7 @@ async def delete_connection(connection_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="连接不存在")
     db.delete(conn)
     db.commit()
-    return {"code": 0, "data": None, "message": "success"}
+    return {"deleted": True, "id": connection_id}
 
 
 @router.post("/connections/{connection_id}/test")
@@ -165,9 +192,9 @@ async def test_connection(connection_id: int, db: Session = Depends(get_db)):
     try:
         adapter = get_adapter_for_connection(conn)
         ok, msg = adapter.test_connection()
-        return {"code": 0, "data": {"ok": ok, "message": msg}, "message": "success"}
+        return {"ok": ok, "message": msg}
     except Exception as e:
-        return {"code": 0, "data": {"ok": False, "message": str(e)}, "message": "success"}
+        return {"ok": False, "message": str(e)}
 
 
 # ---------- 接口调试（按数据源类型提供独立能力，当前仅 miniQMT） ----------
@@ -232,7 +259,7 @@ async def debug_sectors(connection_id: int, db: Session = Depends(get_db)):
     conn = _require_qmt_connection(connection_id, db)
     adapter = get_adapter_for_connection(conn)
     sectors = adapter.get_sector_list()
-    return {"code": 0, "data": {"sectors": sectors}, "message": "success"}
+    return {"sectors": sectors}
 
 
 @router.post("/connections/{connection_id}/debug/stocks-in-sector")
@@ -245,7 +272,7 @@ async def debug_stocks_in_sector(
     conn = _require_qmt_connection(connection_id, db)
     adapter = get_adapter_for_connection(conn)
     stocks = adapter.get_stock_list_in_sector(body.sector, market=None)
-    return {"code": 0, "data": {"sector": body.sector, "stocks": stocks, "total": len(stocks)}, "message": "success"}
+    return {"sector": body.sector, "stocks": stocks, "count": len(stocks)}
 
 
 @router.post("/connections/{connection_id}/debug/instrument-detail")
@@ -258,7 +285,7 @@ async def debug_instrument_detail(
     conn = _require_qmt_connection(connection_id, db)
     adapter = get_adapter_for_connection(conn)
     detail = adapter.get_instrument_detail(body.symbol)
-    return {"code": 0, "data": {"symbol": body.symbol, "detail": detail}, "message": "success"}
+    return {"symbol": body.symbol, "detail": detail}
 
 
 @router.post("/connections/{connection_id}/debug/market-data")
@@ -271,7 +298,7 @@ async def debug_market_data(
     conn = _require_qmt_connection(connection_id, db)
     adapter = get_adapter_for_connection(conn)
     rows = adapter.get_klines_data(body.symbol, period=body.period, count=body.count)
-    return {"code": 0, "data": {"symbol": body.symbol, "period": body.period, "rows": rows or []}, "message": "success"}
+    return {"symbol": body.symbol, "period": body.period, "rows": rows or []}
 
 
 @router.post("/connections/{connection_id}/debug/realtime-quote")
@@ -284,7 +311,7 @@ async def debug_realtime_quote(
     conn = _require_qmt_connection(connection_id, db)
     adapter = get_adapter_for_connection(conn)
     quotes = adapter.get_realtime_quote(body.symbols)
-    return {"code": 0, "data": {"quotes": quotes or {}}, "message": "success"}
+    return {"quotes": quotes or {}}
 
 
 @router.post("/connections/{connection_id}/debug/stock-list")
@@ -297,7 +324,7 @@ async def debug_stock_list(
     conn = _require_qmt_connection(connection_id, db)
     adapter = get_adapter_for_connection(conn)
     stocks = adapter.get_stock_list(market=body.market, sector=body.sector)
-    return {"code": 0, "data": {"stocks": stocks or [], "total": len(stocks or [])}, "message": "success"}
+    return {"stocks": stocks or [], "count": len(stocks or [])}
 
 
 @router.post("/connections/{connection_id}/debug/positions")
@@ -310,7 +337,7 @@ async def debug_positions(
     conn = _require_qmt_connection(connection_id, db)
     adapter = get_adapter_for_connection(conn)
     positions = adapter.get_positions(body.account_id)
-    return {"code": 0, "data": {"account_id": body.account_id, "positions": positions or [], "total": len(positions or [])}, "message": "success"}
+    return {"account_id": body.account_id, "positions": positions or [], "count": len(positions or [])}
 
 
 @router.post("/connections/{connection_id}/debug/account-info")
@@ -323,7 +350,7 @@ async def debug_account_info(
     conn = _require_qmt_connection(connection_id, db)
     adapter = get_adapter_for_connection(conn)
     info = adapter.get_account_info(body.account_id)
-    return {"code": 0, "data": {"account_id": body.account_id, "info": info}, "message": "success"}
+    return {"account_id": body.account_id, "info": info}
 
 
 @router.post("/connections/{connection_id}/debug/search-stocks")
@@ -336,4 +363,4 @@ async def debug_search_stocks(
     conn = _require_qmt_connection(connection_id, db)
     adapter = get_adapter_for_connection(conn)
     results = adapter.search_stocks(body.keyword)
-    return {"code": 0, "data": {"keyword": body.keyword, "stocks": results or [], "total": len(results or [])}, "message": "success"}
+    return {"keyword": body.keyword, "stocks": results or [], "count": len(results or [])}

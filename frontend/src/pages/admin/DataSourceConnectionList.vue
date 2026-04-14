@@ -24,7 +24,6 @@ import ListView from '../../components/ListViewNoRouteSync.vue'
 import EmbedForm from '@iottest/vue-core/src/libs/data-view/components/EmbedForm.vue'
 import { openDialog } from '@iottest/vue-core/src/libs/dialogs'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 import DataSourceTypePicker from './DataSourceTypePicker.vue'
 
 const router = useRouter()
@@ -242,7 +241,7 @@ const goDebug = (row) => {
 const handleTest = async (row) => {
   try {
     const resp = await dataSourceConnResource.post({ id: row.id, action: 'test' }, {})
-    const res = unwrapEnvelope(resp)
+    const res = resp.data
     const ok = res?.ok ?? false
     const msg = res?.message ?? (ok ? '连接成功' : '连接失败')
     if (ok) {

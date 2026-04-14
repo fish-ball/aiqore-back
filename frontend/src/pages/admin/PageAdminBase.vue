@@ -120,7 +120,6 @@ import { ElMessage } from 'element-plus'
 import { useAccountStore } from '../../stores/account'
 import { useDataSourceStore } from '../../stores/dataSource'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { unwrapEnvelope } from '../../config/unwrapEnvelope'
 
 const securitySearchResource = api('security/search')
 
@@ -156,7 +155,7 @@ const searchSecurities = async (queryString, cb) => {
   
   try {
     const resp = await securitySearchResource.get({}, { keyword: queryString.trim(), limit: 10 })
-    const response = unwrapEnvelope(resp)
+    const response = resp.data
     if (response && Array.isArray(response)) {
       // 格式化数据供 autocomplete 使用
       const suggestions = response.map(item => ({
