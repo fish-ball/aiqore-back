@@ -1,0 +1,40 @@
+{
+  // HTTP 代理设置
+  // 格式: http://用户名:密码@代理地址:端口
+  // 示例: "http://127.0.0.1:7890" 或 "http://user:pass@proxy.example.com:8080"
+  "http.proxy": "http://127.0.0.1:1080",
+  
+  // HTTPS 代理设置（如果与 HTTP 代理不同）
+  "http.proxyStrictSSL": false,
+  
+  // 不使用代理的主机列表（用逗号分隔）
+  // 示例: "localhost,127.0.0.1,*.local"
+  "http.noProxy": "localhost,127.0.0.1,*.local",
+  
+  // 代理支持模式: "off" | "on" | "override" | "fallback"
+  "http.proxySupport": "override",
+  
+  // 允许不安全的 HTTPS 请求（某些代理需要）
+  "http.systemCertificates": true,
+  
+  // 扩展市场代理设置
+  "extensions.autoUpdate": false,
+  "extensions.autoCheckUpdates": false,
+  
+  // Python 配置
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+  "python.terminal.activateEnvironment": true,
+  
+  // 终端配置
+  "terminal.integrated.env.windows": {
+    "PATH": "${workspaceFolder}/.venv/Scripts;${env:PATH}"
+  },
+  
+  // 文件关联
+  "files.associations": {
+    "pyproject.toml": "toml",
+    "uv.lock": "toml"
+  },
+  "python.REPL.enableREPLSmartSend": false
+}
+
