@@ -22,16 +22,6 @@ class SecuritiesDataSourceAdapter(ABC):
         """获取标的详细信息（如 QMT get_instrument_detail 返回结构）。"""
         pass
 
-    @abstractmethod
-    def get_positions(self, account_id: str) -> List[Dict[str, Any]]:
-        """
-        查询指定资金账号的持仓列表。
-        每项至少含 symbol（证券代码）、volume（持仓数量），
-        可选 can_use_volume、market_value、avg_price、last_price、profit_rate 等。
-        不支持持仓查询的数据源可返回空列表（需在子类中显式实现）。
-        """
-        pass
-
     def get_klines_data(
         self,
         symbol: str,

@@ -5,7 +5,6 @@ QMT/miniQMT 数据源适配器：直接调用 xtquant API。
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import sys
-import time
 import logging
 from datetime import datetime
 
@@ -564,63 +563,6 @@ class QMTAdapter(SecuritiesDataSourceAdapter):
                 except Exception:
                     pass
         return results[:50]
-
-    def get_account_info(self, account_id: str) -> Optional[Dict[str, Any]]:
-        # TODO: 使用 xttrader 实现
-        return {
-            "account_id": account_id,
-            "balance": 100000.0, "available": 50000.0, "frozen": 0.0,
-            "market_value": 50000.0, "total_asset": 100000.0,
-        }
-
-    def get_positions(self, account_id: str) -> List[Dict[str, Any]]:
-        """通过 xttrader 查询指定资金账号的股票持仓。"""
-        base = Path(self._xt_quant_path) if self._xt_quant_path else None
-        if not base or not base.is_dir():
-            logger.warning("QMT 路径未配置或不可用，无法查询持仓")
-            return []
-        try:
-            from xtquant.xttrader import XtQuantTrader
-            from xtquant.xttype import StockAccount
-        except ImportError as e:
-            logger.warning("xtquant.xttrader 不可用: %s", e)
-            return []
-        trader = XtQuantTrader(self._xt_quant_path, int(time.time()))
-        try:
-            trader.start()
-            account = StockAccount(account_id, "STOCK")
-            if trader.connect() != 0:
-                logger.warning("xttrader 连接失败，无法查询持仓")
-                return []
-            positions = trader.query_stock_positions(account)
-            if not positions:
-                return []
-            result = []
-            for pos in positions:
-                result.append({
-                    "symbol": getattr(pos, "stock_code", ""),
-                    "volume": int(getattr(pos, "volume", 0)),
-                    "can_use_volume": int(getattr(pos, "can_use_volume", 0)),
-                    "open_price": float(getattr(pos, "open_price", 0)),
-                    "market_value": float(getattr(pos, "market_value", 0)),
-                    "frozen_volume": int(getattr(pos, "frozen_volume", 0)),
-                    "on_road_volume": int(getattr(pos, "on_road_volume", 0)),
-                    "yesterday_volume": int(getattr(pos, "yesterday_volume", 0)),
-                    "avg_price": float(getattr(pos, "avg_price", 0)),
-                    "last_price": float(getattr(pos, "last_price", 0)),
-                    "profit_rate": float(getattr(pos, "profit_rate", 0)),
-                    "secu_account": getattr(pos, "secu_account", ""),
-                    "instrument_name": getattr(pos, "instrument_name", ""),
-                })
-            return result
-        except Exception as e:
-            logger.exception("QMT 查询持仓异常: %s", e)
-            return []
-        finally:
-            try:
-                trader.stop()
-            except Exception:
-                pass
 
 
 # 独立运行：连通性测试（不依赖 app）

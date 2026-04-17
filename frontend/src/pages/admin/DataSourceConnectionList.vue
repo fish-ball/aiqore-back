@@ -71,7 +71,6 @@ function buildFields(sourceType) {
     label: '名称',
     type: 'text',
     required: true,
-    htmlType: 'text',
     placeholder: '显示名称',
   }
   const switches = [
@@ -93,17 +92,13 @@ function buildFields(sourceType) {
       {
         key: 'xt_quant_path',
         label: 'xtquant 路径',
-        type: 'text',
         required: true,
-        htmlType: 'text',
         placeholder: 'miniQMT 的 userdata_mini 目录，如 C:\\国金证券QMT交易端\\userdata_mini',
       },
       {
         key: 'xt_quant_acct',
         label: '资金账号',
-        type: 'text',
         required: true,
-        htmlType: 'text',
         placeholder: '交易/账户同步时使用，与 miniQMT 客户端登录账号一致',
       },
       ...switches,

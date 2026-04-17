@@ -206,7 +206,7 @@ function openBacktestDialog(row) {
 
 const listViewOptions = reactive({
   title: '策略管理',
-  // 列表数据由 config.hooks.listViewLoadData 请求 strategy/list；model 与删除等资源用 strategy/strategies
+  // 列表：GET /api/strategy/strategies（page、page_size、strategy_type）
   model: 'strategy/strategies',
   options: {
     canCreate: false,

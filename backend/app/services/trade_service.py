@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.account import Account
 from app.models.trade import Trade, TradeDirection, TradeStatus
 from app.models.position import Position
-from app.services.data_source import get_default_qmt_adapter
+from app.services.trader import get_default_qmt_trader
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,14 +16,14 @@ class TradeService:
     """交易服务"""
 
     def __init__(self):
-        self._qmt = None
+        self._qmt_trader = None
 
     @property
     def qmt(self):
-        """懒加载 QMT 适配器，避免启动时阻塞。"""
-        if self._qmt is None:
-            self._qmt = get_default_qmt_adapter()
-        return self._qmt
+        """懒加载 QMT 交易端（xttrader），避免启动时阻塞。"""
+        if self._qmt_trader is None:
+            self._qmt_trader = get_default_qmt_trader()
+        return self._qmt_trader
 
     def sync_account(self, db: Session, account_id: str) -> Optional[Account]:
         """

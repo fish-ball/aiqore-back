@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.database import get_db
 from app.models.data_source_connection import DataSourceConnection
 from app.services.data_source.sync import get_adapter_for_connection
+from app.services.trader import get_trader_for_connection
 
 router = APIRouter(prefix="", tags=["数据源连接"])
 
@@ -335,8 +336,8 @@ async def debug_positions(
 ):
     """[miniQMT] 查询指定资金账号持仓"""
     conn = _require_qmt_connection(connection_id, db)
-    adapter = get_adapter_for_connection(conn)
-    positions = adapter.get_positions(body.account_id)
+    trader = get_trader_for_connection(conn)
+    positions = trader.get_positions(body.account_id)
     return {"account_id": body.account_id, "positions": positions or [], "count": len(positions or [])}
 
 
@@ -348,8 +349,8 @@ async def debug_account_info(
 ):
     """[miniQMT] 获取账户信息"""
     conn = _require_qmt_connection(connection_id, db)
-    adapter = get_adapter_for_connection(conn)
-    info = adapter.get_account_info(body.account_id)
+    trader = get_trader_for_connection(conn)
+    info = trader.get_account_info(body.account_id)
     return {"account_id": body.account_id, "info": info}
 
 
