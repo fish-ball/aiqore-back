@@ -137,7 +137,7 @@ _register(
                 name="security_type",
                 type="string",
                 required=True,
-                description="证券类型，例如 股票。",
+                description="证券大类：Equity（权益类）、Future（期货类）、Option（期权类）。",
             ),
             TaskParamSpec(
                 name="period",
@@ -208,7 +208,7 @@ _register(
                 name="security_type",
                 type="string",
                 required=True,
-                description="证券类型，例如 股票。",
+                description="证券大类：Equity（权益类）、Future（期货类）、Option（期权类）。",
             ),
             TaskParamSpec(
                 name="source_type",
@@ -253,7 +253,7 @@ _register(
                 name="security_type",
                 type="string",
                 required=True,
-                description="证券类型，例如 股票。",
+                description="证券大类：Equity（权益类）、Future（期货类）、Option（期权类）。",
             ),
             TaskParamSpec(
                 name="source_type",
@@ -292,14 +292,14 @@ _register(
                 name="security_type",
                 type="string",
                 required=True,
-                description="证券类型，例如 股票、指数 等。",
+                description="证券大类：Equity、Future、Option；与 symbols 配合筛选待更新标的。",
             ),
             TaskParamSpec(
                 name="symbols",
                 type="array[string]",
                 required=False,
                 default=None,
-                description="待更新的证券代码列表；为空时更新该类型下全部有效证券。",
+                description="待更新的证券代码列表；为空则更新该 security_type 下全部有效证券。",
             ),
             TaskParamSpec(
                 name="source_type",

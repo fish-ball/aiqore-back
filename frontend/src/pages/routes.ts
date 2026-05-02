@@ -58,13 +58,33 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: 'exchanges',
+        name: 'admin-exchanges',
+        component: () => import('./admin/ExchangeList.vue'),
+        meta: {
+          title: '交易所',
+          icon: 'office-building',
+          order: 5,
+        },
+      },
+      {
+        path: 'sectors',
+        name: 'admin-sectors',
+        component: () => import('./admin/SectorList.vue'),
+        meta: {
+          title: '板块',
+          icon: 'grid',
+          order: 6,
+        },
+      },
+      {
         path: 'securities',
         name: 'admin-securities',
         component: () => import('./admin/SecurityList.vue'),
         meta: {
           title: '证券列表',
           icon: 'list',
-          order: 5,
+          order: 7,
         },
       },
       {
@@ -79,23 +99,13 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        path: 'sectors',
-        name: 'admin-sectors',
-        component: () => import('./admin/SectorList.vue'),
-        meta: {
-          title: '板块管理',
-          icon: 'list',
-          order: 6,
-        },
-      },
-      {
         path: 'data-sources',
         name: 'admin-data-sources',
         component: () => import('./admin/DataSourceConnectionList.vue'),
         meta: {
           title: '数据源连接',
           icon: 'connection',
-          order: 7,
+          order: 8,
         },
       },
       {
@@ -115,7 +125,7 @@ const routes: RouteRecordRaw[] = [
         meta: {
           title: '任务管理',
           icon: 'timer',
-          order: 8,
+          order: 9,
         },
       },
       {
@@ -125,7 +135,7 @@ const routes: RouteRecordRaw[] = [
         meta: {
           title: '策略管理',
           icon: 'operation',
-          order: 9,
+          order: 10,
         },
       },
       {
@@ -135,7 +145,7 @@ const routes: RouteRecordRaw[] = [
         meta: {
           title: '回测记录',
           icon: 'histogram',
-          order: 10,
+          order: 11,
         },
       },
       {
@@ -145,7 +155,7 @@ const routes: RouteRecordRaw[] = [
         meta: {
           title: '数据分析',
           icon: 'data-analysis',
-          order: 11,
+          order: 12,
         },
       },
     ],

@@ -5,6 +5,7 @@ from app.models.trade import Trade
 from app.models.position import Position
 from app.models.security import (
     Security,
+    SecurityType,
     SecuritySourceQmt,
     SecurityTradingRules,
     SecurityQuoteSnapshot,
@@ -37,5 +38,6 @@ __all__ = [
     "Sector",
     "Strategy",
     "BackTestTask",
+    "SecurityType",
 ]
 

@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-QMT 适配器 qmt.py 单元测试：纯函数与 QMTAdapter 行为，xtquant 通过 mock 隔离。
+QMT 适配器单元测试：纯函数与 QMTAdapter 行为，xtquant 通过 mock 隔离。
 """
 from __future__ import annotations
 
-import sys
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
@@ -13,17 +12,13 @@ import pandas as pd
 
 from app.services.data_source.adapter import qmt
 from app.services.data_source.adapter.qmt import QMTAdapter
+from app.services.data_source.adapter.qmt.core import reset_xtdata_cache
+from app.services.data_source.models import InstrumentBrief
 
 
 def reset_qmt_globals() -> None:
-    """重置 qmt 模块内与 xtdata/xttrader 相关的进程级缓存，避免用例互相污染。"""
-    loaded = qmt._xtdata_path_loaded
-    if loaded and loaded in sys.path:
-        sys.path.remove(loaded)
-    qmt._xtdata = None
-    qmt._xtdata_path_loaded = None
-    qmt._xttrader_cls = None
-    qmt._stock_account_cls = None
+    """重置 xtdata 进程级缓存，避免用例互相污染。"""
+    reset_xtdata_cache()
 
 
 class TestPureHelpers(unittest.TestCase):
@@ -56,9 +51,9 @@ class TestPureHelpers(unittest.TestCase):
             "suspendFlag": 0,
         }
         out = qmt._xt_row_to_kline(row)
-        self.assertEqual(out["time"], 1700000000000)
-        self.assertEqual(out["volume"], 100)
-        self.assertEqual(out["close"], 1.5)
+        self.assertEqual(out.time, 1700000000000)
+        self.assertEqual(out.volume, 100)
+        self.assertEqual(out.close, 1.5)
 
     def test_rows_from_symbol_df(self) -> None:
         df = pd.DataFrame(
@@ -80,7 +75,7 @@ class TestPureHelpers(unittest.TestCase):
         )
         rows = qmt._rows_from_symbol_df(df)
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["close"], 1.5)
+        self.assertEqual(rows[0].close, 1.5)
 
     def test_tick_scalar_numpy_like(self) -> None:
         class _S:
@@ -194,11 +189,11 @@ class TestQMTAdapter(unittest.TestCase):
         adapter = QMTAdapter({"xt_quant_path": "/tmp"})
         res = adapter.get_stock_list_in_sector("沪深A股", market="SH")
         self.assertEqual(len(res), 1)
-        self.assertEqual(res[0]["symbol"], "600000.SH")
+        self.assertEqual(res[0].symbol, "600000.SH")
 
     @patch.object(QMTAdapter, "get_stock_list_in_sector")
     def test_get_stock_list_delegates_sector(self, mock_sector) -> None:
-        mock_sector.return_value = [{"symbol": "x", "market": "SH", "sector": "s"}]
+        mock_sector.return_value = [InstrumentBrief(symbol="x", market="SH", sector="s")]
         adapter = QMTAdapter({"xt_quant_path": "/tmp"})
         out = adapter.get_stock_list(sector="沪深A股")
         mock_sector.assert_called_once_with("沪深A股", None)
@@ -255,7 +250,7 @@ class TestQMTAdapter(unittest.TestCase):
         self.assertIsNotNone(rows)
         assert rows is not None
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["close"], 1.0)
+        self.assertEqual(rows[0].close, 1.0)
 
     @patch.object(QMTAdapter, "_get_xtdata")
     def test_get_klines_data_exception_returns_none(self, mock_gx) -> None:
@@ -294,7 +289,7 @@ class TestQMTAdapter(unittest.TestCase):
         self.assertIsNotNone(rows)
         assert rows is not None
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["close"], 11.0)
+        self.assertEqual(rows[0].close, 11.0)
 
     @patch.object(QMTAdapter, "_get_xtdata")
     def test_get_ticks_data_invalid_date(self, mock_gx) -> None:
@@ -348,20 +343,21 @@ class TestQMTAdapter(unittest.TestCase):
         out = adapter.get_realtime_quote(["000001.SZ"])
         self.assertIsNotNone(out)
         assert out is not None
-        self.assertEqual(out["000001.SZ"]["name"], "平安")
-        self.assertEqual(out["000001.SZ"]["last_price"], 10.0)
+        q = out["000001.SZ"]
+        self.assertEqual(q.name, "平安")
+        self.assertEqual(q.last_price, 10.0)
 
     @patch.object(QMTAdapter, "get_stock_list")
     @patch.object(QMTAdapter, "_get_xtdata")
     def test_search_stocks(self, mock_gx, mock_list) -> None:
         mock_gx.return_value = MagicMock(get_instrument_detail=MagicMock(return_value=None))
         mock_list.return_value = [
-            {"symbol": "600000.SH", "market": "SH", "sector": "x"},
-            {"symbol": "000001.SZ", "market": "SZ", "sector": "y"},
+            InstrumentBrief(symbol="600000.SH", market="SH", sector="x"),
+            InstrumentBrief(symbol="000001.SZ", market="SZ", sector="y"),
         ]
         adapter = QMTAdapter({"xt_quant_path": "/tmp"})
         res = adapter.search_stocks("600")
-        self.assertTrue(any(r["symbol"] == "600000.SH" for r in res))
+        self.assertTrue(any(r.symbol == "600000.SH" for r in res))
 
     @patch.object(QMTAdapter, "_get_xtdata")
     def test_get_realtime_quote_exception_returns_none(self, mock_gx) -> None:
@@ -379,7 +375,7 @@ class TestQMTAdapter(unittest.TestCase):
         mock_gx.return_value = xt
         adapter = QMTAdapter({"xt_quant_path": "/tmp"})
         out = adapter.get_stock_list()
-        self.assertTrue(any(x["symbol"] == "600000.SH" for x in out))
+        self.assertTrue(any(x.symbol == "600000.SH" for x in out))
 
 
 if __name__ == "__main__":

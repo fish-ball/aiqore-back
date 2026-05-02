@@ -23,6 +23,7 @@ from app.services.data_source.cache import (
 )
 from app.services.data_source.sync import _resolve_config
 from app.services.security_service import security_service
+from app.models.security import SecurityType
 from app.utils.task_lock import TaskLock
 
 logger = logging.getLogger(__name__)
@@ -393,7 +394,7 @@ def _update_single_security_all_data_core(
         if not security:
             return _build_error_result("证券不存在", {"symbol": symbol})
 
-        security_type = security.security_type or "股票"
+        security_type = security.security_type or SecurityType.Equity.value
         list_dt = security.list_date
         if list_dt:
             start_date = list_dt.strftime("%Y-%m-%d")
@@ -545,7 +546,7 @@ def task_update_single_security_divid_factors(
             self.update_state(state="SUCCESS", meta={"status": "证券不存在", "result": result})
             return result
 
-        security_type = security.security_type or "股票"
+        security_type = security.security_type or SecurityType.Equity.value
 
         adapter, err = _resolve_adapter(db, source_type, source_id)
         if err is not None:

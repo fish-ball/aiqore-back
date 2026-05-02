@@ -10,6 +10,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models.backtest_task import BackTestTask
 from app.models.security import Security
+from app.models.security import SecurityType
 from app.services.backtest.data_loader import load_daily_for_backtest
 from app.services.backtest.backtrader_engine import BacktraderEngine
 
@@ -42,7 +43,7 @@ def task_run_backtest(self, backtest_task_id: str) -> Dict[str, Any]:
             db.commit()
             return {"success": False, "message": "缺少证券代码"}
 
-        security_type = "股票"
+        security_type = SecurityType.Equity.value
         if task.security_id is not None:
             sec = db.query(Security).filter(Security.id == task.security_id).first()
             if sec and sec.security_type:

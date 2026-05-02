@@ -74,13 +74,17 @@
             <el-icon><IconDocument /></el-icon>
             <span>交易记录</span>
           </el-menu-item>
+          <el-menu-item index="/exchanges">
+            <el-icon><OfficeBuilding /></el-icon>
+            <span>交易所</span>
+          </el-menu-item>
+          <el-menu-item index="/sectors">
+            <el-icon><Grid /></el-icon>
+            <span>板块</span>
+          </el-menu-item>
           <el-menu-item index="/securities">
             <el-icon><IconList /></el-icon>
             <span>证券列表</span>
-          </el-menu-item>
-          <el-menu-item index="/sectors">
-            <el-icon><IconList /></el-icon>
-            <span>板块管理</span>
           </el-menu-item>
           <el-menu-item index="/data-sources">
             <el-icon><IconConnection /></el-icon>
@@ -115,6 +119,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { OfficeBuilding, Grid } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '../../stores/account'

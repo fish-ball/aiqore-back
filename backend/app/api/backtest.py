@@ -37,7 +37,7 @@ class BacktestRunBody(BaseModel):
     initial_cash: Optional[float] = Field(None, description="初始资金，默认 1000000")
     commission: Optional[float] = Field(None, description="手续费，默认 0.0002")
     position_pct: Optional[int] = Field(None, description="仓位比例，默认 95")
-    security_id: Optional[int] = Field(None, description="证券 ID，可选，用于解析 security_type")
+    security_id: Optional[int] = Field(None, description="证券 ID，可选，用于解析证券大类 security_type（Equity/Future/Option）")
 
 
 def _task_to_item(t: BackTestTask, strategy_name: Optional[str] = None) -> dict:

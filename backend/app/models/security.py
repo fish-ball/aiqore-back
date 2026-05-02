@@ -4,10 +4,20 @@
 数据源外表 security_source_qmt：QMT 相关标识与 raw_data，0-1。
 子表：trading_rules、quote_snapshot、stock、fund、bond、convertible、option、future，均为 0-1。
 """
+from enum import Enum
+
 from sqlalchemy import Column, Integer, String, Numeric, DateTime, Text, Index, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
+
+
+class SecurityType(str, Enum):
+    """证券大类（主表 securities.security_type，与行情适配器分类一致）。"""
+
+    Equity = "Equity"  # 权益类
+    Future = "Future"  # 期货类
+    Option = "Option"  # 期权类
 
 
 class Security(Base):
@@ -18,7 +28,18 @@ class Security(Base):
     symbol = Column(String(64), unique=True, nullable=False, index=True, comment="证券代码，如 000001.SZ")
     name = Column(String(100), nullable=False, comment="证券名称")
     market = Column(String(10), nullable=False, comment="市场，如 SZ, SH")
-    security_type = Column(String(20), nullable=False, default="股票", comment="证券类型：股票、基金、债券等")
+    exchange_code = Column(
+        String(32),
+        nullable=False,
+        index=True,
+        comment="所属交易所规范代码，与 app.constants.exchanges 中 code 一致（如 SSE、SHFE）",
+    )
+    security_type = Column(
+        String(20),
+        nullable=False,
+        default=SecurityType.Equity.value,
+        comment="证券大类：Equity 权益类、Future 期货类、Option 期权类",
+    )
     is_active = Column(Integer, default=1, comment="是否有效，1-有效，0-无效")
     industry = Column(String(50), comment="所属行业")
     list_date = Column(DateTime, comment="上市日期")

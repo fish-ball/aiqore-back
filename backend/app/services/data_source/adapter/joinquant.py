@@ -1,5 +1,5 @@
 """聚宽数据源适配器（未实现，返回空）。不依赖 app/FastAPI。"""
-from typing import List, Dict, Any, Optional
+from typing import Any, List, Dict, Optional
 
 from .base import SecuritiesDataSourceAdapter
 
@@ -10,7 +10,7 @@ class JoinQuantAdapter(SecuritiesDataSourceAdapter):
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self._config = config or {}
 
-    def get_stock_list(self, market: Optional[str] = None, sector: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_stock_list(self, market: Optional[str] = None, sector: Optional[str] = None) -> List[Any]:
         return []
 
     def get_instrument_detail(self, symbol: str) -> Optional[Dict[str, Any]]:

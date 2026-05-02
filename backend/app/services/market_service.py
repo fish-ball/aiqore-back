@@ -10,6 +10,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _as_dict(obj: Any) -> Dict[str, Any]:
+    """将 Pydantic 模型或 dict 转为 dict。"""
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if isinstance(obj, dict):
+        return obj
+    return {}
+
+
+def _quote_name(q: Any) -> str:
+    """从实时行情对象或 dict 取名称。"""
+    if hasattr(q, "model_dump"):
+        return str(q.model_dump().get("name", "") or "")
+    if isinstance(q, dict):
+        return str(q.get("name", "") or "")
+    return ""
+
+
 class MarketService:
     """行情服务"""
 
@@ -42,15 +60,16 @@ class MarketService:
             # 格式化返回数据（Python 3中字符串默认是Unicode）
             result = {}
             for symbol, quote in quotes.items():
+                qd = _as_dict(quote)
                 # 如果QMT返回的名称为空，尝试从数据库获取
-                name = quote.get("name", "")
+                name = str(qd.get("name", "") or "")
                 if not name and db:
                     security = security_service.get_security_by_symbol(db, symbol)
                     if security:
                         name = security.name or ""
                 
-                pre_close = float(quote.get("pre_close", 0))
-                last_price = float(quote.get("last_price", 0))
+                pre_close = float(qd.get("pre_close", 0))
+                last_price = float(qd.get("last_price", 0))
                 change = last_price - pre_close
                 change_pct = (change / pre_close * 100) if pre_close > 0 else 0
                 
@@ -58,15 +77,15 @@ class MarketService:
                     "symbol": symbol,
                     "name": name or symbol,
                     "last_price": last_price,
-                    "open": float(quote.get("open", 0)),
-                    "high": float(quote.get("high", 0)),
-                    "low": float(quote.get("low", 0)),
+                    "open": float(qd.get("open", 0)),
+                    "high": float(qd.get("high", 0)),
+                    "low": float(qd.get("low", 0)),
                     "pre_close": pre_close,
-                    "volume": int(quote.get("volume", 0)),
-                    "amount": float(quote.get("amount", 0)),
+                    "volume": int(qd.get("volume", 0)),
+                    "amount": float(qd.get("amount", 0)),
                     "change": change,
                     "change_percent": change_pct,
-                    "time": quote.get("time", datetime.now().isoformat())
+                    "time": qd.get("time", datetime.now().isoformat())
                 }
             return result
         except Exception as e:
@@ -110,21 +129,26 @@ class MarketService:
             # 格式化数据
             result = []
             for item in data:
-                time_str = item.get("time", "")
-                if isinstance(time_str, datetime):
-                    time_str = time_str.strftime("%Y-%m-%d %H:%M:%S")
-                elif hasattr(time_str, 'strftime'):
-                    time_str = time_str.strftime("%Y-%m-%d %H:%M:%S")
-                
+                row = _as_dict(item)
+                time_val = row.get("time", "")
+                if isinstance(time_val, int):
+                    time_str = datetime.fromtimestamp(time_val / 1000).strftime("%Y-%m-%d %H:%M:%S")
+                elif isinstance(time_val, datetime):
+                    time_str = time_val.strftime("%Y-%m-%d %H:%M:%S")
+                elif hasattr(time_val, "strftime"):
+                    time_str = time_val.strftime("%Y-%m-%d %H:%M:%S")
+                else:
+                    time_str = str(time_val or "")
+
                 result.append({
                     "time": time_str,
                     "date": time_str[:10] if len(time_str) >= 10 else time_str,
-                    "open": float(item.get("open", 0)),
-                    "high": float(item.get("high", 0)),
-                    "low": float(item.get("low", 0)),
-                    "close": float(item.get("close", 0)),
-                    "volume": int(item.get("volume", 0)),
-                    "amount": float(item.get("amount", 0))
+                    "open": float(row.get("open", 0)),
+                    "high": float(row.get("high", 0)),
+                    "low": float(row.get("low", 0)),
+                    "close": float(row.get("close", 0)),
+                    "volume": int(row.get("volume", 0)),
+                    "amount": float(row.get("amount", 0))
                 })
             
             # 如果指定了日期范围，进行过滤
@@ -178,8 +202,9 @@ class MarketService:
             if not results:
                 qmt_results = self.qmt.search_stocks(keyword)
                 for stock in qmt_results:
-                    symbol = stock.get("symbol", "")
-                    name = stock.get("name", "")
+                    sd = _as_dict(stock)
+                    symbol = sd.get("symbol", "")
+                    name = sd.get("name", "")
                     # 如果QMT返回的名称为空，标记需要获取
                     if not name or name == symbol or name.strip() == "":
                         symbols_to_fetch_name.append(symbol)
@@ -188,7 +213,7 @@ class MarketService:
                     results.append({
                         "symbol": symbol,
                         "name": name,
-                        "market": stock.get("market", "")
+                        "market": sd.get("market", "")
                     })
             
             # 批量获取缺失的名称（从实时行情）
@@ -205,7 +230,7 @@ class MarketService:
                                 if not result.get("name") or result["name"] == result["symbol"]:
                                     symbol = result["symbol"]
                                     if symbol in quotes:
-                                        quote_name = quotes[symbol].get("name", "")
+                                        quote_name = _quote_name(quotes[symbol])
                                         if quote_name and quote_name != symbol and quote_name.strip():
                                             result["name"] = quote_name
                                     

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.services.market_service import market_service
 from app.database import get_db
 from app.utils.task_manager import save_task_info
+from app.models.security import SecurityType
 
 router = APIRouter(prefix="/api/market", tags=["行情"])
 
@@ -284,7 +285,7 @@ async def get_kline(
 
     # 日/周/月 K 线
     if period in ("1d", "1w", "1M"):
-        security_type = "股票"
+        security_type = SecurityType.Equity.value
         sec = security_service.get_security_by_symbol(db, symbol)
         if sec and sec.security_type:
             security_type = sec.security_type
@@ -342,7 +343,7 @@ async def get_kline(
     # 1 分钟分时（按单日 ticks）
     if period == "1m":
         trade_date = (end_d or start_d or datetime.now().strftime("%Y-%m-%d")) if (start_d or end_d) else datetime.now().strftime("%Y-%m-%d")
-        security_type = "股票"
+        security_type = SecurityType.Equity.value
         sec = security_service.get_security_by_symbol(db, symbol)
         if sec and sec.security_type:
             security_type = sec.security_type
@@ -441,7 +442,7 @@ async def get_ticks(
     from app.services.security_service import security_service
     from app.tasks.security_tasks import task_update_single_security_tick_for_date
 
-    security_type = "股票"
+    security_type = SecurityType.Equity.value
     sec = security_service.get_security_by_symbol(db, symbol)
     if sec and sec.security_type:
         security_type = sec.security_type
@@ -496,7 +497,7 @@ async def get_divid_factors(
     from app.services.data_source.cache import get_security_dir, get_divid_factors_path
     from app.services.security_service import security_service
 
-    security_type = "股票"
+    security_type = SecurityType.Equity.value
     sec = security_service.get_security_by_symbol(db, symbol)
     if sec and sec.security_type:
         security_type = sec.security_type

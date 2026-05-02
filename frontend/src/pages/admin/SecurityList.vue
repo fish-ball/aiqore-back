@@ -174,6 +174,15 @@
             >
               深圳
             </el-button>
+            <el-button
+              :type="filterMarket === 'BJ' ? 'primary' : 'default'"
+              :plain="filterMarket !== 'BJ'"
+              size="small"
+              @click="handleMarketChange('BJ')"
+              class="filter-btn"
+            >
+              北京
+            </el-button>
           </div>
         </div>
       </div>
@@ -226,8 +235,19 @@
         </el-table-column>
         <el-table-column prop="market" label="市场" width="80" sortable="custom">
           <template #default="scope">
-            <el-tag :type="scope.row.market === 'SH' ? 'success' : 'warning'" size="small">
-              {{ scope.row.market === 'SH' ? '上海' : '深圳' }}
+            <el-tag
+              :type="scope.row.market === 'SH' ? 'success' : scope.row.market === 'BJ' ? 'info' : 'warning'"
+              size="small"
+            >
+              {{
+                scope.row.market === 'SH'
+                  ? '上海'
+                  : scope.row.market === 'BJ'
+                    ? '北京'
+                    : scope.row.market === 'SZ'
+                      ? '深圳'
+                      : scope.row.market || '—'
+              }}
             </el-tag>
           </template>
         </el-table-column>
@@ -313,7 +333,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { api } from '@iottest/vue-core/src/libs/api'
@@ -346,11 +366,25 @@ const route = useRoute()
 const dataSourceStore = useDataSourceStore()
 
 // 从路由参数获取板块
+/** 与路由 query.market 对齐（SH/SZ/BJ），用于交易所页跳转筛选 */
+function normalizeMarketQuery(raw: unknown): string {
+  const m = typeof raw === 'string' ? raw.trim().toUpperCase() : ''
+  return ['SH', 'SZ', 'BJ'].includes(m) ? m : ''
+}
+
+/** 路由 query.exchange_code，来自交易所页跳转（规范代码如 SSE） */
+function normalizeExchangeCodeQuery(raw: unknown): string | undefined {
+  if (raw == null || raw === '') return undefined
+  const s = String(raw).trim().toUpperCase()
+  return /^[A-Z][A-Z0-9]{1,31}$/.test(s) ? s : undefined
+}
+
 const activeSector = ref<string>((route.query.sector as string) || '')
 const loading = ref(false)
 const updating = ref(false)
 const tableData = ref<SecurityTableRow[]>([])
-const filterMarket = ref<string>('')
+const filterMarket = ref<string>(normalizeMarketQuery(route.query.market))
+const filterExchangeCode = ref<string | undefined>(normalizeExchangeCodeQuery(route.query.exchange_code))
 const searchKeyword = ref<string>('')
 const sectors = ref<Sector[]>([])
 const filterPanelExpanded = ref(false)
@@ -472,7 +506,11 @@ const fetchSecurities = async () => {
     if (filterMarket.value) {
       params.market = filterMarket.value
     }
-    
+
+    if (filterExchangeCode.value != null) {
+      params.exchange_code = filterExchangeCode.value
+    }
+
     // 如果选择了板块，添加板块参数
     if (activeSector.value) {
       params.sector = activeSector.value
@@ -513,6 +551,9 @@ const fetchSecurities = async () => {
         symbol: security.symbol,
         name: security.name || quote.name || '',
         market: security.market,
+        exchange_code: security.exchange_code,
+        exchange: security.exchange,
+        security_type: security.security_type,
         last_price: quote.last_price || 0,
         open: quote.open || 0,
         high: quote.high || 0,
@@ -573,6 +614,9 @@ const handleSearch = async () => {
           symbol: security.symbol,
           name: security.name || quote.name || '',
           market: security.market,
+          exchange_code: security.exchange_code,
+          exchange: security.exchange,
+          security_type: security.security_type,
           last_price: quote.last_price || 0,
           open: quote.open || 0,
           high: quote.high || 0,
@@ -636,6 +680,7 @@ const handleQuickFilter = (type: string) => {
     if (sectorName) {
       activeSector.value = sectorName
       filterMarket.value = ''
+      filterExchangeCode.value = undefined
       pagination.value.page = 1
       if (searchKeyword.value) searchKeyword.value = ''
       fetchSecurities()
@@ -645,6 +690,7 @@ const handleQuickFilter = (type: string) => {
 
 const handleSectorChange = (sectorName: string) => {
   activeSector.value = sectorName
+  filterExchangeCode.value = undefined
   pagination.value.page = 1
   if (searchKeyword.value) {
     searchKeyword.value = ''
@@ -654,6 +700,7 @@ const handleSectorChange = (sectorName: string) => {
 
 const handleMarketChange = (market: string) => {
   filterMarket.value = market
+  filterExchangeCode.value = undefined
   pagination.value.page = 1
   if (searchKeyword.value) {
     searchKeyword.value = ''
@@ -797,6 +844,18 @@ const updateOneSecurity = async (row: SecurityTableRow) => {
     updatingSymbol.value = null
   }
 }
+
+watch(
+  () => [route.query.market, route.query.sector, route.query.exchange_code] as const,
+  ([m, s, ex]) => {
+    filterMarket.value = normalizeMarketQuery(m)
+    activeSector.value = typeof s === 'string' ? s : ''
+    filterExchangeCode.value = normalizeExchangeCodeQuery(ex)
+    pagination.value.page = 1
+    if (searchKeyword.value) searchKeyword.value = ''
+    fetchSecurities()
+  },
+)
 
 onMounted(() => {
   fetchSectors()

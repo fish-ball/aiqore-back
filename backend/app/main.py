@@ -6,7 +6,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import engine, Base, get_db
-from app.api import market, trade, analysis, security, sector, debug, data_source, task, strategy, backtest
+from app.api import market, trade, analysis, security, sector, exchange, debug, data_source, task, strategy, backtest
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -53,6 +53,7 @@ app.include_router(trade.router)
 app.include_router(analysis.router)
 app.include_router(security.router)
 app.include_router(sector.router)
+app.include_router(exchange.router)
 app.include_router(data_source.router, prefix="/api/data-source")
 app.include_router(strategy.router, prefix="/api/strategy")
 app.include_router(backtest.router, prefix="/api/backtest")

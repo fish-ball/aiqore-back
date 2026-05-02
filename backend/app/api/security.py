@@ -1,12 +1,14 @@
 """证券信息API"""
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Any, Dict, Optional
 from pydantic import BaseModel
 import logging
 from app.database import get_db
 from app.services.security_service import security_service
 from app.models.security import Security
+from app.models.security import SecurityType
+from app.constants.exchanges import exchange_brief_dict
 from app.utils.task_manager import save_task_info
 
 
@@ -113,7 +115,8 @@ async def get_securities(
     page_size: int = Query(100, ge=1, le=500, description="每页条数"),
     market: Optional[str] = Query(None, description="市场代码"),
     sector: Optional[str] = Query(None, description="板块名称"),
-    security_type: Optional[str] = Query(None, description="证券类型"),
+    security_type: Optional[SecurityType] = Query(None, description="证券大类：Equity/Future/Option"),
+    exchange_code: Optional[str] = Query(None, description="交易所规范代码，如 SSE、SHFE"),
     db: Session = Depends(get_db),
 ):
     """
@@ -122,19 +125,22 @@ async def get_securities(
     Args:
         market: 市场代码
         sector: 板块名称（需要通过板块服务查询该板块的证券）
-        security_type: 证券类型
+        security_type: 证券大类（Equity/Future/Option）
         page_size: 每页条数
     """
     try:
         offset = (page - 1) * page_size
         limit = page_size
         query = db.query(Security).filter(Security.is_active == 1)
-        
+
         if market:
             query = query.filter(Security.market == market)
-        
-        if security_type:
-            query = query.filter(Security.security_type == security_type)
+
+        if exchange_code is not None and exchange_code.strip():
+            query = query.filter(Security.exchange_code == exchange_code.strip().upper())
+
+        if security_type is not None:
+            query = query.filter(Security.security_type == security_type.value)
         
         # 如果指定了板块，通过 QMT 服务获取该板块的证券列表（不直接依赖 xtdata）
         if sector:
@@ -165,6 +171,8 @@ async def get_securities(
                 "symbol": sec.symbol,
                 "name": sec.name,
                 "market": sec.market,
+                "exchange_code": sec.exchange_code,
+                "exchange": exchange_brief_dict(sec.exchange_code),
                 "security_type": sec.security_type,
                 "industry": sec.industry,
                 "is_active": sec.is_active,
@@ -286,6 +294,8 @@ async def search_securities(
             "symbol": sec.symbol,
             "name": sec.name,
             "market": sec.market,
+            "exchange_code": sec.exchange_code,
+            "exchange": exchange_brief_dict(sec.exchange_code),
             "security_type": sec.security_type,
             "industry": sec.industry,
             "is_active": sec.is_active,
@@ -317,6 +327,8 @@ async def get_security(
             "symbol": security.symbol,
             "name": security.name,
             "market": security.market,
+            "exchange_code": security.exchange_code,
+            "exchange": exchange_brief_dict(security.exchange_code),
             "security_type": security.security_type,
             "industry": security.industry,
             "list_date": security.list_date.isoformat() if security.list_date else None,
@@ -330,7 +342,7 @@ async def get_security(
         }
         from app.services.data_source.cache import get_metadata_for_security
         security_dict["metadata"] = get_metadata_for_security(
-            security.security_type or "股票",
+            security.security_type or SecurityType.Equity.value,
             security.symbol,
         )
 

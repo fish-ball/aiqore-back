@@ -124,14 +124,15 @@ def sync_securities(
     logger.info(f"数据源 {source_type} 获取到 {len(securities)} 只证券，开始补全详情并写库")
     with_details = []
     for sec in securities:
-        symbol = sec.get("symbol")
+        row = sec.model_dump() if hasattr(sec, "model_dump") else sec
+        symbol = row.get("symbol")
         if not symbol:
             continue
         detail = adapter.get_instrument_detail(symbol)
         with_details.append({
             "symbol": symbol,
-            "market": sec.get("market", "SH" if symbol.endswith(".SH") else "SZ"),
-            "sector": sec.get("sector", ""),
+            "market": row.get("market", "SH" if symbol.endswith(".SH") else "SZ"),
+            "sector": row.get("sector", ""),
             "detail": detail,
         })
     from app.services.security_service import security_service

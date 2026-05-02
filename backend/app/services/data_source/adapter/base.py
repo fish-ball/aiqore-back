@@ -1,18 +1,21 @@
 """
 数据源适配器抽象基类：证券列表与标的详情。
 本模块不依赖 app 或 FastAPI，adapter 包可独立运行/测试。
+统一 K 线模型见 app.services.data_source.models.KlineBar。
 """
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
+
+from app.services.data_source.models import KlineBar
 
 
 class SecuritiesDataSourceAdapter(ABC):
     """证券数据源适配器抽象基类"""
 
     @abstractmethod
-    def get_stock_list(self, market: Optional[str] = None, sector: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_stock_list(self, market: Optional[str] = None, sector: Optional[str] = None) -> List[Any]:
         """
-        获取证券列表。每项至少含 symbol、market，可选 sector。
+        获取证券列表。每项为 InstrumentBrief 或至少含 symbol、market、可选 sector 的 dict。
         sector 指定时返回该板块证券；否则返回全量/按 market 过滤。
         """
         pass
@@ -29,11 +32,10 @@ class SecuritiesDataSourceAdapter(ABC):
         count: int = 100,
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> Optional[List[KlineBar]]:
         """
         K 线数据（与 ticks 区分）。period: 1d/1w/1M 等；start_time/end_time 格式 YYYY-MM-DD HH:MM:SS。
-        返回格式须归一化：每行为 dict，字段 time(UNIX 毫秒时间戳整数)、open、high、low、close、
-        volume、amount、settle、openInterest、preClose、suspendFlag。不支持的数据源返回 None。
+        返回 KlineBar 列表；不支持的数据源返回 None。
         """
         return None
 

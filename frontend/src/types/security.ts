@@ -2,10 +2,26 @@
 
 export type MarketCode = 'SH' | 'SZ' | string
 
+/** 证券大类，与后端 securities.security_type 一致 */
+export type SecurityTypeCode = 'Equity' | 'Future' | 'Option'
+
+/** 交易所摘要（嵌套在证券接口中） */
+export interface ExchangeBrief {
+  code: string
+  name: string
+  short_name?: string | null
+  /** 与交易所目录 suffix 一致 */
+  suffix?: string | null
+}
+
 export interface Security {
   symbol: string
   name?: string
   market: MarketCode
+  exchange_code?: string
+  exchange?: ExchangeBrief | null
+  /** 证券大类（列表/详情接口可能返回） */
+  security_type?: SecurityTypeCode
 }
 
 export interface SecurityQuote {
@@ -28,6 +44,9 @@ export interface SecurityTableRow {
   symbol: string
   name: string
   market: MarketCode
+  exchange_code?: string
+  exchange?: ExchangeBrief | null
+  security_type?: SecurityTypeCode
   last_price: number
   open: number
   high: number

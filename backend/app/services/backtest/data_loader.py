@@ -68,7 +68,7 @@ def load_daily_for_backtest(
     从平台 data 目录加载日 K 线，可选前复权，转为 Backtrader 所需 DataFrame。
 
     参数:
-        security_type: 证券类型，如 "股票"
+        security_type: 证券大类，Equity / Future / Option（与 DB securities.security_type 一致）
         symbol: 证券代码，如 "600519.SH"
         start_date: 开始日期 YYYY-MM-DD
         end_date: 结束日期 YYYY-MM-DD

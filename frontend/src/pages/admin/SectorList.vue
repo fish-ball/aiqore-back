@@ -95,7 +95,7 @@ const syncAllSectors = async (ctx) => {
 }
 
 const listViewOptions = reactive({
-  title: '板块管理',
+  title: '板块',
   model: 'sector/list',
   options: {
     canCreate: false,

@@ -2,7 +2,8 @@
 """
 数据格式约定：K 线与 tick 分笔，供 adapter 与 cache 统一使用。
 K 线参考迅投文档：https://dict.thinktrader.net/dictionary/stock.html?id=p6K7h8
-Adapter 子类在 get_klines_data / get_ticks_data 内部完成上游格式到本格式的转换并返回。
+Adapter 子类在 get_klines_data / get_ticks_data 内部完成上游格式到本格式的转换并返回；
+K 线统一模型见 app.services.data_source.models.KlineBar（可 model_dump 为下列字段）。
 """
 from typing import Dict, List
 

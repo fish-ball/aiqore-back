@@ -8,21 +8,17 @@ from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 import logging
 
-# 证券类型（中文，与 DB security_type 一致）-> 英文目录名
+# 证券大类（与 DB securities.security_type 一致）-> 缓存子目录名
 SECURITY_TYPE_TO_DIR: Dict[str, str] = {
-    "股票": "stock",
-    "基金": "fund",
-    "债券": "bond",
-    "可转债": "convertible",
-    "期权": "option",
-    "期货": "future",
-    "指数": "index",
-    "权证": "warrant",
+    "Equity": "equity",
+    "Future": "future",
+    "Option": "option",
 }
-DEFAULT_TYPE_DIR = "stock"
+DEFAULT_TYPE_DIR = "equity"
 
 # K 线 parquet 列名：与 data_schema 一致；adapter 子类在 get_klines_data 内完成格式转换，此处仅作列约定
 from app.services.data_source.data_schema import KLINE_ROW_FIELDS
+from app.services.data_source.models import kline_rows_to_dicts
 KLINE_COLUMNS = KLINE_ROW_FIELDS
 
 logger = logging.getLogger(__name__)
@@ -35,7 +31,7 @@ def _get_data_root() -> Path:
 
 
 def security_type_to_dir(security_type: Optional[str]) -> str:
-    """证券类型中文 -> 英文目录名；未知或空返回 stock。"""
+    """证券大类 -> 缓存子目录名；未知或空返回 equity。"""
     if not (security_type or "").strip():
         return DEFAULT_TYPE_DIR
     return SECURITY_TYPE_TO_DIR.get((security_type or "").strip(), DEFAULT_TYPE_DIR)
@@ -451,7 +447,7 @@ def get_daily(
 ) -> List[Dict[str, Any]]:
     """
     获取日线：先读 meta，若不 force 且缓存已覆盖则从 parquet 返回；否则拉取缺失区间，合并写 parquet，更新 meta。
-    adapter 需实现 get_klines_data(symbol, period, count, start_time, end_time)，返回格式见 data_schema。
+    adapter 需实现 get_klines_data(symbol, period, count, start_time, end_time)，返回 KlineBar 列表（本模块内转为 dict）。
     """
     return _get_kline(security_type, symbol, "1d", start_date, end_date, force_update=force_update, adapter=adapter)
 
@@ -567,7 +563,7 @@ def _get_kline(
             count = 5000
             raw = adapter.get_klines_data(symbol, period=period, count=count, start_time=st, end_time=et)
             if raw:
-                all_new.extend(raw)
+                all_new.extend(kline_rows_to_dicts(raw))
 
     merged = _merge_kline_rows(existing, all_new)
     if merged and period == "1d":

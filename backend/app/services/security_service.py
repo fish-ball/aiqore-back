@@ -1,5 +1,5 @@
 """证券信息服务"""
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from datetime import datetime
@@ -17,8 +17,13 @@ from app.models.security import (
     SecurityFuture,
 )
 from app.services.data_source import get_default_qmt_adapter
+from app.models.security import SecurityType
+from app.services.security_exchange_resolve import ensure_exchange_code_for_security
 
 logger = logging.getLogger(__name__)
+
+# 写入类型扩展子表时使用的细分类（与 QMT InstrumentType 对应）
+_ExtensionKind = Optional[Literal["stock", "fund", "bond", "convertible", "option", "future"]]
 
 
 def generate_abbreviation(name: str) -> str:
@@ -67,51 +72,50 @@ class SecurityService:
             self._qmt = get_default_qmt_adapter()
         return self._qmt
 
-    def _map_instrument_type_to_security_type(self, instrument_type: str, sector: str = "") -> str:
+    def _map_instrument_to_extension_kind(self, instrument_type: str, sector: str = "") -> _ExtensionKind:
         """
-        将 QMT 的 InstrumentType 映射到我们的 security_type
-        
-        Args:
-            instrument_type: QMT 的标的类型
-            sector: 板块名称（辅助判断）
-            
-        Returns:
-            证券类型字符串
+        解析用于写入类型扩展子表的细分类（stock/fund/bond/convertible/option/future）。
+        返回 None 表示不写子表（与原逻辑中指数、权证一致）。
         """
         if not instrument_type:
-            # 根据板块判断
             if "基金" in sector:
-                return "基金"
-            elif "债" in sector:
-                return "债券"
-            elif "期货" in sector:
-                return "期货"
-            elif "期权" in sector:
-                return "期权"
-            else:
-                return "股票"
-        
-        instrument_type_upper = instrument_type.upper()
-        
-        # 映射表
-        type_mapping = {
-            "STOCK": "股票",
-            "FUND": "基金",
-            "ETF": "基金",
-            "LOF": "基金",
-            "BOND": "债券",
-            "CONVERTIBLE": "可转债",
-            "FUTURE": "期货",
-            "OPTION": "期权",
-            "INDEX": "指数",
-            "WARRANT": "权证",
-        }
-        
-        for key, value in type_mapping.items():
-            if key in instrument_type_upper:
-                return value
-        
-        return "股票"  # 默认
+                return "fund"
+            if "可转债" in sector or "转债" in sector:
+                return "convertible"
+            if "债" in sector:
+                return "bond"
+            if "期货" in sector:
+                return "future"
+            if "期权" in sector:
+                return "option"
+            return "stock"
+        u = instrument_type.upper()
+        for key, ext in (
+            ("CONVERTIBLE", "convertible"),
+            ("FUTURE", "future"),
+            ("OPTION", "option"),
+            ("ETF", "fund"),
+            ("LOF", "fund"),
+            ("FUND", "fund"),
+            ("BOND", "bond"),
+            ("INDEX", None),
+            ("WARRANT", None),
+            ("STOCK", "stock"),
+        ):
+            if key in u:
+                return ext
+        return "stock"
+
+    def _map_instrument_type_to_security_type(self, instrument_type: str, sector: str = "") -> SecurityType:
+        """
+        将 QMT 的 InstrumentType（及板块辅助信息）映射为证券大类 SecurityType。
+        """
+        ext = self._map_instrument_to_extension_kind(instrument_type, sector)
+        if ext == "future":
+            return SecurityType.Future
+        if ext == "option":
+            return SecurityType.Option
+        return SecurityType.Equity
     
     def _extract_field_from_detail(self, detail: Dict[str, Any], field: str, default=None):
         """从 detail 字典中提取字段值"""
@@ -182,15 +186,17 @@ class SecurityService:
                     market_code = sec_data.get("market", "SH" if symbol.endswith(".SH") else "SZ")
                     instrument_type = self._extract_field_from_detail(detail, "InstrumentType", "")
                     sector = sec_data.get("sector", "")
-                    security_type = self._map_instrument_type_to_security_type(instrument_type, sector)
+                    security_category = self._map_instrument_type_to_security_type(instrument_type, sector)
+                    security_type = security_category.value
+                    ext_kind = self._map_instrument_to_extension_kind(instrument_type, sector)
                     
                     # 生成字母简写
                     abbreviation = ""
                     if name and name != symbol:
                         abbreviation = generate_abbreviation(name)
                     
-                    # 提取所有原始数据字段
-                    exchange_id = self._extract_field_from_detail(detail, "ExchangeID")
+                    # 提取所有原始数据字段（QMT 交易所代码写入 source_qmt.exchange_id 字符串列）
+                    qmt_exchange_code = self._extract_field_from_detail(detail, "ExchangeID")
                     product_id = self._extract_field_from_detail(detail, "ProductID")
                     currency_id = self._extract_field_from_detail(detail, "CurrencyID")
                     tick_size = self._safe_float(self._extract_field_from_detail(detail, "TickSize"))
@@ -218,7 +224,14 @@ class SecurityService:
                     
                     # 保存完整的原始数据到 JSON 字段
                     raw_data = detail if detail and isinstance(detail, dict) else None
-                    
+
+                    fk_exchange_code = ensure_exchange_code_for_security(
+                        market=market_code,
+                        qmt_exchange_id=qmt_exchange_code,
+                        symbol=symbol,
+                        existing_exchange_code=security.exchange_code if security else None,
+                    )
+
                     if security:
                         needs_update = False
                         if security.name != name:
@@ -229,6 +242,9 @@ class SecurityService:
                             needs_update = True
                         if security.security_type != security_type:
                             security.security_type = security_type
+                            needs_update = True
+                        if security.exchange_code != fk_exchange_code:
+                            security.exchange_code = fk_exchange_code
                             needs_update = True
                         if abbreviation and security.abbreviation != abbreviation:
                             security.abbreviation = abbreviation
@@ -241,6 +257,7 @@ class SecurityService:
                             symbol=symbol,
                             name=name,
                             market=market_code,
+                            exchange_code=fk_exchange_code,
                             security_type=security_type,
                             is_active=1,
                             abbreviation=abbreviation,
@@ -255,7 +272,7 @@ class SecurityService:
                     source_qmt = db.query(SecuritySourceQmt).filter(SecuritySourceQmt.security_id == sid).first()
                     if source_qmt:
                         source_qmt.instrument_type = instrument_type
-                        source_qmt.exchange_id = exchange_id
+                        source_qmt.exchange_id = qmt_exchange_code
                         source_qmt.product_id = product_id
                         source_qmt.currency_id = currency_id
                         source_qmt.raw_data = raw_data
@@ -264,7 +281,7 @@ class SecurityService:
                         db.add(SecuritySourceQmt(
                             security_id=sid,
                             instrument_type=instrument_type,
-                            exchange_id=exchange_id,
+                            exchange_id=qmt_exchange_code,
                             product_id=product_id,
                             currency_id=currency_id,
                             raw_data=raw_data,
@@ -310,11 +327,11 @@ class SecurityService:
                             open_interest=open_interest if open_interest and open_interest > 0 else None,
                         ))
 
-                    # 按类型写入扩展表
-                    if security_type == "\u80a1\u7968":  # 股票
+                    # 按 InstrumentType 细分类写入扩展表（主表 security_type 仅存 Equity/Future/Option）
+                    if ext_kind == "stock":
                         if not db.query(SecurityStock).filter(SecurityStock.security_id == sid).first():
                             db.add(SecurityStock(security_id=sid))
-                    elif security_type == "\u57fa\u91d1":  # 基金
+                    elif ext_kind == "fund":
                         ext = db.query(SecurityFund).filter(SecurityFund.security_id == sid).first()
                         if ext:
                             ext.fund_type = fund_type
@@ -322,7 +339,7 @@ class SecurityService:
                             ext.accumulated_nav = accumulated_nav if accumulated_nav and accumulated_nav > 0 else None
                         else:
                             db.add(SecurityFund(security_id=sid, fund_type=fund_type, nav=nav if nav and nav > 0 else None, accumulated_nav=accumulated_nav if accumulated_nav and accumulated_nav > 0 else None))
-                    elif security_type == "\u503a\u5238":  # 债券
+                    elif ext_kind == "bond":
                         ext = db.query(SecurityBond).filter(SecurityBond.security_id == sid).first()
                         if ext:
                             ext.interest_rate = interest_rate if interest_rate and interest_rate > 0 else None
@@ -330,14 +347,14 @@ class SecurityService:
                             ext.face_value = face_value if face_value and face_value > 0 else None
                         else:
                             db.add(SecurityBond(security_id=sid, interest_rate=interest_rate if interest_rate and interest_rate > 0 else None, maturity_date=maturity_date, face_value=face_value if face_value and face_value > 0 else None))
-                    elif security_type == "\u53ef\u8f6c\u503a":  # 可转债
+                    elif ext_kind == "convertible":
                         ext = db.query(SecurityConvertible).filter(SecurityConvertible.security_id == sid).first()
                         if ext:
                             ext.underlying_symbol = underlying_symbol
                             ext.conversion_ratio = conversion_ratio if conversion_ratio and conversion_ratio > 0 else None
                         else:
                             db.add(SecurityConvertible(security_id=sid, underlying_symbol=underlying_symbol, conversion_ratio=conversion_ratio if conversion_ratio and conversion_ratio > 0 else None))
-                    elif security_type == "\u671f\u6743":  # 期权
+                    elif ext_kind == "option":
                         ext = db.query(SecurityOption).filter(SecurityOption.security_id == sid).first()
                         if ext:
                             ext.strike_price = strike_price if strike_price and strike_price > 0 else None
@@ -345,7 +362,7 @@ class SecurityService:
                             ext.underlying_symbol = underlying_symbol
                         else:
                             db.add(SecurityOption(security_id=sid, strike_price=strike_price if strike_price and strike_price > 0 else None, expiry_date=expiry_date, underlying_symbol=underlying_symbol))
-                    elif security_type == "\u671f\u8d27":  # 期货
+                    elif ext_kind == "future":
                         ext = db.query(SecurityFuture).filter(SecurityFuture.security_id == sid).first()
                         if ext:
                             ext.expiry_date = expiry_date
@@ -425,10 +442,12 @@ class SecurityService:
         # 拼音搜索（不区分大小写）
         conditions.append(Security.pinyin.ilike(f"%{keyword_upper}%"))
         
-        securities = db.query(Security).filter(
-            Security.is_active == 1,
-            or_(*conditions)
-        ).limit(limit).all()
+        securities = (
+            db.query(Security)
+            .filter(Security.is_active == 1, or_(*conditions))
+            .limit(limit)
+            .all()
+        )
         
         return securities
     

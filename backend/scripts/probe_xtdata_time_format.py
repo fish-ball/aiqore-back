@@ -37,7 +37,7 @@ def main():
             return
         print("返回行数:", len(rows))
         for i, row in enumerate(rows[:3]):
-            t = row.get("time")
+            t = row.time if hasattr(row, "time") else row.get("time")
             print(f"  row[{i}] time: type={type(t).__name__!r}, repr={repr(t)[:80]}")
             if hasattr(t, "dtype"):
                 print(f"           time.dtype: {getattr(t, 'dtype', None)}")
