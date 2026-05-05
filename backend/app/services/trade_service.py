@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.account import Account
 from app.models.trade import Trade, TradeDirection, TradeStatus
 from app.models.position import Position
-from app.services.trader import get_default_qmt_trader
+from app.libs.trader import get_default_qmt_trader
 import logging
 
 logger = logging.getLogger(__name__)

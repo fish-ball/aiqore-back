@@ -13,7 +13,7 @@ from app.models.instrument import (
     instrument_type_to_market_layer,
     parse_market_suffix_from_code,
 )
-from app.services.data_source.models.enums import MarketLayer
+from app.libs.data_source.models.enums import MarketLayer
 from app.constants.exchanges import exchange_brief_dict
 from app.utils.task_manager import save_task_info
 
@@ -23,7 +23,7 @@ class UpdateInstrumentsBody(BaseModel):
 
     market: Optional[str] = None
     sector: Optional[str] = None
-    source_type: Optional[str] = "qmt"
+    adapter: Optional[str] = "qmt"
     source_id: Optional[int] = None
 
 
@@ -31,7 +31,7 @@ class UpdateOneBody(BaseModel):
     """从数据源更新单个标的请求体"""
 
     code: str
-    source_type: Optional[str] = "qmt"
+    adapter: Optional[str] = "qmt"
     source_id: Optional[int] = None
 
 
@@ -39,7 +39,7 @@ class UpdateDataBody(BaseModel):
     """拉取并补全单个标的本地缓存数据请求体"""
 
     code: str
-    source_type: Optional[str] = "qmt"
+    adapter: Optional[str] = "qmt"
     source_id: Optional[int] = None
 
 
@@ -83,7 +83,7 @@ async def update_instruments(body: UpdateInstrumentsBody):
             )
 
         task = task_update_bulk_instrument_info.delay(
-            body.market, body.sector, body.source_type or "qmt", body.source_id
+            body.market, body.sector, body.adapter or "qmt", body.source_id
         )
 
         save_task_info(
@@ -93,7 +93,7 @@ async def update_instruments(body: UpdateInstrumentsBody):
             params={
                 "market": body.market,
                 "sector": body.sector,
-                "source_type": body.source_type or "qmt",
+                "adapter": body.adapter or "qmt",
                 "source_id": body.source_id,
             },
         )
@@ -118,10 +118,10 @@ async def update_single_instrument(body: UpdateOneBody, db: Session = Depends(ge
     从数据源更新单个标的基础信息（同步执行，适用于列表行内更新）
     """
     try:
-        from app.services.data_source.sync import sync_single_instrument
+        from app.services.data_source_facade import sync_single_instrument
 
         result = sync_single_instrument(
-            db, symbol=body.code.strip(), source_type=body.source_type or "qmt", source_id=body.source_id
+            db, symbol=body.code.strip(), adapter=body.adapter or "qmt", source_id=body.source_id
         )
         if result.get("success"):
             return result
@@ -177,7 +177,7 @@ async def list_instruments(
 
         if sector:
             try:
-                from app.services.data_source import get_default_qmt_adapter
+                from app.services.data_source_facade import get_default_qmt_adapter
 
                 qmt = get_default_qmt_adapter()
                 sector_list = qmt.get_stock_list_in_sector(sector, market=None)
@@ -216,7 +216,7 @@ def update_instrument_cache_data(body: UpdateDataBody, db: Session = Depends(get
         from app.utils.task_lock import check_task_lock
 
         code = body.code.strip()
-        source_type = body.source_type or "qmt"
+        adapter = body.adapter or "qmt"
         source_id = body.source_id
 
         sec = instrument_service.get_instrument_by_code(db, code)
@@ -233,7 +233,7 @@ def update_instrument_cache_data(body: UpdateDataBody, db: Session = Depends(get
 
         task = task_update_single_instrument_all_data.delay(
             symbol=code,
-            source_type=source_type,
+            adapter=adapter,
             source_id=source_id,
             force_update=False,
         )
@@ -244,7 +244,7 @@ def update_instrument_cache_data(body: UpdateDataBody, db: Session = Depends(get
             celery_name="task_update_single_instrument_all_data",
             params={
                 "code": code,
-                "source_type": source_type,
+                "adapter": adapter,
                 "source_id": source_id,
                 "force_update": False,
             },
@@ -319,7 +319,7 @@ async def get_instrument(
             "created_at": inst.created_at.isoformat() if inst.created_at else None,
             "updated_at": inst.updated_at.isoformat() if inst.updated_at else None,
         }
-        from app.services.data_source.cache import get_metadata_for_instrument
+        from app.libs.data_source.cache import get_metadata_for_instrument
 
         cat = instrument_type_to_market_layer(inst.instrument_type)
         out["metadata"] = get_metadata_for_instrument(cat, inst.code)

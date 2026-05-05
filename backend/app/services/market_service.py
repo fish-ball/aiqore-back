@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 import pandas as pd
 from sqlalchemy.orm import Session
-from app.services.data_source import get_default_qmt_adapter
+from app.services.data_source_qmt_defaults import get_default_qmt_adapter
 from app.services.instrument_service import instrument_service
 from app.models.instrument import parse_market_suffix_from_code
 import logging

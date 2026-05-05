@@ -63,11 +63,11 @@ _register(
                 description="板块名称，仅同步指定板块内的证券。",
             ),
             TaskParamSpec(
-                name="source_type",
+                name="adapter",
                 type="string",
                 required=False,
                 default="qmt",
-                description="数据源类型，例如 qmt。",
+                description="适配器注册键，例如 qmt。",
             ),
             TaskParamSpec(
                 name="source_id",
@@ -95,11 +95,11 @@ _register(
                 description="证券代码，例如 000001.SZ。",
             ),
             TaskParamSpec(
-                name="source_type",
+                name="adapter",
                 type="string",
                 required=False,
                 default="qmt",
-                description="数据源类型，例如 qmt。",
+                description="适配器注册键，例如 qmt。",
             ),
             TaskParamSpec(
                 name="source_id",
@@ -160,11 +160,11 @@ _register(
                 description="结束日期，格式 YYYY-MM-DD。",
             ),
             TaskParamSpec(
-                name="source_type",
+                name="adapter",
                 type="string",
                 required=False,
                 default="qmt",
-                description="数据源类型，例如 qmt。",
+                description="适配器注册键，例如 qmt。",
             ),
             TaskParamSpec(
                 name="source_id",
@@ -211,11 +211,11 @@ _register(
                 description="证券大类：Equity（权益类）、Future（期货类）、Option（期权类）。",
             ),
             TaskParamSpec(
-                name="source_type",
+                name="adapter",
                 type="string",
                 required=False,
                 default="qmt",
-                description="数据源类型，例如 qmt。",
+                description="适配器注册键，例如 qmt。",
             ),
             TaskParamSpec(
                 name="source_id",
@@ -256,11 +256,11 @@ _register(
                 description="证券大类：Equity（权益类）、Future（期货类）、Option（期权类）。",
             ),
             TaskParamSpec(
-                name="source_type",
+                name="adapter",
                 type="string",
                 required=False,
                 default="qmt",
-                description="数据源类型，例如 qmt。",
+                description="适配器注册键，例如 qmt。",
             ),
             TaskParamSpec(
                 name="source_id",
@@ -302,11 +302,11 @@ _register(
                 description="待更新的标的代码列表；为空则更新该 market_layer 下全部有效标的。",
             ),
             TaskParamSpec(
-                name="source_type",
+                name="adapter",
                 type="string",
                 required=False,
                 default="qmt",
-                description="数据源类型，例如 qmt。",
+                description="适配器注册键，例如 qmt。",
             ),
             TaskParamSpec(
                 name="source_id",
@@ -341,11 +341,11 @@ _register(
                 description="证券代码，例如 000001.SZ。",
             ),
             TaskParamSpec(
-                name="source_type",
+                name="adapter",
                 type="string",
                 required=False,
                 default="qmt",
-                description="数据源类型，例如 qmt。",
+                description="适配器注册键，例如 qmt。",
             ),
             TaskParamSpec(
                 name="source_id",

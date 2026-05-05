@@ -11,9 +11,9 @@ from app.models.instrument import (
     InstrumentType,
     infer_asset_class_from_instrument_type,
 )
-from app.services.data_source import get_default_qmt_adapter
+from app.services.data_source_qmt_defaults import get_default_qmt_adapter
 from app.services.instrument_exchange_resolve import ensure_exchange_code_for_instrument
-from app.services.data_source.models.enums import MarketLayer
+from app.libs.data_source.models.enums import MarketLayer
 
 logger = logging.getLogger(__name__)
 

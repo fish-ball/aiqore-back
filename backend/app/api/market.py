@@ -9,7 +9,7 @@ from app.services.market_service import market_service
 from app.database import get_db
 from app.utils.task_manager import save_task_info
 from app.models.instrument import instrument_type_to_market_layer
-from app.services.data_source.models.enums import MarketLayer
+from app.libs.data_source.models.enums import MarketLayer
 
 router = APIRouter(prefix="/api/market", tags=["行情"])
 
@@ -21,7 +21,7 @@ def _load_divid_factors(market_layer: str, symbol: str) -> Optional["pd.DataFram
     """
     from pathlib import Path
     import pandas as pd
-    from app.services.data_source.cache import get_instrument_dir, get_divid_factors_path
+    from app.libs.data_source.cache import get_instrument_dir, get_divid_factors_path
 
     security_dir = get_instrument_dir(market_layer, symbol)
     path = get_divid_factors_path(security_dir)
@@ -265,8 +265,8 @@ async def get_kline(
     - 当 `force_update=true` 时：提交对应 Celery 任务更新数据并返回 task_id，由前端轮询任务状态后再调用本接口获取数据。
     """
     from datetime import datetime, timedelta
-    from app.services.data_source.cache import get_daily, get_ticks
-    from app.services.data_source import get_default_qmt_adapter
+    from app.libs.data_source.cache import get_daily, get_ticks
+    from app.services.data_source_facade import get_default_qmt_adapter
     from app.services.instrument_service import instrument_service
     from app.tasks.instrument_tasks import (
         task_update_single_instrument_kdata,
@@ -298,7 +298,7 @@ async def get_kline(
                 period=period,
                 start_date=start_d,
                 end_date=end_d,
-                source_type="qmt",
+                adapter="qmt",
                 source_id=None,
                 force_update=False,
             )
@@ -314,7 +314,7 @@ async def get_kline(
                     "period": period,
                     "start_date": start_d,
                     "end_date": end_d,
-                    "source_type": "qmt",
+                    "adapter": "qmt",
                     "source_id": None,
                     "force_update": False,
                 },
@@ -354,7 +354,7 @@ async def get_kline(
                 symbol=symbol,
                 trade_date=trade_date,
                 market_layer=market_layer,
-                source_type="qmt",
+                adapter="qmt",
                 source_id=None,
                 force_update=False,
             )
@@ -368,7 +368,7 @@ async def get_kline(
                     "symbol": symbol,
                     "trade_date": trade_date,
                     "market_layer": market_layer,
-                    "source_type": "qmt",
+                    "adapter": "qmt",
                     "source_id": None,
                     "force_update": False,
                 },
@@ -438,8 +438,8 @@ async def get_ticks(
     - 当 `force_update=false` 时：直接从本地 parquet 读取并返回。
     - 当 `force_update=true` 时：提交 Celery 任务拉取并写入 parquet，返回 task_id。
     """
-    from app.services.data_source.cache import get_ticks as cache_get_ticks
-    from app.services.data_source import get_default_qmt_adapter
+    from app.libs.data_source.cache import get_ticks as cache_get_ticks
+    from app.services.data_source_facade import get_default_qmt_adapter
     from app.services.instrument_service import instrument_service
     from app.tasks.instrument_tasks import task_update_single_instrument_tick_for_date
 
@@ -453,7 +453,7 @@ async def get_ticks(
             symbol=symbol,
             trade_date=trade_date,
             market_layer=market_layer,
-            source_type="qmt",
+            adapter="qmt",
             source_id=None,
             force_update=False,
         )
@@ -467,7 +467,7 @@ async def get_ticks(
                 "symbol": symbol,
                 "trade_date": trade_date,
                 "market_layer": market_layer,
-                "source_type": "qmt",
+                "adapter": "qmt",
                 "source_id": None,
                 "force_update": False,
             },
@@ -495,7 +495,7 @@ async def get_divid_factors(
     - 若文件不存在，则返回空列表。
     """
     from pathlib import Path
-    from app.services.data_source.cache import get_instrument_dir, get_divid_factors_path
+    from app.libs.data_source.cache import get_instrument_dir, get_divid_factors_path
     from app.services.instrument_service import instrument_service
 
     market_layer = MarketLayer.Equity.value

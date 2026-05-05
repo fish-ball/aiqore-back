@@ -1,4 +1,5 @@
-"""标的相关异步任务"""
+# -*- coding: utf-8 -*-
+"""标的相关 Celery 任务（adapter 参数指定数据源实现，默认 qmt）。"""
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import logging
@@ -6,9 +7,8 @@ import time
 
 from app.celery_app import celery_app
 from app.database import SessionLocal
-from app.services.data_source import sync_instruments
-from app.services.data_source.adapter import get_adapter
-from app.services.data_source.cache import (
+from app.libs.data_source.adapter import get_adapter
+from app.libs.data_source.cache import (
     get_daily,
     get_weekly,
     get_monthly,
@@ -21,10 +21,11 @@ from app.services.data_source.cache import (
     write_meta,
     rebuild_weekly_monthly_from_daily,
 )
-from app.services.data_source.sync import _resolve_config
+from app.libs.data_source.models.enums import MarketLayer
+from app.services.data_source_resolve import resolve_adapter_config
+from app.services.data_source_instruments import sync_instruments
 from app.services.instrument_service import instrument_service
 from app.models.instrument import Instrument, instrument_type_to_market_layer
-from app.services.data_source.models.enums import MarketLayer
 from app.utils.task_lock import TaskLock
 
 logger = logging.getLogger(__name__)
@@ -42,13 +43,13 @@ def _build_error_result(message: str, extra: Optional[Dict[str, Any]] = None) ->
     return data
 
 
-def _resolve_adapter(db, source_type: str, source_id: Optional[int]):
-    """根据 source_type/source_id 解析并创建数据源适配器。"""
-    config, err = _resolve_config(db, source_type, source_id)
+def _resolve_market_adapter(db, adapter: str, source_id: Optional[int]):
+    """根据 adapter 注册键与 source_id 解析并创建数据源适配器实例。"""
+    key = (adapter or "qmt").strip().lower()
+    config, err = resolve_adapter_config(db, key, source_id)
     if err is not None:
         return None, err
-    adapter = get_adapter(source_type, config)
-    return adapter, None
+    return get_adapter(key, config), None
 
 
 @celery_app.task(bind=True, name="task_update_bulk_instrument_info")
@@ -56,7 +57,7 @@ def task_update_bulk_instrument_info(
     self,
     market: Optional[str] = None,
     sector: Optional[str] = None,
-    source_type: str = "qmt",
+    adapter: str = "qmt",
     source_id: Optional[int] = None,
 ):
     """批量同步证券基础信息（证券列表 + 详情）到数据库。"""
@@ -86,8 +87,8 @@ def task_update_bulk_instrument_info(
     db = SessionLocal()
     try:
         t0 = time.perf_counter()
-        logger.info("批量同步证券基础信息: 启动, source_type=%s, source_id=%s, market=%s, sector=%s",
-                    source_type, source_id, market, sector)
+        logger.info("批量同步证券基础信息: 启动, adapter=%s, source_id=%s, market=%s, sector=%s",
+                    adapter, source_id, market, sector)
         # 任务启动时立即更新状态，确保在 Redis 中创建任务记录
         self.update_state(
             state="PROGRESS",
@@ -98,8 +99,8 @@ def task_update_bulk_instrument_info(
             },
         )
 
-        # 经数据源抽象层同步（按 source_type/source_id 选择连接）
-        result = sync_instruments(db, source_type=source_type, source_id=source_id, market=market, sector=sector)
+        # 经数据源抽象层同步（按 adapter/source_id 选择连接）
+        result = sync_instruments(db, adapter=adapter, source_id=source_id, market=market, sector=sector)
         logger.info("批量同步证券基础信息: 同步完成, success=%s, total=%s, created=%s, updated=%s, errors=%s, 耗时 %s",
                     result.get("success"), result.get("total"), result.get("created"), result.get("updated"), result.get("errors"), _elapsed(t0))
 
@@ -143,7 +144,7 @@ def task_update_single_instrument_tick_for_date(
     symbol: str,
     trade_date: Any,
     market_layer: str,
-    source_type: str = "qmt",
+    adapter: str = "qmt",
     source_id: Optional[int] = None,
     force_update: bool = False,
 ):
@@ -152,14 +153,14 @@ def task_update_single_instrument_tick_for_date(
     try:
         t0 = time.perf_counter()
         logger.info("分笔抓取: symbol=%s, trade_date=%s, force_update=%s", symbol, trade_date, force_update)
-        adapter, err = _resolve_adapter(db, source_type, source_id)
+        impl, err = _resolve_market_adapter(db, adapter, source_id)
         if err is not None:
             logger.warning("分笔抓取: 配置解析失败 symbol=%s, err=%s", symbol, err)
             result = _build_error_result(err, {"symbol": symbol, "trade_date": str(trade_date)})
             self.update_state(state="SUCCESS", meta={"status": "配置解析失败", "result": result})
             return result
 
-        rows = get_ticks(market_layer, symbol, trade_date, force_update=force_update, adapter=adapter)
+        rows = get_ticks(market_layer, symbol, trade_date, force_update=force_update, adapter=impl)
         logger.info("分笔抓取: 完成 symbol=%s, trade_date=%s, rows=%s, 耗时 %s", symbol, trade_date, len(rows), _elapsed(t0))
         result = {
             "success": True,
@@ -237,7 +238,7 @@ def task_update_single_instrument_kdata(
     period: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    source_type: str = "qmt",
+    adapter: str = "qmt",
     source_id: Optional[int] = None,
     force_update: bool = False,
 ):
@@ -246,7 +247,7 @@ def task_update_single_instrument_kdata(
     try:
         t0 = time.perf_counter()
         logger.info("任务 K线更新: symbol=%s, period=%s, start_date=%s, end_date=%s", symbol, period, start_date, end_date)
-        adapter, err = _resolve_adapter(db, source_type, source_id)
+        impl, err = _resolve_market_adapter(db, adapter, source_id)
         if err is not None:
             logger.warning("任务 K线更新: 配置解析失败 symbol=%s, err=%s", symbol, err)
             result = _build_error_result(err, {"symbol": symbol, "period": period})
@@ -254,7 +255,7 @@ def task_update_single_instrument_kdata(
             return result
 
         result = _update_single_instrument_kdata_core(
-            adapter=adapter,
+            adapter=impl,
             market_layer=market_layer,
             symbol=symbol,
             period=period,
@@ -347,7 +348,7 @@ def task_update_single_instrument_tick_full(
     self,
     symbol: str,
     market_layer: str,
-    source_type: str = "qmt",
+    adapter: str = "qmt",
     source_id: Optional[int] = None,
     force_update: bool = False,
 ):
@@ -356,7 +357,7 @@ def task_update_single_instrument_tick_full(
     try:
         t0 = time.perf_counter()
         logger.info("任务分时全量补全: 启动 symbol=%s (全日期扫描)", symbol)
-        adapter, err = _resolve_adapter(db, source_type, source_id)
+        impl, err = _resolve_market_adapter(db, adapter, source_id)
         if err is not None:
             logger.warning("任务分时全量补全: 配置解析失败 symbol=%s, err=%s", symbol, err)
             result = _build_error_result(err, {"symbol": symbol})
@@ -364,7 +365,7 @@ def task_update_single_instrument_tick_full(
             return result
 
         result = _update_single_instrument_tick_full_core(
-            adapter=adapter,
+            adapter=impl,
             market_layer=market_layer,
             symbol=symbol,
             force_update=force_update,
@@ -384,7 +385,7 @@ def task_update_single_instrument_tick_full(
 
 def _update_single_instrument_all_data_core(
     symbol: str,
-    source_type: str = "qmt",
+    adapter: str = "qmt",
     source_id: Optional[int] = None,
     force_update: bool = False,
 ) -> Dict[str, Any]:
@@ -403,7 +404,7 @@ def _update_single_instrument_all_data_core(
             start_date = "1990-01-01"
         end_date = datetime.now().strftime("%Y-%m-%d")
 
-        adapter, err = _resolve_adapter(db, source_type, source_id)
+        impl, err = _resolve_market_adapter(db, adapter, source_id)
         if err is not None:
             return _build_error_result(err, {"symbol": symbol})
 
@@ -411,7 +412,7 @@ def _update_single_instrument_all_data_core(
         # 仅抓取日线；周线/月线在日线更新后由 rebuild_weekly_monthly_from_daily 根据日线合并生成
         t_daily = time.perf_counter()
         daily_result = _update_single_instrument_kdata_core(
-            adapter=adapter,
+            adapter=impl,
             market_layer=market_layer,
             symbol=symbol,
             period="1d",
@@ -427,7 +428,7 @@ def _update_single_instrument_all_data_core(
         t_ticks = time.perf_counter()
         # 默认只联动抓最后一天的 tick，不再全量补全
         tick_result = _update_single_instrument_tick_last_day_core(
-            adapter=adapter,
+            adapter=impl,
             market_layer=market_layer,
             symbol=symbol,
             force_update=force_update,
@@ -437,7 +438,7 @@ def _update_single_instrument_all_data_core(
         # 除权数据：全量更新时一并拉取除权信息，写入 divid_factors.parquet
         t_divid = time.perf_counter()
         divid_result = _update_single_instrument_divid_factors_core(
-            adapter=adapter,
+            adapter=impl,
             market_layer=market_layer,
             symbol=symbol,
             start_date=start_date,
@@ -527,7 +528,7 @@ def _update_single_instrument_divid_factors_core(
 def task_update_single_instrument_divid_factors(
     self,
     symbol: str,
-    source_type: str = "qmt",
+    adapter: str = "qmt",
     source_id: Optional[int] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -549,7 +550,7 @@ def task_update_single_instrument_divid_factors(
 
         market_layer = instrument_type_to_market_layer(inst.instrument_type)
 
-        adapter, err = _resolve_adapter(db, source_type, source_id)
+        impl, err = _resolve_market_adapter(db, adapter, source_id)
         if err is not None:
             result = _build_error_result(err, {"symbol": symbol})
             self.update_state(state="SUCCESS", meta={"status": "配置解析失败", "result": result})
@@ -557,7 +558,7 @@ def task_update_single_instrument_divid_factors(
 
         # 默认不指定时间范围时，数据源会返回全部除权数据
         result = _update_single_instrument_divid_factors_core(
-            adapter=adapter,
+            adapter=impl,
             market_layer=market_layer,
             symbol=symbol,
             start_date=start_date,
@@ -582,7 +583,7 @@ def task_update_single_instrument_divid_factors(
 def task_update_single_instrument_all_data(
     self,
     symbol: str,
-    source_type: str = "qmt",
+    adapter: str = "qmt",
     source_id: Optional[int] = None,
     force_update: bool = False,
 ):
@@ -596,7 +597,7 @@ def task_update_single_instrument_all_data(
 
         result = _update_single_instrument_all_data_core(
             symbol=symbol,
-            source_type=source_type,
+            adapter=adapter,
             source_id=source_id,
             force_update=force_update,
         )
@@ -621,7 +622,7 @@ def task_update_bulk_instrument_all_data(
     self,
     market_layer: str,
     symbols: Optional[List[str]] = None,
-    source_type: str = "qmt",
+    adapter: str = "qmt",
     source_id: Optional[int] = None,
     force_update: bool = False,
 ):
@@ -655,7 +656,7 @@ def task_update_bulk_instrument_all_data(
             # 在当前 worker 中串行执行单证券更新（调用核心逻辑，避免嵌套 Celery 状态存储导致 task_id 为空）
             _update_single_instrument_all_data_core(
                 symbol=symbol,
-                source_type=source_type,
+                adapter=adapter,
                 source_id=source_id,
                 force_update=force_update,
             )

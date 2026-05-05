@@ -41,9 +41,9 @@ def parse_market_suffix_from_code(code: str) -> str:
 def instrument_type_to_market_layer(instrument_type: Optional[str]) -> str:
     """
     instrument_type -> 本地行情缓存目录使用的三大类字符串（Equity/Future/Option）。
-    与 app.services.data_source.cache 中约定一致。
+    与 app.libs.data_source.cache 中约定一致。
     """
-    from app.services.data_source.models.enums import MarketLayer
+    from app.libs.data_source.models.enums import MarketLayer
 
     if not instrument_type:
         return MarketLayer.Equity.value

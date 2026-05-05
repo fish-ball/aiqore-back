@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field
 
 from app.database import get_db
 from app.models.data_source_connection import DataSourceConnection
-from app.services.data_source.sync import get_adapter_for_connection
-from app.services.trader import get_trader_for_connection
+from app.libs.data_source.adapter.connection import get_adapter_for_connection
+from app.libs.trader import get_trader_for_connection
 
 router = APIRouter(prefix="", tags=["数据源连接"])
 

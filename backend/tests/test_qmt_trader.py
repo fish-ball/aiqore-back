@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-"""app.services.trader.qmt_trader 单元测试。"""
+"""app.libs.trader.qmt_trader 单元测试。"""
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app.services.trader.qmt_trader import QMTTrader
+from app.libs.trader.qmt_trader import QMTTrader
 
 
 def reset_trader_type_cache() -> None:
     """重置 xttrader 类型缓存，避免用例互相影响。"""
-    import app.services.trader.qmt_trader as m
+    import app.libs.trader.qmt_trader as m
 
     m._xttrader_cls = None
     m._stock_account_cls = None
@@ -20,7 +20,7 @@ class TestQMTTrader(unittest.TestCase):
         reset_trader_type_cache()
 
     @patch.object(QMTTrader, "_get_xttrader")
-    @patch("app.services.trader.qmt_trader._ensure_xttrader_types")
+    @patch("app.libs.trader.qmt_trader._ensure_xttrader_types")
     def test_get_account_info(self, mock_types, mock_get_xt) -> None:
         mock_types.return_value = (MagicMock, MagicMock)
         xt = MagicMock()
@@ -40,7 +40,7 @@ class TestQMTTrader(unittest.TestCase):
         self.assertEqual(info["available"], 50000.0)
 
     @patch.object(QMTTrader, "_get_xttrader")
-    @patch("app.services.trader.qmt_trader._ensure_xttrader_types")
+    @patch("app.libs.trader.qmt_trader._ensure_xttrader_types")
     def test_get_account_info_no_asset(self, mock_types, mock_get_xt) -> None:
         mock_types.return_value = (MagicMock, MagicMock)
         xt = MagicMock()
@@ -50,7 +50,7 @@ class TestQMTTrader(unittest.TestCase):
         self.assertIsNone(t.get_account_info("123456"))
 
     @patch.object(QMTTrader, "_get_xttrader")
-    @patch("app.services.trader.qmt_trader._ensure_xttrader_types")
+    @patch("app.libs.trader.qmt_trader._ensure_xttrader_types")
     def test_get_positions(self, mock_types, mock_get_xt) -> None:
         mock_types.return_value = (MagicMock, MagicMock)
         pos = MagicMock()
@@ -82,7 +82,7 @@ class TestGetXttraderSession(unittest.TestCase):
     def tearDown(self) -> None:
         reset_trader_type_cache()
 
-    @patch("app.services.trader.qmt_trader._ensure_xttrader_types")
+    @patch("app.libs.trader.qmt_trader._ensure_xttrader_types")
     def test_session_id_explicit(self, mock_types) -> None:
         XtClass = MagicMock()
         mock_types.return_value = (XtClass, MagicMock)
@@ -96,8 +96,8 @@ class TestGetXttraderSession(unittest.TestCase):
             self.assertIs(r1, r2)
             XtClass.assert_called_once_with(tmp, 42)
 
-    @patch("app.services.trader.qmt_trader._ensure_xttrader_types")
-    @patch("app.services.trader.qmt_trader.time.time", return_value=1234567890)
+    @patch("app.libs.trader.qmt_trader._ensure_xttrader_types")
+    @patch("app.libs.trader.qmt_trader.time.time", return_value=1234567890)
     def test_session_id_default_uses_time(self, _mock_time, mock_types) -> None:
         XtClass = MagicMock()
         mock_types.return_value = (XtClass, MagicMock)

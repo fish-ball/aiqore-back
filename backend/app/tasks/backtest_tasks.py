@@ -10,8 +10,8 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models.backtest_task import BackTestTask
 from app.models.instrument import Instrument, instrument_type_to_market_layer
-from app.services.backtest.data_loader import load_daily_for_backtest
-from app.services.backtest.backtrader_engine import BacktraderEngine
+from app.libs.backtest.data_loader import load_daily_for_backtest
+from app.libs.backtest.backtrader_engine import BacktraderEngine
 
 logger = logging.getLogger(__name__)
 

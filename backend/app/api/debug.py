@@ -1,7 +1,7 @@
 """调试API - 用于查看QMT实际返回的数据结构"""
 from fastapi import APIRouter, Query, HTTPException
 import logging
-from app.services.data_source.adapter.qmt import _ensure_xtdata
+from app.libs.data_source.adapter.qmt import ensure_xtdata
 from app.config import settings
 
 router = APIRouter(prefix="/api/debug", tags=["调试"])
@@ -16,7 +16,7 @@ async def debug_qmt_quote(symbols: str = Query(..., description="证券代码，
     """
     try:
         symbol_list = [s.strip() for s in symbols.split(",")]
-        xtdata = _ensure_xtdata(settings.XT_QUANT_PATH)
+        xtdata = ensure_xtdata(settings.XT_QUANT_PATH)
         if not xtdata:
             raise HTTPException(status_code=503, detail="xtquant 未加载")
         quotes_raw = xtdata.get_full_tick(symbol_list)
