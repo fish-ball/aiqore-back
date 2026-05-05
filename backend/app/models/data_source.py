@@ -6,8 +6,7 @@ from app.database import Base
 
 class DataSource(Base):
     """数据源连接配置（QMT 等可参数化，预留聚宽、tushare）"""
-    # 与历史库表名一致（未使用更短的 data_sources，避免已有库未改名）
-    __tablename__ = "data_source_connections"
+    __tablename__ = "data_sources"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False, comment="显示名称")
