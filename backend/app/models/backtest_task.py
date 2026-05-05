@@ -1,4 +1,4 @@
-"""回测任务模型：UUID 主键，外键 Strategy/证券，回测参数与 script 快照"""
+"""回测任务模型：UUID 主键，外键 Strategy/标的，回测参数与 script 快照"""
 import uuid
 from sqlalchemy import Column, String, Integer, Float, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.sql import func
@@ -10,14 +10,20 @@ def _gen_uuid():
 
 
 class BackTestTask(Base):
-    """回测任务：关联策略与证券，存储参数与执行结果"""
+    """回测任务：关联策略与标的，存储参数与执行结果"""
     __tablename__ = "backtest_tasks"
 
     id = Column(String(36), primary_key=True, default=_gen_uuid, comment="UUID 主键")
     strategy_id = Column(String(36), ForeignKey("strategies.id", ondelete="SET NULL"), nullable=True, index=True, comment="策略 ID，删除策略后可空")
-    security_id = Column(Integer, ForeignKey("securities.id", ondelete="SET NULL"), nullable=True, index=True, comment="证券 ID，可空")
-    security_symbol = Column(String(64), nullable=True, comment="证券代码缓存")
-    security_name = Column(String(100), nullable=True, comment="证券名称缓存")
+    instrument_code = Column(
+        String(64),
+        ForeignKey("instruments.code", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="标的代码，与 instruments.code 一致，可空",
+    )
+    security_symbol = Column(String(64), nullable=True, comment="标的代码缓存（与 instrument_code 同义，兼容旧字段名）")
+    security_name = Column(String(100), nullable=True, comment="标的名称缓存")
 
     start_date = Column(String(10), nullable=False, comment="回测开始日期 YYYY-MM-DD")
     end_date = Column(String(10), nullable=False, comment="回测结束日期 YYYY-MM-DD")

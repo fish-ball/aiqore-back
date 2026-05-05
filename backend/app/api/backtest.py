@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 from app.database import get_db
 from app.models.backtest_task import BackTestTask
 from app.models.strategy import Strategy, STRATEGY_TYPE_BACKTRADER
-from app.models.security import Security
+from app.models.instrument import Instrument
 from app.config import settings
 from app.tasks.backtest_tasks import task_run_backtest
 
@@ -31,13 +31,12 @@ router = APIRouter(prefix="", tags=["回测"])
 class BacktestRunBody(BaseModel):
     """发起回测请求体"""
     strategy_id: str = Field(..., description="策略 ID（UUID）")
-    symbol: str = Field(..., min_length=1, description="证券代码")
+    symbol: str = Field(..., min_length=1, description="标的代码（与 instruments.code 一致，如 600519.SH）")
     start_date: str = Field(..., description="回测开始日期 YYYY-MM-DD")
     end_date: str = Field(..., description="回测结束日期 YYYY-MM-DD")
     initial_cash: Optional[float] = Field(None, description="初始资金，默认 1000000")
     commission: Optional[float] = Field(None, description="手续费，默认 0.0002")
     position_pct: Optional[int] = Field(None, description="仓位比例，默认 95")
-    security_id: Optional[int] = Field(None, description="证券 ID，可选，用于解析证券大类 security_type（Equity/Future/Option）")
 
 
 def _task_to_item(t: BackTestTask, strategy_name: Optional[str] = None) -> dict:
@@ -46,7 +45,7 @@ def _task_to_item(t: BackTestTask, strategy_name: Optional[str] = None) -> dict:
         "id": t.id,
         "strategy_id": t.strategy_id,
         "strategy_name": strategy_name,
-        "security_id": t.security_id,
+        "instrument_code": t.instrument_code,
         "security_symbol": t.security_symbol,
         "security_name": t.security_name,
         "start_date": t.start_date,
@@ -72,23 +71,15 @@ async def run_backtest(body: BacktestRunBody, db: Session = Depends(get_db)):
     if strategy.strategy_type != STRATEGY_TYPE_BACKTRADER:
         raise HTTPException(status_code=400, detail="当前仅支持 strategy_type=backtrader 的策略")
 
-    security_id = body.security_id
-    security_name: Optional[str] = None
-    if security_id is not None:
-        sec = db.query(Security).filter(Security.id == security_id).first()
-        if sec:
-            security_name = sec.name
-    if security_name is None:
-        sec = db.query(Security).filter(Security.symbol == body.symbol).first()
-        if sec:
-            security_id = sec.id
-            security_name = sec.name
+    code = body.symbol.strip()
+    sec = db.query(Instrument).filter(Instrument.code == code).first()
+    security_name: Optional[str] = sec.name if sec else None
 
     task = BackTestTask(
         strategy_id=strategy.id,
-        security_id=security_id,
-        security_symbol=body.symbol.strip(),
-        security_name=security_name or body.symbol.strip(),
+        instrument_code=code if sec else code,
+        security_symbol=code,
+        security_name=security_name or code,
         start_date=body.start_date.strip(),
         end_date=body.end_date.strip(),
         initial_cash=body.initial_cash if body.initial_cash is not None else 1000000.0,

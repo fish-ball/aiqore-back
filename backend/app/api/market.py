@@ -8,21 +8,22 @@ from sqlalchemy.orm import Session
 from app.services.market_service import market_service
 from app.database import get_db
 from app.utils.task_manager import save_task_info
-from app.models.security import SecurityType
+from app.models.instrument import instrument_type_to_market_layer
+from app.services.data_source.models.enums import MarketLayer
 
 router = APIRouter(prefix="/api/market", tags=["行情"])
 
 
-def _load_divid_factors(security_type: str, symbol: str) -> Optional["pd.DataFrame"]:
+def _load_divid_factors(market_layer: str, symbol: str) -> Optional["pd.DataFrame"]:
     """
     加载单个证券的除权除息因子（divid_factors.parquet）。
     返回 DataFrame，若不存在或为空则返回 None。
     """
     from pathlib import Path
     import pandas as pd
-    from app.services.data_source.cache import get_security_dir, get_divid_factors_path
+    from app.services.data_source.cache import get_instrument_dir, get_divid_factors_path
 
-    security_dir = get_security_dir(security_type, symbol)
+    security_dir = get_instrument_dir(market_layer, symbol)
     path = get_divid_factors_path(security_dir)
     if not isinstance(path, Path):
         path = Path(path)
@@ -100,7 +101,7 @@ def _calc_forward_price(v: float, d: Dict[str, float]) -> float:
 
 def _apply_forward_adjust_for_daily(
     daily_rows: List[Dict[str, Any]],
-    security_type: str,
+    market_layer: str,
     symbol: str,
 ) -> List[Dict[str, Any]]:
     """
@@ -112,7 +113,7 @@ def _apply_forward_adjust_for_daily(
     if not daily_rows:
         return []
 
-    divid_df = _load_divid_factors(security_type, symbol)
+    divid_df = _load_divid_factors(market_layer, symbol)
     if divid_df is None or divid_df.empty:
         return daily_rows
 
@@ -266,10 +267,10 @@ async def get_kline(
     from datetime import datetime, timedelta
     from app.services.data_source.cache import get_daily, get_ticks
     from app.services.data_source import get_default_qmt_adapter
-    from app.services.security_service import security_service
-    from app.tasks.security_tasks import (
-        task_update_single_security_kdata,
-        task_update_single_security_tick_for_date,
+    from app.services.instrument_service import instrument_service
+    from app.tasks.instrument_tasks import (
+        task_update_single_instrument_kdata,
+        task_update_single_instrument_tick_for_date,
     )
 
     # 缺省 start_date/end_date 时返回全部 K 线，由前端控制显示范围
@@ -285,15 +286,15 @@ async def get_kline(
 
     # 日/周/月 K 线
     if period in ("1d", "1w", "1M"):
-        security_type = SecurityType.Equity.value
-        sec = security_service.get_security_by_symbol(db, symbol)
-        if sec and sec.security_type:
-            security_type = sec.security_type
+        market_layer = MarketLayer.Equity.value
+        inst = instrument_service.get_instrument_by_code(db, symbol)
+        if inst:
+            market_layer = instrument_type_to_market_layer(inst.instrument_type)
 
         if force_update:
-            task = task_update_single_security_kdata.delay(
+            task = task_update_single_instrument_kdata.delay(
                 symbol=symbol,
-                security_type=security_type,
+                market_layer=market_layer,
                 period=period,
                 start_date=start_d,
                 end_date=end_d,
@@ -305,11 +306,11 @@ async def get_kline(
             # 记录任务信息
             save_task_info(
                 task_id=task.id,
-                task_name="update_single_security_kdata",
-                celery_name="task_update_single_security_kdata",
+                task_name="update_single_instrument_kdata",
+                celery_name="task_update_single_instrument_kdata",
                 params={
                     "symbol": symbol,
-                    "security_type": security_type,
+                    "market_layer": market_layer,
                     "period": period,
                     "start_date": start_d,
                     "end_date": end_d,
@@ -327,15 +328,15 @@ async def get_kline(
         adapter = get_default_qmt_adapter()
         # 日线：从缓存/数据源读取；周/月：接口层始终根据日线合并返回（自然周、自然月）
         if period == "1d":
-            base_daily = get_daily(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
+            base_daily = get_daily(market_layer, symbol, start_d, end_d, force_update=False, adapter=adapter)
             if adjust_type == "forward":
-                base_daily = _apply_forward_adjust_for_daily(base_daily, security_type, symbol)
+                base_daily = _apply_forward_adjust_for_daily(base_daily, market_layer, symbol)
             data = base_daily
         else:
             # 1w/1M 始终由日线重建：取日线后可选前复权，再聚合为周/月
-            base_daily = get_daily(security_type, symbol, start_d, end_d, force_update=False, adapter=adapter)
+            base_daily = get_daily(market_layer, symbol, start_d, end_d, force_update=False, adapter=adapter)
             if adjust_type == "forward":
-                base_daily = _apply_forward_adjust_for_daily(base_daily, security_type, symbol)
+                base_daily = _apply_forward_adjust_for_daily(base_daily, market_layer, symbol)
             data = _aggregate_daily_to_period(base_daily, period)
 
         return data
@@ -343,16 +344,16 @@ async def get_kline(
     # 1 分钟分时（按单日 ticks）
     if period == "1m":
         trade_date = (end_d or start_d or datetime.now().strftime("%Y-%m-%d")) if (start_d or end_d) else datetime.now().strftime("%Y-%m-%d")
-        security_type = SecurityType.Equity.value
-        sec = security_service.get_security_by_symbol(db, symbol)
-        if sec and sec.security_type:
-            security_type = sec.security_type
+        market_layer = MarketLayer.Equity.value
+        inst = instrument_service.get_instrument_by_code(db, symbol)
+        if inst:
+            market_layer = instrument_type_to_market_layer(inst.instrument_type)
 
         if force_update:
-            task = task_update_single_security_tick_for_date.delay(
+            task = task_update_single_instrument_tick_for_date.delay(
                 symbol=symbol,
                 trade_date=trade_date,
-                security_type=security_type,
+                market_layer=market_layer,
                 source_type="qmt",
                 source_id=None,
                 force_update=False,
@@ -361,12 +362,12 @@ async def get_kline(
             # 记录任务信息
             save_task_info(
                 task_id=task.id,
-                task_name="update_single_security_tick_for_date",
-                celery_name="task_update_single_security_tick_for_date",
+                task_name="update_single_instrument_tick_for_date",
+                celery_name="task_update_single_instrument_tick_for_date",
                 params={
                     "symbol": symbol,
                     "trade_date": trade_date,
-                    "security_type": security_type,
+                    "market_layer": market_layer,
                     "source_type": "qmt",
                     "source_id": None,
                     "force_update": False,
@@ -379,7 +380,7 @@ async def get_kline(
             }
 
         adapter = get_default_qmt_adapter()
-        data = get_ticks(security_type, symbol, trade_date, force_update=False, adapter=adapter)
+        data = get_ticks(market_layer, symbol, trade_date, force_update=False, adapter=adapter)
         return data
 
     data = market_service.get_kline_data(symbol, period, count, start_date, end_date)
@@ -439,19 +440,19 @@ async def get_ticks(
     """
     from app.services.data_source.cache import get_ticks as cache_get_ticks
     from app.services.data_source import get_default_qmt_adapter
-    from app.services.security_service import security_service
-    from app.tasks.security_tasks import task_update_single_security_tick_for_date
+    from app.services.instrument_service import instrument_service
+    from app.tasks.instrument_tasks import task_update_single_instrument_tick_for_date
 
-    security_type = SecurityType.Equity.value
-    sec = security_service.get_security_by_symbol(db, symbol)
-    if sec and sec.security_type:
-        security_type = sec.security_type
+    market_layer = MarketLayer.Equity.value
+    inst = instrument_service.get_instrument_by_code(db, symbol)
+    if inst:
+        market_layer = instrument_type_to_market_layer(inst.instrument_type)
 
     if force_update:
-        task = task_update_single_security_tick_for_date.delay(
+        task = task_update_single_instrument_tick_for_date.delay(
             symbol=symbol,
             trade_date=trade_date,
-            security_type=security_type,
+            market_layer=market_layer,
             source_type="qmt",
             source_id=None,
             force_update=False,
@@ -460,12 +461,12 @@ async def get_ticks(
         # 记录任务信息
         save_task_info(
             task_id=task.id,
-            task_name="update_single_security_tick_for_date",
-            celery_name="task_update_single_security_tick_for_date",
+            task_name="update_single_instrument_tick_for_date",
+            celery_name="task_update_single_instrument_tick_for_date",
             params={
                 "symbol": symbol,
                 "trade_date": trade_date,
-                "security_type": security_type,
+                "market_layer": market_layer,
                 "source_type": "qmt",
                 "source_id": None,
                 "force_update": False,
@@ -478,7 +479,7 @@ async def get_ticks(
         }
 
     adapter = get_default_qmt_adapter()
-    data = cache_get_ticks(security_type, symbol, trade_date, force_update=False, adapter=adapter)
+    data = cache_get_ticks(market_layer, symbol, trade_date, force_update=False, adapter=adapter)
     data = _ticks_to_jsonable(data)
     return data
 
@@ -494,15 +495,15 @@ async def get_divid_factors(
     - 若文件不存在，则返回空列表。
     """
     from pathlib import Path
-    from app.services.data_source.cache import get_security_dir, get_divid_factors_path
-    from app.services.security_service import security_service
+    from app.services.data_source.cache import get_instrument_dir, get_divid_factors_path
+    from app.services.instrument_service import instrument_service
 
-    security_type = SecurityType.Equity.value
-    sec = security_service.get_security_by_symbol(db, symbol)
-    if sec and sec.security_type:
-        security_type = sec.security_type
+    market_layer = MarketLayer.Equity.value
+    inst = instrument_service.get_instrument_by_code(db, symbol)
+    if inst:
+        market_layer = instrument_type_to_market_layer(inst.instrument_type)
 
-    security_dir = get_security_dir(security_type, symbol)
+    security_dir = get_instrument_dir(market_layer, symbol)
     path = get_divid_factors_path(security_dir)
     if not isinstance(path, Path):
         path = Path(path)

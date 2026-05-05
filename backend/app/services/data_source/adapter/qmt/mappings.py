@@ -49,7 +49,7 @@ BAR_PERIOD_TO_XT: Dict[str, str] = {
     BarPeriod.M1_MONTH.value: "1mon",
 }
 
-# 期货等合约代码后缀（小写），用于 infer_security_type；与 exchanges.suffix 一致
+# 期货等合约代码后缀（小写），用于 infer_market_layer；与 exchanges.suffix 一致
 FUTURES_EXCHANGE_SUFFIXES = (
     frozenset(ex.suffix.lower() for ex in EXCHANGES if ex.code.upper() in _FUTURES_EXCHANGE_CODES)
     | _EXTRA_FUTURES_SUFFIX_LOWER

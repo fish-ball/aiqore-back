@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-证券数据本地缓存：按证券类型/编码组织，parquet 存储日/周/月 K 线与分时，metadata.yaml 维护进度。
+标的行情本地缓存：按行情分层（Equity/Future/Option）与标的代码组织目录，parquet 存储日/周/月 K 线与分时，metadata.yaml 维护进度。
 不依赖 FastAPI；由上层或 adapter 封装调用。时间/日期按数据源原样写入 parquet，不做任何转换。
 """
 from pathlib import Path
@@ -8,8 +8,8 @@ from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 import logging
 
-# 证券大类（与 DB securities.security_type 一致）-> 缓存子目录名
-SECURITY_TYPE_TO_DIR: Dict[str, str] = {
+# 行情三大类（Equity/Future/Option，由 instruments.instrument_type 推导）-> 缓存子目录名
+MARKET_LAYER_TO_DIR: Dict[str, str] = {
     "Equity": "equity",
     "Future": "future",
     "Option": "option",
@@ -30,17 +30,17 @@ def _get_data_root() -> Path:
     return settings.DATA_ROOT_PATH
 
 
-def security_type_to_dir(security_type: Optional[str]) -> str:
-    """证券大类 -> 缓存子目录名；未知或空返回 equity。"""
-    if not (security_type or "").strip():
+def market_layer_to_dir(market_layer: Optional[str]) -> str:
+    """行情分层（Equity/Future/Option）-> 缓存子目录名；未知或空返回 equity。"""
+    if not (market_layer or "").strip():
         return DEFAULT_TYPE_DIR
-    return SECURITY_TYPE_TO_DIR.get((security_type or "").strip(), DEFAULT_TYPE_DIR)
+    return MARKET_LAYER_TO_DIR.get((market_layer or "").strip(), DEFAULT_TYPE_DIR)
 
 
-def get_security_dir(security_type: Optional[str], symbol: str) -> Path:
-    """标的缓存目录：data/{type_dir}/{symbol}"""
+def get_instrument_dir(market_layer: Optional[str], symbol: str) -> Path:
+    """标的缓存目录：data/{type_dir}/{symbol}（symbol 为标的代码）。"""
     root = _get_data_root()
-    type_dir = security_type_to_dir(security_type)
+    type_dir = market_layer_to_dir(market_layer)
     return root / type_dir / symbol
 
 
@@ -92,12 +92,12 @@ def _normalize_ticks_meta(ticks_dict: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def get_metadata_for_security(security_type: Optional[str], symbol: str) -> Dict[str, Any]:
+def get_metadata_for_instrument(market_layer: Optional[str], symbol: str) -> Dict[str, Any]:
     """
-    读取该证券的 metadata.yaml。K 线统一为 kline（日线区间）；ticks 统一为 start_date/end_date。
-    供获取单个证券接口附加返回。不再返回 daily/weekly/monthly 旧键。
+    读取该标的目录下的 metadata.yaml。K 线统一为 kline（日线区间）；ticks 统一为 start_date/end_date。
+    供获取单个标的接口附加返回。不再返回 daily/weekly/monthly 旧键。
     """
-    security_dir = get_security_dir(security_type, symbol)
+    security_dir = get_instrument_dir(market_layer, symbol)
     meta = read_meta(security_dir)
     if not meta:
         return {}
@@ -188,18 +188,18 @@ def _time_ms_to_date_str(time_ms: Any) -> Optional[str]:
         return None
 
 
-def get_dates_from_daily_parquet(security_type: Optional[str], symbol: str) -> List[str]:
+def get_dates_from_daily_parquet(market_layer: Optional[str], symbol: str) -> List[str]:
     """从日线 parquet 按 time 列推导已有交易日列表，用于按 meta 补全分时。返回排序后的 YYYY-MM-DD 列表。"""
-    security_dir = get_security_dir(security_type, symbol)
+    security_dir = get_instrument_dir(market_layer, symbol)
     path = get_daily_path(security_dir)
     rows = _read_parquet_kline(path)
     dates = sorted(set(d for r in rows for d in [_time_ms_to_date_str(r.get("time"))] if d is not None))
     return dates
 
 
-def get_existing_ticks_dates(security_type: Optional[str], symbol: str) -> set:
+def get_existing_ticks_dates(market_layer: Optional[str], symbol: str) -> set:
     """返回已落盘分笔的交易日集合（YYYY-MM-DD），用于分时补全时跳过已有日期。"""
-    security_dir = get_security_dir(security_type, symbol)
+    security_dir = get_instrument_dir(market_layer, symbol)
     ticks_dir = get_ticks_dir(security_dir)
     if not ticks_dir.is_dir():
         return set()
@@ -396,12 +396,12 @@ def _aggregate_daily_to_period(daily_rows: List[Dict[str, Any]], period: str) ->
     return result
 
 
-def rebuild_weekly_monthly_from_daily(security_type: Optional[str], symbol: str) -> None:
+def rebuild_weekly_monthly_from_daily(market_layer: Optional[str], symbol: str) -> None:
     """
     清除周 K、月 K 缓存文件，并根据日线 parquet 重新聚合生成 weekly.parquet 与 monthly.parquet。
     周线用自然周（W-SUN），月线用自然月（M）。周/月由日线生成，不再写入 meta（仅 kline 存日线区间）。
     """
-    security_dir = get_security_dir(security_type, symbol)
+    security_dir = get_instrument_dir(market_layer, symbol)
     daily_path = get_daily_path(security_dir)
     weekly_path = get_weekly_path(security_dir)
     monthly_path = get_monthly_path(security_dir)
@@ -437,7 +437,7 @@ def _get_kline_meta_key() -> str:
 
 
 def get_daily(
-    security_type: Optional[str],
+    market_layer: Optional[str],
     symbol: str,
     start_date: Optional[str],
     end_date: Optional[str],
@@ -449,11 +449,11 @@ def get_daily(
     获取日线：先读 meta，若不 force 且缓存已覆盖则从 parquet 返回；否则拉取缺失区间，合并写 parquet，更新 meta。
     adapter 需实现 get_klines_data(symbol, period, count, start_time, end_time)，返回 KlineBar 列表（本模块内转为 dict）。
     """
-    return _get_kline(security_type, symbol, "1d", start_date, end_date, force_update=force_update, adapter=adapter)
+    return _get_kline(market_layer, symbol, "1d", start_date, end_date, force_update=force_update, adapter=adapter)
 
 
 def get_weekly(
-    security_type: Optional[str],
+    market_layer: Optional[str],
     symbol: str,
     start_date: Optional[str],
     end_date: Optional[str],
@@ -465,16 +465,16 @@ def get_weekly(
     获取周线。不从数据源抓取，仅从本地 weekly.parquet 读取（该文件由日线合并生成）。
     若 weekly.parquet 不存在则先根据日线重建再返回。
     """
-    security_dir = get_security_dir(security_type, symbol)
+    security_dir = get_instrument_dir(market_layer, symbol)
     path = get_weekly_path(security_dir)
     if not path.is_file():
-        rebuild_weekly_monthly_from_daily(security_type, symbol)
+        rebuild_weekly_monthly_from_daily(market_layer, symbol)
     rows = _read_parquet_kline(path)
     return _filter_rows_by_date(rows, start_date, end_date)
 
 
 def get_monthly(
-    security_type: Optional[str],
+    market_layer: Optional[str],
     symbol: str,
     start_date: Optional[str],
     end_date: Optional[str],
@@ -486,16 +486,16 @@ def get_monthly(
     获取月线。不从数据源抓取，仅从本地 monthly.parquet 读取（该文件由日线合并生成）。
     若 monthly.parquet 不存在则先根据日线重建再返回。
     """
-    security_dir = get_security_dir(security_type, symbol)
+    security_dir = get_instrument_dir(market_layer, symbol)
     path = get_monthly_path(security_dir)
     if not path.is_file():
-        rebuild_weekly_monthly_from_daily(security_type, symbol)
+        rebuild_weekly_monthly_from_daily(market_layer, symbol)
     rows = _read_parquet_kline(path)
     return _filter_rows_by_date(rows, start_date, end_date)
 
 
 def _get_kline(
-    security_type: Optional[str],
+    market_layer: Optional[str],
     symbol: str,
     period: str,
     start_date: Optional[str],
@@ -505,7 +505,7 @@ def _get_kline(
     adapter: Any = None,
 ) -> List[Dict[str, Any]]:
     """K 线：仅日线走此逻辑并读写 meta，周/月由 get_weekly/get_monthly 直接读 parquet。"""
-    security_dir = get_security_dir(security_type, symbol)
+    security_dir = get_instrument_dir(market_layer, symbol)
     if period == "1d":
         path = get_daily_path(security_dir)
     elif period == "1w":
@@ -638,7 +638,7 @@ def _normalize_tick_data(raw: Any) -> Any:
 
 
 def get_ticks(
-    security_type: Optional[str],
+    market_layer: Optional[str],
     symbol: str,
     trade_date: Any,
     *,
@@ -657,7 +657,7 @@ def get_ticks(
     if len(trade_date_flat) != 8:
         return []
 
-    security_dir = get_security_dir(security_type, symbol)
+    security_dir = get_instrument_dir(market_layer, symbol)
     ticks_path = get_ticks_path(security_dir, trade_date_flat)
 
     if not force_update and ticks_path.is_file():

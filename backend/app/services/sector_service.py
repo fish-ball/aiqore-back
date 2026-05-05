@@ -1,13 +1,58 @@
 """板块信息服务"""
-from typing import List, Dict, Any, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import or_, func
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 import logging
+import copy
+
+from sqlalchemy.orm import Session
+
 from app.models.sector import Sector
 from app.services.data_source import get_default_qmt_adapter
 
 logger = logging.getLogger(__name__)
+
+
+def sector_stats(sector: Sector) -> Dict[str, Any]:
+    """读取 metadata.stats（兼容空）。"""
+    raw = sector.sector_meta or {}
+    return dict(raw.get("stats") or {})
+
+
+def sector_to_public_dict(sector: Sector, *, include_children: bool = False) -> Dict[str, Any]:
+    """API 用扁平字典（stats 展开 + 原始 metadata）。"""
+    stats = sector_stats(sector)
+    last_sync = stats.get("last_sync_at")
+    if last_sync is not None and hasattr(last_sync, "isoformat"):
+        last_sync = last_sync.isoformat()
+    item: Dict[str, Any] = {
+        "id": sector.id,
+        "name": sector.name,
+        "alias": sector.alias,
+        "parent_id": sector.parent_id,
+        "metadata": sector.sector_meta,
+        "category": stats.get("category"),
+        "market": stats.get("market"),
+        "security_count": stats.get("security_count") or 0,
+        "is_active": stats.get("is_active", 1),
+        "last_sync_at": last_sync,
+        "remark": sector.remark,
+        "created_at": sector.created_at.isoformat() if sector.created_at else None,
+        "updated_at": sector.updated_at.isoformat() if sector.updated_at else None,
+    }
+    if include_children:
+        item["children"] = [
+            {
+                "id": c.id,
+                "name": c.name,
+                "alias": c.alias,
+                "parent_id": c.parent_id,
+                "remark": c.remark,
+            }
+            for c in sector.children
+        ]
+    return item
 
 
 class SectorService:
@@ -24,15 +69,7 @@ class SectorService:
         return self._qmt
 
     def sync_sectors_from_qmt(self, db: Session) -> Dict[str, Any]:
-        """
-        从QMT同步板块列表到数据库
-
-        Args:
-            db: 数据库会话
-
-        Returns:
-            同步结果统计
-        """
+        """从 QMT 同步板块列表到数据库（alias = QMT 板块键）。"""
         try:
             sectors = self.qmt.get_sector_list()
             if not sectors:
@@ -42,14 +79,13 @@ class SectorService:
                     "total": 0,
                     "created": 0,
                     "updated": 0,
-                    "errors": 0
+                    "errors": 0,
                 }
 
             created_count = 0
             updated_count = 0
             error_count = 0
-            
-            # 板块分类映射
+
             category_keywords = {
                 "股票": ["A股", "B股", "创业板"],
                 "基金": ["基金", "ETF", "LOF"],
@@ -58,101 +94,117 @@ class SectorService:
                 "期权": ["期权"],
                 "指数": ["指数"],
             }
-            
+
             def get_category(sector_name: str) -> str:
-                """根据板块名称判断分类"""
                 for category, keywords in category_keywords.items():
                     for keyword in keywords:
                         if keyword in sector_name:
                             return category
                 return "其他"
-            
+
             def get_market(sector_name: str) -> Optional[str]:
-                """根据板块名称判断市场"""
                 if "沪市" in sector_name or "上证" in sector_name:
                     return "SH"
-                elif "深市" in sector_name or "深证" in sector_name:
+                if "深市" in sector_name or "深证" in sector_name:
                     return "SZ"
-                elif "北交所" in sector_name or "BJ" in sector_name:
+                if "北交所" in sector_name or "BJ" in sector_name:
                     return "BJ"
-                elif "沪深" in sector_name:
-                    return None  # 跨市场
+                if "沪深" in sector_name:
+                    return None
                 return None
-            
-            # 处理每个板块
+
             for sector_name in sectors:
                 if not sector_name or not isinstance(sector_name, str):
                     continue
-                
+
                 try:
-                    # 查询是否已存在
-                    sector = db.query(Sector).filter(Sector.name == sector_name).first()
-                    
-                    # 获取板块内证券数量
+                    row = db.query(Sector).filter(Sector.alias == sector_name).first()
+
                     security_count = 0
                     try:
                         securities = self.qmt.get_stock_list_in_sector(sector_name)
                         if securities:
                             security_count = len(securities)
                     except Exception as e:
-                        logger.debug(f"获取板块 {sector_name} 证券数量失败: {e}")
-                    
+                        logger.debug("获取板块 %s 证券数量失败: %s", sector_name, e)
+
                     category = get_category(sector_name)
                     market = get_market(sector_name)
-                    
-                    if sector:
-                        # 更新现有记录
-                        needs_update = False
-                        if sector.security_count != security_count:
-                            sector.security_count = security_count
-                            needs_update = True
-                        if sector.category != category:
-                            sector.category = category
-                            needs_update = True
-                        if sector.market != market:
-                            sector.market = market
-                            needs_update = True
-                        if needs_update:
-                            sector.last_sync_at = datetime.now()
-                            sector.updated_at = datetime.now()
+                    now_iso = datetime.now().isoformat()
+
+                    if row:
+                        meta = copy.deepcopy(row.sector_meta) if row.sector_meta else {}
+                        stats = dict(meta.get("stats") or {})
+                        stats.update(
+                            {
+                                "security_count": security_count,
+                                "category": category,
+                                "market": market,
+                                "last_sync_at": now_iso,
+                                "is_active": stats.get("is_active", 1),
+                            }
+                        )
+                        meta["stats"] = stats
+                        sources = dict(meta.get("sources") or {})
+                        sources["qmt"] = {"sector_key": sector_name}
+                        meta["sources"] = sources
+
+                        needs = False
+                        if row.sector_meta != meta:
+                            row.sector_meta = meta
+                            needs = True
+                        if needs:
+                            row.updated_at = datetime.now()
                             updated_count += 1
                     else:
-                        # 创建新记录
-                        sector = Sector(
-                            name=sector_name,
-                            display_name=sector_name,
-                            category=category,
-                            market=market,
-                            security_count=security_count,
-                            is_active=1,
-                            last_sync_at=datetime.now()
+                        meta = {
+                            "stats": {
+                                "security_count": security_count,
+                                "category": category,
+                                "market": market,
+                                "last_sync_at": now_iso,
+                                "is_active": 1,
+                            },
+                            "sources": {"qmt": {"sector_key": sector_name}},
+                        }
+                        db.add(
+                            Sector(
+                                name=sector_name,
+                                alias=sector_name,
+                                parent_id=None,
+                                sector_meta=meta,
+                            )
                         )
-                        db.add(sector)
                         created_count += 1
-                    
+
                 except Exception as e:
                     error_count += 1
-                    logger.warning(f"处理板块 {sector_name} 失败: {e}")
-                    continue
-            
-            # 提交更改
+                    logger.warning("处理板块 %s 失败: %s", sector_name, e)
+
             db.commit()
-            
-            logger.info(f"板块同步完成: 总计 {len(sectors)}, 新增 {created_count}, 更新 {updated_count}, 错误 {error_count}")
-            
+
+            logger.info(
+                "板块同步完成: 总计 %s, 新增 %s, 更新 %s, 错误 %s",
+                len(sectors),
+                created_count,
+                updated_count,
+                error_count,
+            )
+
             return {
                 "success": True,
                 "message": "同步成功",
                 "total": len(sectors),
                 "created": created_count,
                 "updated": updated_count,
-                "errors": error_count
+                "errors": error_count,
             }
-            
+
         except Exception as e:
             db.rollback()
-            logger.error(f"同步板块失败: {e}")
+            logger.error("同步板块失败: %s", e)
             import traceback
+
             logger.error(traceback.format_exc())
             return {
                 "success": False,
@@ -160,103 +212,93 @@ class SectorService:
                 "total": 0,
                 "created": 0,
                 "updated": 0,
-                "errors": 0
+                "errors": 0,
             }
-    
+
     def get_sectors(
         self,
         db: Session,
         category: Optional[str] = None,
         market: Optional[str] = None,
-        is_active: Optional[int] = None
+        is_active: Optional[int] = None,
     ) -> List[Sector]:
-        """
-        获取板块列表
-        
-        Args:
-            db: 数据库会话
-            category: 板块分类过滤
-            market: 市场过滤
-            is_active: 是否有效过滤
-            
-        Returns:
-            板块列表
-        """
+        """获取板块列表（可选按 metadata.stats 过滤）。"""
         try:
-            query = db.query(Sector)
-            
-            if category:
-                query = query.filter(Sector.category == category)
-            if market:
-                query = query.filter(Sector.market == market)
-            if is_active is not None:
-                query = query.filter(Sector.is_active == is_active)
-            
-            return query.order_by(Sector.category, Sector.name).all()
+            rows = db.query(Sector).order_by(Sector.alias).all()
+            if category is None and market is None and is_active is None:
+                return rows
+
+            out: List[Sector] = []
+            for s in rows:
+                st = sector_stats(s)
+                if category is not None and st.get("category") != category:
+                    continue
+                if market is not None:
+                    if st.get("market") != market:
+                        continue
+                if is_active is not None:
+                    if int(st.get("is_active", 1)) != int(is_active):
+                        continue
+                out.append(s)
+            return out
         except Exception as e:
-            logger.error(f"获取板块列表失败: {e}")
+            logger.error("获取板块列表失败: %s", e)
             return []
-    
+
+    def get_sector_by_alias(self, db: Session, alias: str) -> Optional[Sector]:
+        """根据唯一 alias 查询（与 QMT 板块键一致）。"""
+        try:
+            return db.query(Sector).filter(Sector.alias == alias).first()
+        except Exception as e:
+            logger.error("获取板块失败: %s", e)
+            return None
+
     def get_sector_by_name(self, db: Session, name: str) -> Optional[Sector]:
-        """
-        根据名称获取板块
-        
-        Args:
-            db: 数据库会话
-            name: 板块名称
-            
-        Returns:
-            板块对象
-        """
+        """兼容：按显示名称查找（若有重名仅返回第一条）。"""
         try:
             return db.query(Sector).filter(Sector.name == name).first()
         except Exception as e:
-            logger.error(f"获取板块失败: {e}")
+            logger.error("获取板块失败: %s", e)
             return None
-    
+
+    def update_sector_remark(self, db: Session, alias: str, remark: Optional[str]) -> Optional[Sector]:
+        """更新板块用户备注；remark 可为 None 表示清空。"""
+        row = self.get_sector_by_alias(db, alias)
+        if not row:
+            return None
+        row.remark = remark
+        db.commit()
+        db.refresh(row)
+        return row
+
     def get_sector_statistics(self, db: Session) -> Dict[str, Any]:
-        """
-        获取板块统计信息
-        
-        Args:
-            db: 数据库会话
-            
-        Returns:
-            统计信息字典
-        """
+        """板块汇总统计（基于 metadata.stats）。"""
         try:
-            total_sectors = db.query(Sector).filter(Sector.is_active == 1).count()
-            total_securities = db.query(Sector).filter(Sector.is_active == 1).with_entities(
-                func.sum(Sector.security_count)
-            ).scalar() or 0
-            
-            # 按分类统计
-            category_stats = {}
-            sectors = db.query(Sector).filter(Sector.is_active == 1).all()
-            for sector in sectors:
-                category = sector.category or "其他"
-                if category not in category_stats:
-                    category_stats[category] = {
-                        "count": 0,
-                        "securities": 0
-                    }
-                category_stats[category]["count"] += 1
-                category_stats[category]["securities"] += sector.security_count or 0
-            
+            rows = db.query(Sector).all()
+            active_rows = [s for s in rows if int(sector_stats(s).get("is_active", 1)) == 1]
+            total_securities = sum(int(sector_stats(s).get("security_count") or 0) for s in active_rows)
+
+            category_stats: Dict[str, Dict[str, int]] = {}
+            for sector in active_rows:
+                st = sector_stats(sector)
+                cat = st.get("category") or "其他"
+                if cat not in category_stats:
+                    category_stats[cat] = {"count": 0, "securities": 0}
+                category_stats[cat]["count"] += 1
+                category_stats[cat]["securities"] += int(st.get("security_count") or 0)
+
             return {
-                "total_sectors": total_sectors,
+                "total_sectors": len(active_rows),
                 "total_securities": total_securities,
-                "category_stats": category_stats
+                "category_stats": category_stats,
             }
         except Exception as e:
-            logger.error(f"获取板块统计失败: {e}")
+            logger.error("获取板块统计失败: %s", e)
             return {
                 "total_sectors": 0,
                 "total_securities": 0,
-                "category_stats": {}
+                "category_stats": {},
             }
 
 
-# 全局板块服务实例
 sector_service = SectorService()
-

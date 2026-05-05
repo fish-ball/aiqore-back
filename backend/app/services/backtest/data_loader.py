@@ -8,7 +8,7 @@ from typing import Optional, List, Any, Dict
 
 import pandas as pd
 
-from app.services.data_source.cache import get_daily, get_security_dir, get_daily_path
+from app.services.data_source.cache import get_daily, get_instrument_dir, get_daily_path
 
 
 def _read_parquet_kline(path: Path) -> List[Dict[str, Any]]:
@@ -58,7 +58,7 @@ def _filter_rows_by_date(
 
 
 def load_daily_for_backtest(
-    security_type: str,
+    market_layer: str,
     symbol: str,
     start_date: str,
     end_date: str,
@@ -68,7 +68,7 @@ def load_daily_for_backtest(
     从平台 data 目录加载日 K 线，可选前复权，转为 Backtrader 所需 DataFrame。
 
     参数:
-        security_type: 证券大类，Equity / Future / Option（与 DB securities.security_type 一致）
+        market_layer: 行情三大类 Equity / Future / Option（由 instruments.instrument_type 推导）
         symbol: 证券代码，如 "600519.SH"
         start_date: 开始日期 YYYY-MM-DD
         end_date: 结束日期 YYYY-MM-DD
@@ -81,10 +81,10 @@ def load_daily_for_backtest(
         ValueError: 无数据或过滤后为空
     """
     # 仅读本地 parquet，不触发拉取（adapter=None）
-    rows = get_daily(security_type, symbol, start_date, end_date, force_update=False, adapter=None)
+    rows = get_daily(market_layer, symbol, start_date, end_date, force_update=False, adapter=None)
     if not rows:
         # 若 get_daily 因 meta 未覆盖等返回空，尝试直接读 parquet 再过滤
-        security_dir = get_security_dir(security_type, symbol)
+        security_dir = get_instrument_dir(market_layer, symbol)
         path = get_daily_path(security_dir)
         rows = _read_parquet_kline(path)
         rows = _filter_rows_by_date(rows, start_date, end_date)
@@ -93,7 +93,7 @@ def load_daily_for_backtest(
 
     if adjust_type == "forward":
         from app.api.market import _apply_forward_adjust_for_daily
-        rows = _apply_forward_adjust_for_daily(rows, security_type, symbol)
+        rows = _apply_forward_adjust_for_daily(rows, market_layer, symbol)
 
     # 转为 DataFrame：time(ms) -> datetime 索引，列 ohlcv
     df = pd.DataFrame(rows)

@@ -1,4 +1,4 @@
-"""证券相关异步任务"""
+"""标的相关异步任务"""
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import logging
@@ -6,7 +6,7 @@ import time
 
 from app.celery_app import celery_app
 from app.database import SessionLocal
-from app.services.data_source import sync_securities
+from app.services.data_source import sync_instruments
 from app.services.data_source.adapter import get_adapter
 from app.services.data_source.cache import (
     get_daily,
@@ -15,15 +15,16 @@ from app.services.data_source.cache import (
     get_ticks,
     get_dates_from_daily_parquet,
     get_existing_ticks_dates,
-    get_security_dir,
+    get_instrument_dir,
     get_divid_factors_path,
     read_meta,
     write_meta,
     rebuild_weekly_monthly_from_daily,
 )
 from app.services.data_source.sync import _resolve_config
-from app.services.security_service import security_service
-from app.models.security import SecurityType
+from app.services.instrument_service import instrument_service
+from app.models.instrument import Instrument, instrument_type_to_market_layer
+from app.services.data_source.models.enums import MarketLayer
 from app.utils.task_lock import TaskLock
 
 logger = logging.getLogger(__name__)
@@ -50,8 +51,8 @@ def _resolve_adapter(db, source_type: str, source_id: Optional[int]):
     return adapter, None
 
 
-@celery_app.task(bind=True, name="task_update_bulk_security_info")
-def task_update_bulk_security_info(
+@celery_app.task(bind=True, name="task_update_bulk_instrument_info")
+def task_update_bulk_instrument_info(
     self,
     market: Optional[str] = None,
     sector: Optional[str] = None,
@@ -59,7 +60,7 @@ def task_update_bulk_security_info(
     source_id: Optional[int] = None,
 ):
     """批量同步证券基础信息（证券列表 + 详情）到数据库。"""
-    task_name = "task_update_bulk_security_info"
+    task_name = "task_update_bulk_instrument_info"
     task_lock = TaskLock(task_name, timeout=7200)  # 2小时超时
 
     if not task_lock.acquire():
@@ -98,7 +99,7 @@ def task_update_bulk_security_info(
         )
 
         # 经数据源抽象层同步（按 source_type/source_id 选择连接）
-        result = sync_securities(db, source_type=source_type, source_id=source_id, market=market, sector=sector)
+        result = sync_instruments(db, source_type=source_type, source_id=source_id, market=market, sector=sector)
         logger.info("批量同步证券基础信息: 同步完成, success=%s, total=%s, created=%s, updated=%s, errors=%s, 耗时 %s",
                     result.get("success"), result.get("total"), result.get("created"), result.get("updated"), result.get("errors"), _elapsed(t0))
 
@@ -136,12 +137,12 @@ def task_update_bulk_security_info(
         db.close()
 
 
-@celery_app.task(bind=True, name="task_update_single_security_tick_for_date")
-def task_update_single_security_tick_for_date(
+@celery_app.task(bind=True, name="task_update_single_instrument_tick_for_date")
+def task_update_single_instrument_tick_for_date(
     self,
     symbol: str,
     trade_date: Any,
-    security_type: str,
+    market_layer: str,
     source_type: str = "qmt",
     source_id: Optional[int] = None,
     force_update: bool = False,
@@ -158,7 +159,7 @@ def task_update_single_security_tick_for_date(
             self.update_state(state="SUCCESS", meta={"status": "配置解析失败", "result": result})
             return result
 
-        rows = get_ticks(security_type, symbol, trade_date, force_update=force_update, adapter=adapter)
+        rows = get_ticks(market_layer, symbol, trade_date, force_update=force_update, adapter=adapter)
         logger.info("分笔抓取: 完成 symbol=%s, trade_date=%s, rows=%s, 耗时 %s", symbol, trade_date, len(rows), _elapsed(t0))
         result = {
             "success": True,
@@ -179,9 +180,9 @@ def task_update_single_security_tick_for_date(
         db.close()
 
 
-def _update_single_security_kdata_core(
+def _update_single_instrument_kdata_core(
     adapter: Any,
-    security_type: str,
+    market_layer: str,
     symbol: str,
     period: str,
     start_date: Optional[str],
@@ -193,12 +194,12 @@ def _update_single_security_kdata_core(
         logger.info("K线抓取: 开始日线 symbol=%s, start_date=%s, end_date=%s, force_update=%s",
                     symbol, start_date, end_date, force_update)
         t0 = time.perf_counter()
-        rows = get_daily(security_type, symbol, start_date, end_date, force_update=force_update, adapter=adapter)
+        rows = get_daily(market_layer, symbol, start_date, end_date, force_update=force_update, adapter=adapter)
         logger.info("K线抓取: 日线完成 symbol=%s, rows=%s, 耗时 %s", symbol, len(rows), _elapsed(t0))
         # 日线抓取完成后清除周 K、月 K 缓存并由日线重新生成 weekly/monthly.parquet
         logger.info("K线抓取: 根据日线重建周/月 symbol=%s", symbol)
         t1 = time.perf_counter()
-        rebuild_weekly_monthly_from_daily(security_type, symbol)
+        rebuild_weekly_monthly_from_daily(market_layer, symbol)
         logger.info("K线抓取: 周/月重建完成 symbol=%s, 耗时 %s", symbol, _elapsed(t1))
         return {
             "success": True,
@@ -211,11 +212,11 @@ def _update_single_security_kdata_core(
         # 周/月仅做从日线重建，不发起数据源请求
         logger.info("K线抓取: 从日线重建周/月 symbol=%s, period=%s", symbol, period)
         t0 = time.perf_counter()
-        rebuild_weekly_monthly_from_daily(security_type, symbol)
+        rebuild_weekly_monthly_from_daily(market_layer, symbol)
         rows = (
-            get_weekly(security_type, symbol, start_date, end_date, force_update=False, adapter=None)
+            get_weekly(market_layer, symbol, start_date, end_date, force_update=False, adapter=None)
             if period == "1w"
-            else get_monthly(security_type, symbol, start_date, end_date, force_update=False, adapter=None)
+            else get_monthly(market_layer, symbol, start_date, end_date, force_update=False, adapter=None)
         )
         logger.info("K线抓取: 周/月完成 symbol=%s, period=%s, rows=%s, 耗时 %s", symbol, period, len(rows), _elapsed(t0))
         return {
@@ -228,11 +229,11 @@ def _update_single_security_kdata_core(
     return _build_error_result(f"不支持的周期: {period}", {"symbol": symbol})
 
 
-@celery_app.task(bind=True, name="task_update_single_security_kdata")
-def task_update_single_security_kdata(
+@celery_app.task(bind=True, name="task_update_single_instrument_kdata")
+def task_update_single_instrument_kdata(
     self,
     symbol: str,
-    security_type: str,
+    market_layer: str,
     period: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -252,9 +253,9 @@ def task_update_single_security_kdata(
             self.update_state(state="SUCCESS", meta={"status": "配置解析失败", "result": result})
             return result
 
-        result = _update_single_security_kdata_core(
+        result = _update_single_instrument_kdata_core(
             adapter=adapter,
-            security_type=security_type,
+            market_layer=market_layer,
             symbol=symbol,
             period=period,
             start_date=start_date,
@@ -274,18 +275,18 @@ def task_update_single_security_kdata(
         db.close()
 
 
-def _update_single_security_tick_last_day_core(
+def _update_single_instrument_tick_last_day_core(
     adapter: Any,
-    security_type: str,
+    market_layer: str,
     symbol: str,
     force_update: bool,
 ) -> Dict[str, Any]:
     """仅拉取 kline 中最后一个交易日的 tick（用于单证券/全量列表联动更新，默认只抓最后一天）。"""
-    dates_all = get_dates_from_daily_parquet(security_type, symbol)
+    dates_all = get_dates_from_daily_parquet(market_layer, symbol)
     if not dates_all:
         return {"success": True, "message": "更新完成", "symbol": symbol, "ticks_dates": 0}
     last_date = dates_all[-1]
-    rows = get_ticks(security_type, symbol, last_date, force_update=force_update, adapter=adapter)
+    rows = get_ticks(market_layer, symbol, last_date, force_update=force_update, adapter=adapter)
     n = 1 if rows else 0
     logger.info("分时最后一天: symbol=%s, date=%s, rows=%s, 落盘=%s", symbol, last_date, len(rows) if rows else 0, n)
     return {
@@ -296,16 +297,16 @@ def _update_single_security_tick_last_day_core(
     }
 
 
-def _update_single_security_tick_full_core(
+def _update_single_instrument_tick_full_core(
     adapter: Any,
-    security_type: str,
+    market_layer: str,
     symbol: str,
     force_update: bool,
 ) -> Dict[str, Any]:
     """全日期扫描 kline 的交易日，对未落盘的日期拉取 tick；已存在且非 force 时跳过。不做区间截断。"""
     t0 = time.perf_counter()
-    dates_all = get_dates_from_daily_parquet(security_type, symbol)
-    existing = get_existing_ticks_dates(security_type, symbol)
+    dates_all = get_dates_from_daily_parquet(market_layer, symbol)
+    existing = get_existing_ticks_dates(market_layer, symbol)
     if force_update:
         dates_to_fetch = list(dates_all)
     else:
@@ -317,7 +318,7 @@ def _update_single_security_tick_full_core(
     new_count = 0
     for i, d in enumerate(dates_to_fetch):
         try:
-            rows = get_ticks(security_type, symbol, d, force_update=force_update, adapter=adapter)
+            rows = get_ticks(market_layer, symbol, d, force_update=force_update, adapter=adapter)
             if rows:
                 new_count += 1
             if (i + 1) % 100 == 0 or i == len(dates_to_fetch) - 1:
@@ -341,11 +342,11 @@ def _update_single_security_tick_full_core(
     }
 
 
-@celery_app.task(bind=True, name="task_update_single_security_tick_full")
-def task_update_single_security_tick_full(
+@celery_app.task(bind=True, name="task_update_single_instrument_tick_full")
+def task_update_single_instrument_tick_full(
     self,
     symbol: str,
-    security_type: str,
+    market_layer: str,
     source_type: str = "qmt",
     source_id: Optional[int] = None,
     force_update: bool = False,
@@ -362,9 +363,9 @@ def task_update_single_security_tick_full(
             self.update_state(state="SUCCESS", meta={"status": "配置解析失败", "result": result})
             return result
 
-        result = _update_single_security_tick_full_core(
+        result = _update_single_instrument_tick_full_core(
             adapter=adapter,
-            security_type=security_type,
+            market_layer=market_layer,
             symbol=symbol,
             force_update=force_update,
         )
@@ -381,7 +382,7 @@ def task_update_single_security_tick_full(
         db.close()
 
 
-def _update_single_security_all_data_core(
+def _update_single_instrument_all_data_core(
     symbol: str,
     source_type: str = "qmt",
     source_id: Optional[int] = None,
@@ -390,12 +391,12 @@ def _update_single_security_all_data_core(
     """单个证券全量数据更新核心逻辑（供 Celery 任务与串行调用复用，不直接更新任务状态）。"""
     db = SessionLocal()
     try:
-        security = security_service.get_security_by_symbol(db, symbol)
-        if not security:
-            return _build_error_result("证券不存在", {"symbol": symbol})
+        inst = instrument_service.get_instrument_by_code(db, symbol)
+        if not inst:
+            return _build_error_result("标的不存在", {"symbol": symbol})
 
-        security_type = security.security_type or SecurityType.Equity.value
-        list_dt = security.list_date
+        market_layer = instrument_type_to_market_layer(inst.instrument_type)
+        list_dt = inst.open_date
         if list_dt:
             start_date = list_dt.strftime("%Y-%m-%d")
         else:
@@ -409,9 +410,9 @@ def _update_single_security_all_data_core(
         t_total = time.perf_counter()
         # 仅抓取日线；周线/月线在日线更新后由 rebuild_weekly_monthly_from_daily 根据日线合并生成
         t_daily = time.perf_counter()
-        daily_result = _update_single_security_kdata_core(
+        daily_result = _update_single_instrument_kdata_core(
             adapter=adapter,
-            security_type=security_type,
+            market_layer=market_layer,
             symbol=symbol,
             period="1d",
             start_date=start_date,
@@ -420,14 +421,14 @@ def _update_single_security_all_data_core(
         )
         logger.info("全量更新: symbol=%s, 日线完成 rows=%s, 耗时 %s", symbol, daily_result.get("rows", 0), _elapsed(t_daily))
         # 周/月行数从重建后的 parquet 统计（日线更新时已触发重建）
-        weekly_result = {"rows": len(get_weekly(security_type, symbol, None, None, force_update=False, adapter=None))}
-        monthly_result = {"rows": len(get_monthly(security_type, symbol, None, None, force_update=False, adapter=None))}
+        weekly_result = {"rows": len(get_weekly(market_layer, symbol, None, None, force_update=False, adapter=None))}
+        monthly_result = {"rows": len(get_monthly(market_layer, symbol, None, None, force_update=False, adapter=None))}
 
         t_ticks = time.perf_counter()
         # 默认只联动抓最后一天的 tick，不再全量补全
-        tick_result = _update_single_security_tick_last_day_core(
+        tick_result = _update_single_instrument_tick_last_day_core(
             adapter=adapter,
-            security_type=security_type,
+            market_layer=market_layer,
             symbol=symbol,
             force_update=force_update,
         )
@@ -435,9 +436,9 @@ def _update_single_security_all_data_core(
 
         # 除权数据：全量更新时一并拉取除权信息，写入 divid_factors.parquet
         t_divid = time.perf_counter()
-        divid_result = _update_single_security_divid_factors_core(
+        divid_result = _update_single_instrument_divid_factors_core(
             adapter=adapter,
-            security_type=security_type,
+            market_layer=market_layer,
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
@@ -450,7 +451,7 @@ def _update_single_security_all_data_core(
             "success": True,
             "message": "更新完成",
             "symbol": symbol,
-            "security_type": security_type,
+            "market_layer": market_layer,
             "daily": daily_result.get("rows", 0),
             "weekly": weekly_result.get("rows", 0),
             "monthly": monthly_result.get("rows", 0),
@@ -461,9 +462,9 @@ def _update_single_security_all_data_core(
         db.close()
 
 
-def _update_single_security_divid_factors_core(
+def _update_single_instrument_divid_factors_core(
     adapter: Any,
-    security_type: str,
+    market_layer: str,
     symbol: str,
     start_date: Optional[str],
     end_date: Optional[str],
@@ -491,7 +492,7 @@ def _update_single_security_divid_factors_core(
         else:
             rows_count = int(len(df))
 
-        security_dir = get_security_dir(security_type, symbol)
+        security_dir = get_instrument_dir(market_layer, symbol)
         path = get_divid_factors_path(security_dir)
         security_dir.mkdir(parents=True, exist_ok=True)
         df.to_parquet(path, index=False)
@@ -522,8 +523,8 @@ def _update_single_security_divid_factors_core(
         return _build_error_result("更新除权数据异常", {"symbol": symbol})
 
 
-@celery_app.task(bind=True, name="task_update_single_security_divid_factors")
-def task_update_single_security_divid_factors(
+@celery_app.task(bind=True, name="task_update_single_instrument_divid_factors")
+def task_update_single_instrument_divid_factors(
     self,
     symbol: str,
     source_type: str = "qmt",
@@ -540,13 +541,13 @@ def task_update_single_security_divid_factors(
     db = SessionLocal()
     try:
         t0 = time.perf_counter()
-        security = security_service.get_security_by_symbol(db, symbol)
-        if not security:
-            result = _build_error_result("证券不存在", {"symbol": symbol})
-            self.update_state(state="SUCCESS", meta={"status": "证券不存在", "result": result})
+        inst = instrument_service.get_instrument_by_code(db, symbol)
+        if not inst:
+            result = _build_error_result("标的不存在", {"symbol": symbol})
+            self.update_state(state="SUCCESS", meta={"status": "标的不存在", "result": result})
             return result
 
-        security_type = security.security_type or SecurityType.Equity.value
+        market_layer = instrument_type_to_market_layer(inst.instrument_type)
 
         adapter, err = _resolve_adapter(db, source_type, source_id)
         if err is not None:
@@ -555,9 +556,9 @@ def task_update_single_security_divid_factors(
             return result
 
         # 默认不指定时间范围时，数据源会返回全部除权数据
-        result = _update_single_security_divid_factors_core(
+        result = _update_single_instrument_divid_factors_core(
             adapter=adapter,
-            security_type=security_type,
+            market_layer=market_layer,
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
@@ -577,8 +578,8 @@ def task_update_single_security_divid_factors(
         db.close()
 
 
-@celery_app.task(bind=True, name="task_update_single_security_all_data")
-def task_update_single_security_all_data(
+@celery_app.task(bind=True, name="task_update_single_instrument_all_data")
+def task_update_single_instrument_all_data(
     self,
     symbol: str,
     source_type: str = "qmt",
@@ -593,7 +594,7 @@ def task_update_single_security_all_data(
             meta={"current": 0, "total": 0, "status": "开始更新 K 线与分时数据..."},
         )
 
-        result = _update_single_security_all_data_core(
+        result = _update_single_instrument_all_data_core(
             symbol=symbol,
             source_type=source_type,
             source_id=source_id,
@@ -615,10 +616,10 @@ def task_update_single_security_all_data(
         raise
 
 
-@celery_app.task(bind=True, name="task_update_bulk_security_all_data")
-def task_update_bulk_security_all_data(
+@celery_app.task(bind=True, name="task_update_bulk_instrument_all_data")
+def task_update_bulk_instrument_all_data(
     self,
-    security_type: str,
+    market_layer: str,
     symbols: Optional[List[str]] = None,
     source_type: str = "qmt",
     source_id: Optional[int] = None,
@@ -629,16 +630,16 @@ def task_update_bulk_security_all_data(
     try:
         t_batch = time.perf_counter()
         if symbols is None:
-            from app.models.security import Security
-
-            q = db.query(Security).filter(
-                Security.is_active == 1,
-                Security.security_type == security_type,
-            )
-            symbols = [s.symbol for s in q.all()]
+            q = db.query(Instrument).filter(Instrument.is_active.is_(True))
+            try:
+                cat = MarketLayer(market_layer)
+            except ValueError:
+                cat = MarketLayer.Equity
+            q = instrument_service.filter_by_market_layer(q, cat)
+            symbols = [r.code for r in q.all()]
 
         total = len(symbols)
-        logger.info("批量全量更新: 启动 security_type=%s, total=%s", security_type, total)
+        logger.info("批量全量更新: 启动 market_layer=%s, total=%s", market_layer, total)
         current = 0
         for symbol in symbols:
             current += 1
@@ -652,7 +653,7 @@ def task_update_bulk_security_all_data(
                 },
             )
             # 在当前 worker 中串行执行单证券更新（调用核心逻辑，避免嵌套 Celery 状态存储导致 task_id 为空）
-            _update_single_security_all_data_core(
+            _update_single_instrument_all_data_core(
                 symbol=symbol,
                 source_type=source_type,
                 source_id=source_id,
@@ -660,11 +661,11 @@ def task_update_bulk_security_all_data(
             )
             logger.info("批量全量更新: 单券完成 %s/%s symbol=%s, 耗时 %s", current, total, symbol, _elapsed(t_one))
 
-        logger.info("批量全量更新: 全部完成 security_type=%s, total=%s, 总耗时 %s", security_type, total, _elapsed(t_batch))
+        logger.info("批量全量更新: 全部完成 market_layer=%s, total=%s, 总耗时 %s", market_layer, total, _elapsed(t_batch))
         result = {
             "success": True,
             "message": "批量更新完成",
-            "security_type": security_type,
+            "market_layer": market_layer,
             "total": total,
         }
         self.update_state(

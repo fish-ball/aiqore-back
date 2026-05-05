@@ -1,28 +1,21 @@
 # -*- coding: utf-8 -*-
-"""数据源通用枚举：市场、周期等（证券大类见 app.models.security.SecurityType）。"""
+"""数据源通用枚举：行情分层类别、K 线周期等。"""
 from __future__ import annotations
 
 from enum import Enum
 
-from app.models.security import SecurityType
-
-__all__ = ["MarketCode", "ExchangeCode", "SecurityType", "BarPeriod"]
+__all__ = ["MarketLayer", "BarPeriod"]
 
 
-class MarketCode(str, Enum):
-    """常见市场代码（沪深北等地域/交易所后缀）。"""
+class MarketLayer(str, Enum):
+    """
+    行情与缓存分层用的三大类（非数据库字段）。
+    与 DB instruments.instrument_type 的对应关系见 instrument_type_to_market_layer。
+    """
 
-    SH = "SH"
-    SZ = "SZ"
-    BJ = "BJ"
-
-
-class ExchangeCode(str, Enum):
-    """常见沪深北证券交易所代码（接口参数等场景）。"""
-
-    SSE = "SSE"
-    SZSE = "SZSE"
-    BSE = "BSE"
+    Equity = "Equity"
+    Future = "Future"
+    Option = "Option"
 
 
 class BarPeriod(str, Enum):

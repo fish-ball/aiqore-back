@@ -70,16 +70,7 @@ from app.models import (
     Account,
     Trade,
     Position,
-    Security,
-    SecuritySourceQmt,
-    SecurityTradingRules,
-    SecurityQuoteSnapshot,
-    SecurityStock,
-    SecurityFund,
-    SecurityBond,
-    SecurityConvertible,
-    SecurityOption,
-    SecurityFuture,
+    Instrument,
     Sector,
 )
 

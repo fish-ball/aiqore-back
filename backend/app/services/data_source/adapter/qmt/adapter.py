@@ -13,9 +13,9 @@ from app.services.data_source.adapter.qmt.native.maintain import download_histor
 from app.services.data_source.adapter.qmt.futures_impl import QMTFuturesMixin
 from app.services.data_source.adapter.qmt.options_impl import QMTOptionMixin
 from app.services.data_source.adapter.qmt.stock_impl import QMTStockLikeMixin
-from app.services.data_source.adapter.qmt.symbol_kind import infer_security_type
+from app.services.data_source.adapter.qmt.symbol_kind import infer_market_layer
 from app.services.data_source.adapter.qmt.mappings import to_xtdata_time
-from app.services.data_source.models.enums import SecurityType
+from app.services.data_source.models.enums import MarketLayer
 from app.services.data_source.models.kline import KlineBar
 from app.services.data_source.models.quote import RealtimeQuote
 
@@ -83,10 +83,10 @@ class QMTAdapter(
         end_time: Optional[str] = None,
     ) -> Optional[List[KlineBar]]:
         """K 线数据，按证券类型分派到对应实现。"""
-        kind = infer_security_type(symbol)
-        if kind == SecurityType.Future:
+        kind = infer_market_layer(symbol)
+        if kind == MarketLayer.Future:
             return self._get_klines_futures(symbol, period, count, start_time, end_time)
-        if kind == SecurityType.Option:
+        if kind == MarketLayer.Option:
             return self._get_klines_option(symbol, period, count, start_time, end_time)
         return self._get_klines_stock_like(symbol, period, count, start_time, end_time)
 

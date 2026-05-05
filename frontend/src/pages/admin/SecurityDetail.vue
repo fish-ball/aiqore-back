@@ -98,8 +98,8 @@ import KlineChart from '../components/diagram/KlineChart.vue'
 
 const dataSourceStore = useDataSourceStore()
 
-const securityResource = api('security')
-const securityUpdateDataResource = api('security/update-data')
+const securityResource = api('instrument')
+const securityUpdateDataResource = api('instrument/update-data')
 const marketQuoteResource = api('market/quote')
 const marketKlineResource = api('market/kline')
 const marketTicksResource = api('market/ticks')
@@ -1074,7 +1074,7 @@ async function doUpdateData(silent = false) {
   }
   updateDataLoading.value = true
   try {
-    const udBody = { symbol: s, source_type: sourceType }
+    const udBody = { code: s, source_type: sourceType }
     if (sourceId != null && sourceId !== '') udBody.source_id = Number(sourceId)
     const postResp = await securityUpdateDataResource.post({}, udBody)
     const res = postResp.data

@@ -1,8 +1,8 @@
 <template>
-  <ListView v-bind="listViewOptions">
+  <ListView ref="listViewRef" v-bind="listViewOptions">
     <template #sector_name_link_cell="{ row }">
-      <el-link type="primary" @click="viewSectorSecurities(row.name)">
-        {{ row.display_name || row.name }}
+      <el-link type="primary" @click="viewSectorSecurities(row.alias)">
+        {{ row.name }}
       </el-link>
     </template>
     <template #sector_category_cell="{ row }">
@@ -24,15 +24,17 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import axios from 'axios'
 import ListView from '../../components/ListViewNoRouteSync.vue'
 import { api } from '@iottest/vue-core/src/libs/api'
 
 const router = useRouter()
+const listViewRef = ref(null)
 const sectorSyncResource = api('sector/sync')
-const securityUpdateResource = api('security/update')
+const securityUpdateResource = api('instrument/update')
 
 const formatDateValue = (value) => {
   if (!value) return '--'
@@ -52,28 +54,51 @@ const getCategoryTagType = (category) => {
   return typeMap[category]
 }
 
-const viewSectorSecurities = (sectorName) => {
+const viewSectorSecurities = (sectorAlias) => {
   router.push({
-    name: 'admin-securities',
-    query: { sector: sectorName },
+    name: 'admin-instruments-old',
+    query: { sector: sectorAlias },
   })
 }
 
-const syncSectorSecurities = async (sectorName) => {
+const syncSectorSecurities = async (sectorAlias) => {
   try {
-    await ElMessageBox.confirm(`确定要同步板块 "${sectorName}" 的证券吗？`, '确认同步', {
+    await ElMessageBox.confirm(`确定要同步板块 "${sectorAlias}" 的证券吗？`, '确认同步', {
       type: 'warning',
     })
   } catch (e) {
     if (e === 'cancel') return
     throw e
   }
-  const uResp = await securityUpdateResource.post({}, { source_type: 'qmt', sector: sectorName })
+  const uResp = await securityUpdateResource.post({}, { source_type: 'qmt', sector: sectorAlias })
   const result = uResp.data
   if (result && result.task_id) {
     ElMessage.success('同步任务已提交，请查看任务列表')
   } else {
     ElMessage.error('提交同步任务失败')
+  }
+}
+
+const editSectorRemark = async (item) => {
+  const alias = item?.alias
+  if (!alias) return
+  try {
+    const { value } = await ElMessageBox.prompt('请输入该板块的备注信息', '编辑备注', {
+      confirmButtonText: '保存',
+      cancelButtonText: '取消',
+      inputValue: item.remark || '',
+      inputType: 'textarea',
+      customClass: 'sector-remark-prompt',
+    })
+    const trimmed = typeof value === 'string' ? value.trim() : ''
+    await axios.patch(`/api/sector/${encodeURIComponent(alias)}`, {
+      remark: trimmed.length ? trimmed : null,
+    })
+    ElMessage.success('备注已保存')
+    await listViewRef.value?.reload()
+  } catch (e) {
+    if (e === 'cancel') return
+    ElMessage.error(e?.response?.data?.detail || e?.message || '保存失败')
   }
 }
 
@@ -102,15 +127,21 @@ const listViewOptions = reactive({
     canEdit: false,
     canDelete: false,
     inlineEdit: false,
-    actionColumnWidth: 220,
+    actionColumnWidth: 300,
   },
   elTableProps: {
     height: 600,
   },
   fields: [
     {
+      key: 'alias',
+      label: '别名',
+      width: 160,
+      elTableColumnProps: { sortable: true },
+    },
+    {
       key: 'name',
-      label: '板块名称',
+      label: '显示名称',
       width: 200,
       slotName: 'sector_name_link',
       elTableColumnProps: { sortable: true },
@@ -166,6 +197,13 @@ const listViewOptions = reactive({
       filter: (value) => formatDateValue(value),
       elTableColumnProps: { sortable: true },
     },
+    {
+      key: 'remark',
+      label: '备注',
+      minWidth: 160,
+      filter: (value) => (value && String(value).trim() ? String(value) : '--'),
+      elTableColumnProps: { sortable: false, showOverflowTooltip: true },
+    },
   ],
   listActions: [
     {
@@ -176,14 +214,19 @@ const listViewOptions = reactive({
   ],
   actions: [
     {
+      label: '编辑备注',
+      buttonType: 'default',
+      action: async (item) => editSectorRemark(item),
+    },
+    {
       label: '同步证券',
       buttonType: 'primary',
-      action: async (item) => syncSectorSecurities(item?.name),
+      action: async (item) => syncSectorSecurities(item?.alias),
     },
     {
       label: '查看证券',
       buttonType: 'info',
-      action: (item) => viewSectorSecurities(item?.name),
+      action: (item) => viewSectorSecurities(item?.alias),
     },
   ],
 })

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from app.services.data_source.models.enums import SecurityType
+from app.services.data_source.models.enums import MarketLayer
 from app.services.data_source.models.instrument import InstrumentBrief
 from app.services.data_source.models.kline import KlineBar
 from app.services.data_source.models.quote import RealtimeQuote
@@ -17,7 +17,7 @@ class KlineDataResponse(BaseModel):
 
     symbol: str
     period: str
-    security_type: SecurityType
+    market_layer: MarketLayer
     bars: List[KlineBar] = Field(default_factory=list)
 
 
@@ -28,7 +28,7 @@ class RealtimeQuoteBatchResponse(BaseModel):
 
 
 class InstrumentListResponse(BaseModel):
-    """证券列表。"""
+    """标的列表。"""
 
     items: List[InstrumentBrief] = Field(default_factory=list)
 

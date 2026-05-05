@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from app.services.data_source.models.enums import SecurityType
+from app.services.data_source.models.enums import MarketLayer
 
 
 class KlineQuery(BaseModel):
@@ -17,9 +17,9 @@ class KlineQuery(BaseModel):
     count: int = 100
     start_time: Optional[str] = Field(None, description="YYYY-MM-DD 或 HH:MM:SS 组合")
     end_time: Optional[str] = None
-    security_type: Optional[SecurityType] = Field(
+    market_layer: Optional[MarketLayer] = Field(
         None,
-        description="显式指定证券大类；未指定时由 symbol 推断",
+        description="显式指定行情分层（Equity/Future/Option）；未指定时由 symbol 推断",
     )
 
 
@@ -28,7 +28,7 @@ class TickQuery(BaseModel):
 
     symbol: str
     trade_date: str = Field(..., description="YYYYMMDD 或 YYYY-MM-DD")
-    security_type: Optional[SecurityType] = None
+    market_layer: Optional[MarketLayer] = None
 
 
 class DividFactorsQuery(BaseModel):

@@ -1,7 +1,7 @@
 """任务规格注册表
 
 用于对外暴露可调用任务的说明、参数定义等结构化信息。
-目前主要覆盖证券数据相关的 Celery 任务。
+目前主要覆盖标的行情数据相关的 Celery 任务。
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ class TaskSpec(BaseModel):
     celery_name: str  # 对应 Celery 任务名称
     title: str  # 任务中文名称/标题
     description: Optional[str] = None  # 任务用途说明
-    category: Optional[str] = None  # 任务分类（如：证券数据）
+    category: Optional[str] = None  # 任务分类（如：instrument）
     params: List[TaskParamSpec] = []
 
 
@@ -39,14 +39,14 @@ def _register(spec: TaskSpec) -> None:
     _TASK_SPECS[spec.name] = spec
 
 
-# === 证券数据相关任务 ===
+# === 标的行情数据相关任务 ===
 _register(
     TaskSpec(
-        name="update_bulk_security_info",
-        celery_name="task_update_bulk_security_info",
+        name="update_bulk_instrument_info",
+        celery_name="task_update_bulk_instrument_info",
         title="批量更新证券基础信息",
         description="从指定数据源批量同步证券列表及基础信息到数据库。",
-        category="security",
+        category="instrument",
         params=[
             TaskParamSpec(
                 name="market",
@@ -82,11 +82,11 @@ _register(
 
 _register(
     TaskSpec(
-        name="update_single_security_all_data",
-        celery_name="task_update_single_security_all_data",
+        name="update_single_instrument_all_data",
+        celery_name="task_update_single_instrument_all_data",
         title="更新单个证券全量数据",
         description="更新单个证券的日/周/月 K 线、全部分时数据以及除权数据。",
-        category="security",
+        category="instrument",
         params=[
             TaskParamSpec(
                 name="symbol",
@@ -121,11 +121,11 @@ _register(
 
 _register(
     TaskSpec(
-        name="update_single_security_kdata",
-        celery_name="task_update_single_security_kdata",
+        name="update_single_instrument_kdata",
+        celery_name="task_update_single_instrument_kdata",
         title="更新单个证券某周期 K 线",
         description="更新单个证券在指定周期内的 K 线数据（1d/1w/1M）。",
-        category="security",
+        category="instrument",
         params=[
             TaskParamSpec(
                 name="symbol",
@@ -134,7 +134,7 @@ _register(
                 description="证券代码，例如 000001.SZ。",
             ),
             TaskParamSpec(
-                name="security_type",
+                name="market_layer",
                 type="string",
                 required=True,
                 description="证券大类：Equity（权益类）、Future（期货类）、Option（期权类）。",
@@ -186,11 +186,11 @@ _register(
 
 _register(
     TaskSpec(
-        name="update_single_security_tick_for_date",
-        celery_name="task_update_single_security_tick_for_date",
+        name="update_single_instrument_tick_for_date",
+        celery_name="task_update_single_instrument_tick_for_date",
         title="更新单个证券某日分时",
         description="拉取并落盘单个证券在指定交易日的分时数据。",
-        category="security",
+        category="instrument",
         params=[
             TaskParamSpec(
                 name="symbol",
@@ -205,7 +205,7 @@ _register(
                 description="交易日，格式 YYYY-MM-DD 或 YYYYMMDD。",
             ),
             TaskParamSpec(
-                name="security_type",
+                name="market_layer",
                 type="string",
                 required=True,
                 description="证券大类：Equity（权益类）、Future（期货类）、Option（期权类）。",
@@ -237,11 +237,11 @@ _register(
 
 _register(
     TaskSpec(
-        name="update_single_security_tick_full",
-        celery_name="task_update_single_security_tick_full",
+        name="update_single_instrument_tick_full",
+        celery_name="task_update_single_instrument_tick_full",
         title="补全单个证券全部分时",
         description="按日线 parquet 中的交易日补全该证券的全部分时数据。",
-        category="security",
+        category="instrument",
         params=[
             TaskParamSpec(
                 name="symbol",
@@ -250,7 +250,7 @@ _register(
                 description="证券代码，例如 000001.SZ。",
             ),
             TaskParamSpec(
-                name="security_type",
+                name="market_layer",
                 type="string",
                 required=True,
                 description="证券大类：Equity（权益类）、Future（期货类）、Option（期权类）。",
@@ -282,14 +282,14 @@ _register(
 
 _register(
     TaskSpec(
-        name="update_bulk_security_all_data",
-        celery_name="task_update_bulk_security_all_data",
+        name="update_bulk_instrument_all_data",
+        celery_name="task_update_bulk_instrument_all_data",
         title="批量更新证券全量数据",
         description="批量更新指定类型证券（或给定列表）的日/周/月 K 线、分时数据以及除权数据。",
-        category="security",
+        category="instrument",
         params=[
             TaskParamSpec(
-                name="security_type",
+                name="market_layer",
                 type="string",
                 required=True,
                 description="证券大类：Equity、Future、Option；与 symbols 配合筛选待更新标的。",
@@ -299,7 +299,7 @@ _register(
                 type="array[string]",
                 required=False,
                 default=None,
-                description="待更新的证券代码列表；为空则更新该 security_type 下全部有效证券。",
+                description="待更新的标的代码列表；为空则更新该 market_layer 下全部有效标的。",
             ),
             TaskParamSpec(
                 name="source_type",
@@ -328,11 +328,11 @@ _register(
 
 _register(
     TaskSpec(
-        name="update_single_security_divid_factors",
-        celery_name="task_update_single_security_divid_factors",
+        name="update_single_instrument_divid_factors",
+        celery_name="task_update_single_instrument_divid_factors",
         title="更新单个证券除权数据",
         description="拉取并落盘单个证券的除权数据，写入对应目录的 divid_factors.parquet。",
-        category="security",
+        category="instrument",
         params=[
             TaskParamSpec(
                 name="symbol",

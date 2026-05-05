@@ -1,9 +1,19 @@
 // 证券与行情相关类型定义
 
-export type MarketCode = 'SH' | 'SZ' | string
+export type MarketCode = 'SH' | 'SZ' | 'BJ' | string
 
-/** 证券大类，与后端 securities.security_type 一致 */
-export type SecurityTypeCode = 'Equity' | 'Future' | 'Option'
+/** 资产大类，与后端 instruments.asset_class 一致 */
+export type AssetClassCode = 'EQUITY' | 'FIXED_INCOME' | 'COMMODITY'
+
+/** 标的类型，与后端 instruments.instrument_type 一致 */
+export type InstrumentTypeCode =
+  | 'STOCK'
+  | 'FUND'
+  | 'INDEX'
+  | 'FUTURE'
+  | 'OPTION'
+  | 'BOND'
+  | 'ETF'
 
 /** 交易所摘要（嵌套在证券接口中） */
 export interface ExchangeBrief {
@@ -15,13 +25,13 @@ export interface ExchangeBrief {
 }
 
 export interface Security {
-  symbol: string
+  code: string
   name?: string
-  market: MarketCode
+  market?: MarketCode
   exchange_code?: string
   exchange?: ExchangeBrief | null
-  /** 证券大类（列表/详情接口可能返回） */
-  security_type?: SecurityTypeCode
+  asset_class?: AssetClassCode
+  instrument_type?: InstrumentTypeCode
 }
 
 export interface SecurityQuote {
@@ -41,12 +51,13 @@ export interface SecurityQuote {
 
 // 列表页展示的一行数据（证券基础信息 + 行情）
 export interface SecurityTableRow {
-  symbol: string
+  code: string
   name: string
   market: MarketCode
   exchange_code?: string
   exchange?: ExchangeBrief | null
-  security_type?: SecurityTypeCode
+  asset_class?: AssetClassCode
+  instrument_type?: InstrumentTypeCode
   last_price: number
   open: number
   high: number
@@ -57,4 +68,3 @@ export interface SecurityTableRow {
   change: number
   change_percent: number
 }
-

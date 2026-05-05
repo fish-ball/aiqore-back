@@ -1,5 +1,5 @@
 """
-证券同步统一入口：按 source_type/source_id 解析连接，通过 adapter 包抽象接口取数并写库。
+标的同步统一入口：按 source_type/source_id 解析连接，通过 adapter 包抽象接口取数并写库。
 不在本模块依赖具体 Adapter 实现，仅通过 data_source 模型 source_type 枚举路由到适配器。
 """
 import logging
@@ -44,7 +44,7 @@ def _get_default_qmt_config() -> Dict[str, Any]:
     }
 
 
-def sync_securities(
+def sync_instruments(
     db: Session,
     source_type: str = "qmt",
     source_id: Optional[int] = None,
@@ -52,8 +52,8 @@ def sync_securities(
     sector: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    从指定数据源同步证券到数据库。
-    使用抽象层适配器取数，再调用 security_service.update_securities_from_data 写库。
+    从指定数据源同步标的到数据库。
+    使用抽象层适配器取数，再调用 instrument_service.update_instruments_from_data 写库。
     """
     config: Optional[Dict[str, Any]] = None
     if source_type == "qmt":
@@ -135,8 +135,8 @@ def sync_securities(
             "sector": row.get("sector", ""),
             "detail": detail,
         })
-    from app.services.security_service import security_service
-    return security_service.update_securities_from_data(db, with_details)
+    from app.services.instrument_service import instrument_service
+    return instrument_service.update_instruments_from_data(db, with_details)
 
 
 def _resolve_config(
@@ -184,14 +184,14 @@ def _resolve_config(
     return config, None
 
 
-def sync_single_security(
+def sync_single_instrument(
     db: Session,
     symbol: str,
     source_type: str = "qmt",
     source_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
-    从指定数据源同步单个证券到数据库（同步执行，供单证券更新使用）。
+    从指定数据源同步单个标的到数据库（同步执行，供单行更新使用）。
     symbol 可为带后缀的 000001.SZ 或 000001，market 从后缀推断，无则默认 SH。
     """
     resolved, err = _resolve_config(db, source_type, source_id)
@@ -219,5 +219,5 @@ def sync_single_security(
             "detail": detail,
         }
     ]
-    from app.services.security_service import security_service
-    return security_service.update_securities_from_data(db, with_details)
+    from app.services.instrument_service import instrument_service
+    return instrument_service.update_instruments_from_data(db, with_details)

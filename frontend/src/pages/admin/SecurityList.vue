@@ -131,14 +131,14 @@
             <div class="filter-options">
               <el-button
                 v-for="sector in sectorsList"
-                :key="sector.name"
-                :type="activeSector === sector.name ? 'primary' : 'default'"
-                :plain="activeSector !== sector.name"
+                :key="sector.alias"
+                :type="activeSector === sector.alias ? 'primary' : 'default'"
+                :plain="activeSector !== sector.alias"
                 size="small"
-                @click="handleSectorChange(sector.name)"
+                @click="handleSectorChange(sector.alias)"
                 class="filter-btn"
               >
-                {{ sector.display_name || sector.name }}
+                {{ sector.name }}
                 <span class="sector-count">({{ sector.security_count || 0 }})</span>
               </el-button>
             </div>
@@ -223,14 +223,14 @@
         stripe
         height="600"
       >
-        <el-table-column prop="symbol" label="代码" width="120" sortable="custom" fixed="left">
+        <el-table-column prop="code" label="代码" width="120" sortable="custom" fixed="left">
           <template #default="scope">
-            <span class="symbol-link">{{ scope.row.symbol }}</span>
+            <span class="symbol-link">{{ scope.row.code }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="name" label="名称" width="150" sortable="custom" fixed="left">
           <template #default="scope">
-            {{ scope.row.name || scope.row.symbol || '--' }}
+            {{ scope.row.name || scope.row.code || '--' }}
           </template>
         </el-table-column>
         <el-table-column prop="market" label="市场" width="80" sortable="custom">
@@ -308,7 +308,7 @@
               type="primary"
               link
               size="small"
-              :loading="updatingSymbol === scope.row.symbol"
+              :loading="updatingSymbol === scope.row.code"
               :disabled="!dataSourceStore.currentId"
               @click="updateOneSecurity(scope.row)"
             >
@@ -342,11 +342,11 @@ import type { Pagination } from '../../types/common'
 import type { Sector, SectorCategoryGrouped } from '../../types/sector'
 import type { Security, SecurityQuote, SecurityTableRow } from '../../types/security'
 
-const securityListResource = api('security/list')
-const securitySearchResource = api('security/search')
-const securityBySymbolResource = api('security')
-const securityUpdateResource = api('security/update')
-const securityUpdateOneResource = api('security/update-one')
+const securityListResource = api('instrument/list')
+const securitySearchResource = api('instrument/search')
+const securityBySymbolResource = api('instrument')
+const securityUpdateResource = api('instrument/update')
+const securityUpdateOneResource = api('instrument/update-one')
 const marketQuoteResource = api('market/quote')
 const sectorListResource = api('sector/list')
 
@@ -521,14 +521,14 @@ const fetchSecurities = async () => {
     const securities = response.results || []
     
     // 获取所有证券代码
-    const symbols = securities.map(s => s.symbol)
-    
+    const codes = securities.map((s) => s.code)
+
     // 分批获取实时行情（每批50个，避免URL过长）
     const quotesMap: Record<string, SecurityQuote> = {}
-    if (symbols.length > 0) {
+    if (codes.length > 0) {
       const batchSize = 50
-      for (let i = 0; i < symbols.length; i += batchSize) {
-        const batch = symbols.slice(i, i + batchSize)
+      for (let i = 0; i < codes.length; i += batchSize) {
+        const batch = codes.slice(i, i + batchSize)
         const symbolsStr = batch.join(',')
         try {
           const qResp = await marketQuoteResource.get({}, { symbols: symbolsStr })
@@ -546,14 +546,15 @@ const fetchSecurities = async () => {
     
     // 合并数据
     tableData.value = securities.map((security) => {
-      const quote: SecurityQuote = quotesMap[security.symbol] || {}
+      const quote: SecurityQuote = quotesMap[security.code] || {}
       return {
-        symbol: security.symbol,
+        code: security.code,
         name: security.name || quote.name || '',
-        market: security.market,
+        market: (security.market || '') as SecurityTableRow['market'],
         exchange_code: security.exchange_code,
         exchange: security.exchange,
-        security_type: security.security_type,
+        asset_class: security.asset_class,
+        instrument_type: security.instrument_type,
         last_price: quote.last_price || 0,
         open: quote.open || 0,
         high: quote.high || 0,
@@ -587,13 +588,13 @@ const handleSearch = async () => {
     const securities = sResp.data as Security[]
     
     if (securities.length > 0) {
-      const symbols = securities.map((s) => s.symbol)
-      
+      const codes = securities.map((s) => s.code)
+
       // 分批获取行情
       const quotesMap: Record<string, SecurityQuote> = {}
       const batchSize = 50
-      for (let i = 0; i < symbols.length; i += batchSize) {
-        const batch = symbols.slice(i, i + batchSize)
+      for (let i = 0; i < codes.length; i += batchSize) {
+        const batch = codes.slice(i, i + batchSize)
         const symbolsStr = batch.join(',')
         try {
           const qResp = await marketQuoteResource.get({}, { symbols: symbolsStr })
@@ -609,14 +610,15 @@ const handleSearch = async () => {
       }
       
       tableData.value = securities.map<SecurityTableRow>((security) => {
-        const quote: SecurityQuote = quotesMap[security.symbol] || {}
+        const quote: SecurityQuote = quotesMap[security.code] || {}
         return {
-          symbol: security.symbol,
+          code: security.code,
           name: security.name || quote.name || '',
-          market: security.market,
+          market: (security.market || '') as SecurityTableRow['market'],
           exchange_code: security.exchange_code,
           exchange: security.exchange,
-          security_type: security.security_type,
+          asset_class: security.asset_class,
+          instrument_type: security.instrument_type,
           last_price: quote.last_price || 0,
           open: quote.open || 0,
           high: quote.high || 0,
@@ -645,14 +647,14 @@ const handleSearch = async () => {
 
 // 根据显示名或名称查找板块的 name（用于快捷筛选与下方板块选项等价）
 const getSectorNameByLabel = (label: string) => {
-  let s = sectors.value.find((item) => (item.display_name || item.name) === label)
+  let s = sectors.value.find((item) => item.name === label || item.alias === label)
   if (!s) {
     s = sectors.value.find((item) => {
-      const dn = item.display_name || item.name || ''
+      const dn = item.name || item.alias || ''
       return dn.includes(label)
     })
   }
-  return s ? s.name : null
+  return s ? s.alias : null
 }
 
 // 当前是否处于某快捷筛选项（与下方板块筛选项一致：A股=沪深A股，上证=上证A股，深证=深证A股）
@@ -726,8 +728,8 @@ const handlePageChange = () => {
 
 const handleRowDoubleClick = (row: SecurityTableRow) => {
   router.push({
-    name: 'admin-security-detail',
-    params: { symbol: row.symbol },
+    name: 'admin-instrument-detail',
+    params: { symbol: row.code },
   })
 }
 
@@ -816,16 +818,16 @@ const updateOneSecurity = async (row: SecurityTableRow) => {
     ElMessage.warning('请先在顶栏选择当前数据源')
     return
   }
-  updatingSymbol.value = row.symbol
+  updatingSymbol.value = row.code
   try {
-    const oneBody: Record<string, unknown> = { symbol: row.symbol, source_type: sourceType() }
+    const oneBody: Record<string, unknown> = { code: row.code, source_type: sourceType() }
     const sidOne = sourceId()
     if (sidOne != null) oneBody.source_id = Number(sidOne)
     await securityUpdateOneResource.post({}, oneBody)
-    ElMessage.success('已更新 ' + (row.name || row.symbol))
-    const idx = tableData.value.findIndex((r) => r.symbol === row.symbol)
+    ElMessage.success('已更新 ' + (row.name || row.code))
+    const idx = tableData.value.findIndex((r) => r.code === row.code)
     if (idx >= 0) {
-      const dResp = await securityBySymbolResource.get({ id: row.symbol }, {})
+      const dResp = await securityBySymbolResource.get({ id: row.code }, {})
       const detail = dResp.data as { name?: string; market?: string } | null
       if (detail) {
         const prev = tableData.value[idx]!

@@ -9,8 +9,7 @@ from app.celery_app import celery_app
 from app.config import settings
 from app.database import SessionLocal
 from app.models.backtest_task import BackTestTask
-from app.models.security import Security
-from app.models.security import SecurityType
+from app.models.instrument import Instrument, instrument_type_to_market_layer
 from app.services.backtest.data_loader import load_daily_for_backtest
 from app.services.backtest.backtrader_engine import BacktraderEngine
 
@@ -36,21 +35,22 @@ def task_run_backtest(self, backtest_task_id: str) -> Dict[str, Any]:
         task.celery_task_id = self.request.id
         db.commit()
 
-        symbol = task.security_symbol or ""
+        symbol = (task.security_symbol or task.instrument_code or "").strip()
         if not symbol:
             task.status = "failure"
-            task.result = {"error": "缺少证券代码"}
+            task.result = {"error": "缺少标的代码"}
             db.commit()
-            return {"success": False, "message": "缺少证券代码"}
+            return {"success": False, "message": "缺少标的代码"}
 
-        security_type = SecurityType.Equity.value
-        if task.security_id is not None:
-            sec = db.query(Security).filter(Security.id == task.security_id).first()
-            if sec and sec.security_type:
-                security_type = sec.security_type
+        market_layer = instrument_type_to_market_layer(None)
+        code_key = (task.instrument_code or symbol).strip()
+        if code_key:
+            sec = db.query(Instrument).filter(Instrument.code == code_key).first()
+            if sec:
+                market_layer = instrument_type_to_market_layer(sec.instrument_type)
 
         df = load_daily_for_backtest(
-            security_type=security_type,
+            market_layer=market_layer,
             symbol=symbol,
             start_date=task.start_date,
             end_date=task.end_date,
@@ -76,16 +76,8 @@ def task_run_backtest(self, backtest_task_id: str) -> Dict[str, Any]:
         db.commit()
         logger.info("回测任务完成: %s", backtest_task_id)
         return {"success": True, "backtest_task_id": backtest_task_id, "result": result}
-    except Exception as e:
+    except Exception:
         logger.exception("回测任务失败: %s", backtest_task_id)
-        try:
-            t = db.query(BackTestTask).filter(BackTestTask.id == backtest_task_id).first()
-            if t:
-                t.status = "failure"
-                t.result = {"error": str(e)}
-                db.commit()
-        except Exception:
-            pass
-        return {"success": False, "message": str(e), "backtest_task_id": backtest_task_id}
+        raise
     finally:
         db.close()

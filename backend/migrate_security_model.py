@@ -1,6 +1,6 @@
-"""执行 Security 模型扩展迁移"""
+"""遗留：曾为 securities 增量加列。请优先使用 alembic；新模型见 instruments。"""
 from app.database import engine, Base
-from app.models.security import Security
+from app.models.instrument import Instrument as Security  # 脚本下文仍用 Security 变量名指代表对象
 from sqlalchemy import text, inspect
 import logging
 
@@ -20,13 +20,17 @@ def execute_migration():
     try:
         # 检查表是否存在
         inspector = inspect(engine)
-        if 'securities' not in inspector.get_table_names():
-            logger.info("securities 表不存在，将创建新表...")
+        table_names = inspector.get_table_names()
+        if "instruments" not in table_names and "securities" not in table_names:
+            logger.info("instruments 表不存在，将创建新表...")
             Base.metadata.create_all(bind=engine, tables=[Security.__table__])
-            logger.info("securities 表创建完成！")
+            logger.info("instruments 表创建完成！")
             return
-        
-        # 需要添加的字段列表
+        if "securities" not in table_names:
+            logger.info("当前库无 securities 表（可能已迁移为 instruments），跳过遗留增量脚本")
+            return
+
+        # 需要添加的字段列表（仅旧 securities 表）
         columns_to_add = [
             ('instrument_type', 'VARCHAR(50)', '标的类型（InstrumentType），如 Stock, Fund, Bond, Future, Option 等'),
             ('exchange_id', 'VARCHAR(20)', '交易所代码（ExchangeID），如 SSE, SZSE 等'),

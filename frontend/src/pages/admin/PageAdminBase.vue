@@ -37,7 +37,7 @@
           >
             <template #default="{ item }">
               <div class="search-item">
-                <span class="symbol">{{ item.symbol }}</span>
+                <span class="symbol">{{ item.code }}</span>
                 <span class="name">{{ item.name }}</span>
                 <span class="market">{{ item.market }}</span>
               </div>
@@ -51,62 +51,62 @@
       </div>
     </el-header>
     
-    <el-container>
+    <el-container class="app-body">
       <el-aside width="200px" class="app-sidebar">
-        <el-menu
-          :default-active="activeMenu"
-          router
-          class="sidebar-menu"
-        >
-          <el-menu-item index="/dashboard">
-            <el-icon><IconOdometer /></el-icon>
-            <span>仪表盘</span>
-          </el-menu-item>
-          <el-menu-item index="/account">
-            <el-icon><IconWallet /></el-icon>
-            <span>账户管理</span>
-          </el-menu-item>
-          <el-menu-item index="/position">
-            <el-icon><IconBox /></el-icon>
-            <span>持仓管理</span>
-          </el-menu-item>
-          <el-menu-item index="/trade">
-            <el-icon><IconDocument /></el-icon>
-            <span>交易记录</span>
-          </el-menu-item>
-          <el-menu-item index="/exchanges">
-            <el-icon><OfficeBuilding /></el-icon>
-            <span>交易所</span>
-          </el-menu-item>
-          <el-menu-item index="/sectors">
-            <el-icon><Grid /></el-icon>
-            <span>板块</span>
-          </el-menu-item>
-          <el-menu-item index="/securities">
-            <el-icon><IconList /></el-icon>
-            <span>证券列表</span>
-          </el-menu-item>
-          <el-menu-item index="/data-sources">
-            <el-icon><IconConnection /></el-icon>
-            <span>数据源连接</span>
-          </el-menu-item>
-          <el-menu-item index="/tasks">
-            <el-icon><IconTimer /></el-icon>
-            <span>任务管理</span>
-          </el-menu-item>
-          <el-menu-item index="/strategies">
-            <el-icon><IconOperation /></el-icon>
-            <span>策略管理</span>
-          </el-menu-item>
-          <el-menu-item index="/backtest-records">
-            <el-icon><IconHistogram /></el-icon>
-            <span>回测记录</span>
-          </el-menu-item>
-          <el-menu-item index="/analysis">
-            <el-icon><IconDataAnalysis /></el-icon>
-            <span>数据分析</span>
-          </el-menu-item>
-        </el-menu>
+        <el-scrollbar class="sidebar-scrollbar" height="100%">
+          <el-menu
+            :default-active="activeMenu"
+            :default-openeds="['account-trade', 'instruments', 'basic-info']"
+            router
+            class="sidebar-menu"
+          >
+            <el-menu-item index="/dashboard">
+              <el-icon><IconOdometer /></el-icon>
+              <span>仪表盘</span>
+            </el-menu-item>
+            <el-sub-menu index="account-trade">
+              <template #title>
+                <el-icon><Money /></el-icon>
+                <span>账户交易</span>
+              </template>
+              <el-menu-item index="/account">账户管理</el-menu-item>
+              <el-menu-item index="/position">持仓管理</el-menu-item>
+              <el-menu-item index="/trade">交易记录</el-menu-item>
+            </el-sub-menu>
+            <el-sub-menu index="instruments">
+              <template #title>
+                <el-icon><Goods /></el-icon>
+                <span>合约标的</span>
+              </template>
+              <el-menu-item index="/instruments/stocks">股票</el-menu-item>
+              <el-menu-item index="/instruments/etf-options">ETF期权</el-menu-item>
+              <el-menu-item index="/instruments/futures">期货</el-menu-item>
+              <el-menu-item index="/instruments/future-options">期货期权</el-menu-item>
+            </el-sub-menu>
+            <el-sub-menu index="basic-info">
+              <template #title>
+                <el-icon><FolderOpened /></el-icon>
+                <span>基础信息</span>
+              </template>
+              <el-menu-item index="/data-sources">数据源连接</el-menu-item>
+              <el-menu-item index="/exchanges">交易所</el-menu-item>
+              <el-menu-item index="/sectors">板块</el-menu-item>
+              <el-menu-item index="/tasks">任务管理</el-menu-item>
+            </el-sub-menu>
+            <el-menu-item index="/instruments_old">
+              <el-icon><IconList /></el-icon>
+              <span>标的列表</span>
+            </el-menu-item>
+            <el-menu-item index="/strategies">
+              <el-icon><IconOperation /></el-icon>
+              <span>策略管理</span>
+            </el-menu-item>
+            <el-menu-item index="/backtest-records">
+              <el-icon><IconHistogram /></el-icon>
+              <span>回测记录</span>
+            </el-menu-item>
+          </el-menu>
+        </el-scrollbar>
       </el-aside>
       
       <el-main class="app-main" :class="{ 'app-main--full': isSecurityDetailPage }">
@@ -119,14 +119,14 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { OfficeBuilding, Grid } from '@element-plus/icons-vue'
+import { Goods, Money, FolderOpened } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '../../stores/account'
 import { useDataSourceStore } from '../../stores/dataSource'
 import { api } from '@iottest/vue-core/src/libs/api'
 
-const securitySearchResource = api('security/search')
+const securitySearchResource = api('instrument/search')
 
 const route = useRoute()
 const router = useRouter()
@@ -143,7 +143,7 @@ onMounted(() => {
 })
 
 const activeMenu = computed(() => route.path)
-const isSecurityDetailPage = computed(() => route.name === 'admin-security-detail' && !!route.params.symbol)
+const isSecurityDetailPage = computed(() => route.name === 'admin-instrument-detail' && !!route.params.symbol)
 const searchKeyword = ref('')
 
 const refreshData = () => {
@@ -164,8 +164,8 @@ const searchSecurities = async (queryString, cb) => {
     if (response && Array.isArray(response)) {
       // 格式化数据供 autocomplete 使用
       const suggestions = response.map(item => ({
-        value: `${item.symbol} ${item.name}`,
-        symbol: item.symbol,
+        value: `${item.code} ${item.name}`,
+        code: item.code,
         name: item.name,
         market: item.market
       }))
@@ -181,10 +181,10 @@ const searchSecurities = async (queryString, cb) => {
 
 // 选择证券
 const handleSelectSecurity = (item) => {
-  if (item && item.symbol) {
+  if (item && item.code) {
     router.push({
-      name: 'admin-security-detail',
-      params: { symbol: item.symbol },
+      name: 'admin-instrument-detail',
+      params: { symbol: item.code },
     })
     searchKeyword.value = ''
   }
@@ -194,6 +194,15 @@ const handleSelectSecurity = (item) => {
 <style scoped>
 .app-container {
   height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 头部以下区域占满剩余高度，侧栏与主区在视口内分配，避免整页被侧栏撑高 */
+.app-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .app-header {
@@ -223,11 +232,27 @@ const handleSelectSecurity = (item) => {
 .app-sidebar {
   background-color: #fff;
   border-right: 1px solid #e4e7ed;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Element Plus 滚动条：菜单超出时在侧栏内纵向滚动 */
+.sidebar-scrollbar {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+/* 仅纵向滚动，避免子菜单展开时出现横向滚动条 */
+.sidebar-scrollbar :deep(.el-scrollbar__wrap) {
+  overflow-x: hidden;
 }
 
 .sidebar-menu {
   border-right: none;
-  height: 100%;
+  min-height: min-content;
 }
 
 .app-main {

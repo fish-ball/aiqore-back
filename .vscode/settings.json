@@ -54,6 +54,14 @@
     "pyproject.toml": "toml",
     "uv.lock": "toml"
   },
+  // 在资源管理器中隐藏 Python 缓存与编译产物（仍存在于磁盘，仅不显示）
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/*.pyo": true,
+    "**/.pytest_cache": true,
+    "**/.mypy_cache": true
+  },
   "python.REPL.enableREPLSmartSend": false
 }
 

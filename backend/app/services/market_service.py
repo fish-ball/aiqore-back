@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 import pandas as pd
 from sqlalchemy.orm import Session
 from app.services.data_source import get_default_qmt_adapter
-from app.services.security_service import security_service
+from app.services.instrument_service import instrument_service
+from app.models.instrument import parse_market_suffix_from_code
 import logging
 
 logger = logging.getLogger(__name__)
@@ -64,9 +65,9 @@ class MarketService:
                 # 如果QMT返回的名称为空，尝试从数据库获取
                 name = str(qd.get("name", "") or "")
                 if not name and db:
-                    security = security_service.get_security_by_symbol(db, symbol)
-                    if security:
-                        name = security.name or ""
+                    inst = instrument_service.get_instrument_by_code(db, symbol)
+                    if inst:
+                        name = inst.name or ""
                 
                 pre_close = float(qd.get("pre_close", 0))
                 last_price = float(qd.get("last_price", 0))
@@ -184,18 +185,19 @@ class MarketService:
             
             # 优先从数据库搜索
             if db:
-                securities = security_service.search_securities(db, keyword, limit=50)
+                securities = instrument_service.search_instruments(db, keyword, limit=50)
                 for security in securities:
                     name = security.name
+                    code = security.code
                     # 如果数据库中的名称为空或等于代码，标记需要从QMT获取
-                    if not name or name == security.symbol or name.strip() == "":
-                        symbols_to_fetch_name.append(security.symbol)
+                    if not name or name == code or name.strip() == "":
+                        symbols_to_fetch_name.append(code)
                         name = ""  # 暂时设为空，稍后从QMT获取
-                    
+
                     results.append({
-                        "symbol": security.symbol,
+                        "code": code,
                         "name": name,
-                        "market": security.market
+                        "market": parse_market_suffix_from_code(code),
                     })
             
             # 如果数据库没有结果，从QMT搜索（Python 3中字符串默认是Unicode）
@@ -211,9 +213,9 @@ class MarketService:
                         name = ""
                     
                     results.append({
-                        "symbol": symbol,
+                        "code": symbol,
                         "name": name,
-                        "market": sd.get("market", "")
+                        "market": sd.get("market", ""),
                     })
             
             # 批量获取缺失的名称（从实时行情）
@@ -227,17 +229,17 @@ class MarketService:
                         if quotes:
                             # 更新结果中的名称（Python 3中字符串默认是Unicode）
                             for result in results:
-                                if not result.get("name") or result["name"] == result["symbol"]:
-                                    symbol = result["symbol"]
-                                    if symbol in quotes:
-                                        quote_name = _quote_name(quotes[symbol])
-                                        if quote_name and quote_name != symbol and quote_name.strip():
+                                if not result.get("name") or result["name"] == result["code"]:
+                                    code = result["code"]
+                                    if code in quotes:
+                                        quote_name = _quote_name(quotes[code])
+                                        if quote_name and quote_name != code and quote_name.strip():
                                             result["name"] = quote_name
-                                    
+
                                     # 如果还是没有名称，尝试从数据库再次获取
-                                    if (not result.get("name") or result["name"] == symbol) and db:
-                                        security = security_service.get_security_by_symbol(db, symbol)
-                                        if security and security.name and security.name != symbol and security.name.strip():
+                                    if (not result.get("name") or result["name"] == code) and db:
+                                        security = instrument_service.get_instrument_by_code(db, code)
+                                        if security and security.name and security.name != code and security.name.strip():
                                             result["name"] = security.name
                 except Exception as e:
                     logger.warning(f"获取证券名称失败: {e}")

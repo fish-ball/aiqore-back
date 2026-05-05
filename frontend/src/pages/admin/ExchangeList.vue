@@ -33,7 +33,7 @@ const viewSecuritiesByMarket = (item: ExchangeRow) => {
     return
   }
   router.push({
-    name: 'admin-securities',
+    name: 'admin-instruments-old',
     query: q,
   })
 }
