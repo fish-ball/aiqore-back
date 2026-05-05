@@ -138,7 +138,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'data-sources',
         name: 'admin-data-sources',
-        component: () => import('./admin/DataSourceConnectionList.vue'),
+        component: () => import('./admin/DataSourceList.vue'),
         meta: {
           title: '数据源连接',
           icon: 'connection',

@@ -5,7 +5,7 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 
 from app.database import get_db
-from app.models.data_source_connection import DataSourceConnection
+from app.models.data_source import DataSource
 from app.libs.data_source.adapter.connection import get_adapter_for_connection
 from app.libs.trader import get_trader_for_connection
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="", tags=["数据源连接"])
 # ---------- Pydantic 模型 ----------
 
 
-class DataSourceConnectionBase(BaseModel):
+class DataSourceBase(BaseModel):
     """数据源连接基础字段"""
     name: str = Field(..., min_length=1, max_length=100, description="显示名称")
     source_type: str = Field(..., description="数据源类型: qmt, joinquant, tushare")
@@ -32,12 +32,12 @@ class DataSourceConnectionBase(BaseModel):
     description: Optional[str] = None
 
 
-class DataSourceConnectionCreate(DataSourceConnectionBase):
+class DataSourceCreate(DataSourceBase):
     """创建数据源连接"""
     pass
 
 
-class DataSourceConnectionUpdate(BaseModel):
+class DataSourceUpdate(BaseModel):
     """更新数据源连接（全部可选）"""
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     source_type: Optional[str] = None
@@ -53,7 +53,7 @@ class DataSourceConnectionUpdate(BaseModel):
     description: Optional[str] = None
 
 
-def _model_to_item(m: DataSourceConnection) -> dict:
+def _model_to_item(m: DataSource) -> dict:
     """ORM 转响应字典（密码不返回）"""
     return {
         "id": m.id,
@@ -81,14 +81,14 @@ def _list_connections_query(
     page: int,
     page_size: int,
 ):
-    q = db.query(DataSourceConnection)
+    q = db.query(DataSource)
     if source_type is not None:
-        q = q.filter(DataSourceConnection.source_type == source_type)
+        q = q.filter(DataSource.source_type == source_type)
     if is_active is not None:
-        q = q.filter(DataSourceConnection.is_active == is_active)
+        q = q.filter(DataSource.is_active == is_active)
     total = q.count()
     offset = (page - 1) * page_size
-    rows = q.order_by(DataSourceConnection.id).offset(offset).limit(page_size).all()
+    rows = q.order_by(DataSource.id).offset(offset).limit(page_size).all()
     return [_model_to_item(r) for r in rows], total
 
 
@@ -119,12 +119,12 @@ async def list_connections_collection(
 
 
 @router.post("/connections")
-async def create_connection(body: DataSourceConnectionCreate, db: Session = Depends(get_db)):
+async def create_connection(body: DataSourceCreate, db: Session = Depends(get_db)):
     """新建数据源连接"""
     if body.source_type not in ("qmt", "joinquant", "tushare"):
         raise HTTPException(status_code=400, detail="source_type 须为 qmt、joinquant、tushare 之一")
     # miniQMT 为本地连接，不需要 host/port，不设默认端口
-    conn = DataSourceConnection(
+    conn = DataSource(
         name=body.name,
         source_type=body.source_type,
         is_active=body.is_active,
@@ -147,7 +147,7 @@ async def create_connection(body: DataSourceConnectionCreate, db: Session = Depe
 @router.get("/connections/{connection_id}")
 async def get_connection(connection_id: int, db: Session = Depends(get_db)):
     """获取单条数据源连接"""
-    conn = db.query(DataSourceConnection).filter(DataSourceConnection.id == connection_id).first()
+    conn = db.query(DataSource).filter(DataSource.id == connection_id).first()
     if not conn:
         raise HTTPException(status_code=404, detail="连接不存在")
     return _model_to_item(conn)
@@ -156,11 +156,11 @@ async def get_connection(connection_id: int, db: Session = Depends(get_db)):
 @router.put("/connections/{connection_id}")
 async def update_connection(
     connection_id: int,
-    body: DataSourceConnectionUpdate,
+    body: DataSourceUpdate,
     db: Session = Depends(get_db),
 ):
     """更新数据源连接"""
-    conn = db.query(DataSourceConnection).filter(DataSourceConnection.id == connection_id).first()
+    conn = db.query(DataSource).filter(DataSource.id == connection_id).first()
     if not conn:
         raise HTTPException(status_code=404, detail="连接不存在")
     update_data = body.model_dump(exclude_unset=True)
@@ -176,7 +176,7 @@ async def update_connection(
 @router.delete("/connections/{connection_id}")
 async def delete_connection(connection_id: int, db: Session = Depends(get_db)):
     """删除数据源连接"""
-    conn = db.query(DataSourceConnection).filter(DataSourceConnection.id == connection_id).first()
+    conn = db.query(DataSource).filter(DataSource.id == connection_id).first()
     if not conn:
         raise HTTPException(status_code=404, detail="连接不存在")
     db.delete(conn)
@@ -187,7 +187,7 @@ async def delete_connection(connection_id: int, db: Session = Depends(get_db)):
 @router.post("/connections/{connection_id}/test")
 async def test_connection(connection_id: int, db: Session = Depends(get_db)):
     """测试数据源连接有效性（QMT 会尝试连接 xtdata，聚宽/Tushare 暂不支持）"""
-    conn = db.query(DataSourceConnection).filter(DataSourceConnection.id == connection_id).first()
+    conn = db.query(DataSource).filter(DataSource.id == connection_id).first()
     if not conn:
         raise HTTPException(status_code=404, detail="连接不存在")
     try:
@@ -201,9 +201,9 @@ async def test_connection(connection_id: int, db: Session = Depends(get_db)):
 # ---------- 接口调试（按数据源类型提供独立能力，当前仅 miniQMT） ----------
 
 
-def _require_qmt_connection(connection_id: int, db: Session) -> DataSourceConnection:
+def _require_qmt_connection(connection_id: int, db: Session) -> DataSource:
     """获取连接并校验为 qmt 类型，否则抛 400/404。"""
-    conn = db.query(DataSourceConnection).filter(DataSourceConnection.id == connection_id).first()
+    conn = db.query(DataSource).filter(DataSource.id == connection_id).first()
     if not conn:
         raise HTTPException(status_code=404, detail="连接不存在")
     if conn.source_type != "qmt":

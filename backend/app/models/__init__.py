@@ -1,6 +1,6 @@
 """数据模型"""
 from app.models.account import Account
-from app.models.data_source_connection import DataSourceConnection
+from app.models.data_source import DataSource
 from app.models.trade import Trade
 from app.models.position import Position
 from app.models.instrument import AssetClass, Instrument, InstrumentType
@@ -10,7 +10,7 @@ from app.models.backtest_task import BackTestTask
 
 __all__ = [
     "Account",
-    "DataSourceConnection",
+    "DataSource",
     "Trade",
     "Position",
     "Instrument",

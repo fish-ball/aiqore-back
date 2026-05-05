@@ -5,12 +5,12 @@
 """
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.data_source_connection import DataSourceConnection
+from app.models.data_source import DataSource
 from app.libs.data_source.adapter.qmt.config import select_qmt_adapter_config
 
 
@@ -38,23 +38,23 @@ def resolve_adapter_config(
     key = (adapter or "").strip().lower()
     if key == "qmt":
         rows = (
-            db.query(DataSourceConnection)
+            db.query(DataSource)
             .filter(
-                DataSourceConnection.source_type == "qmt",
-                DataSourceConnection.is_active.is_(True),
+                DataSource.source_type == "qmt",
+                DataSource.is_active.is_(True),
             )
-            .order_by(DataSourceConnection.is_quote_source.desc(), DataSourceConnection.id)
+            .order_by(DataSource.is_quote_source.desc(), DataSource.id)
             .all()
         )
         return select_qmt_adapter_config(source_id, rows, default_qmt_config_from_settings())
     if key in ("joinquant", "tushare"):
         if source_id is not None:
             conn = (
-                db.query(DataSourceConnection)
+                db.query(DataSource)
                 .filter(
-                    DataSourceConnection.id == source_id,
-                    DataSourceConnection.source_type == key,
-                    DataSourceConnection.is_active.is_(True),
+                    DataSource.id == source_id,
+                    DataSource.source_type == key,
+                    DataSource.is_active.is_(True),
                 )
                 .first()
             )

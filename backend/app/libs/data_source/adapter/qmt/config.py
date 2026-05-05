@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Sequence, Tuple
 
-from app.libs.data_source.adapter.connection_row import DataSourceConnectionLike
+from app.libs.data_source.adapter.connection_row import DataSourceLike
 
 
-def connection_row_to_config(conn: DataSourceConnectionLike) -> Dict[str, Any]:
+def connection_row_to_config(conn: DataSourceLike) -> Dict[str, Any]:
     """将连接行转为 QMTAdapter 所需 config（含 xt_quant_path / xt_quant_acct）。"""
     return {
         "host": conn.host,
@@ -21,7 +21,7 @@ def connection_row_to_config(conn: DataSourceConnectionLike) -> Dict[str, Any]:
 
 def select_qmt_adapter_config(
     source_id: Optional[int],
-    ordered_active_qmt_rows: Sequence[DataSourceConnectionLike],
+    ordered_active_qmt_rows: Sequence[DataSourceLike],
     fallback_config: Dict[str, Any],
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """

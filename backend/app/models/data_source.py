@@ -1,11 +1,12 @@
-"""数据源连接模型：QMT、聚宽、tushare 等连接配置，支持行情源/交易源角色"""
+"""数据源模型：QMT、聚宽、tushare 等连接配置，支持行情源/交易源角色"""
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text
 from sqlalchemy.sql import func
 from app.database import Base
 
 
-class DataSourceConnection(Base):
+class DataSource(Base):
     """数据源连接配置（QMT 等可参数化，预留聚宽、tushare）"""
+    # 与历史库表名一致（未使用更短的 data_sources，避免已有库未改名）
     __tablename__ = "data_source_connections"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -23,12 +24,9 @@ class DataSourceConnection(Base):
     xt_quant_path = Column(String(500), nullable=True, comment="miniQMT userdata_mini 路径，必填")
     xt_quant_acct = Column(String(50), nullable=True, comment="资金账号，交易/订阅时使用")
 
-    # 其他数据源可存 JSON，首期可不建
-    # config = Column(JSON, nullable=True, comment="类型相关扩展配置")
-
     description = Column(Text, nullable=True, comment="备注")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="更新时间")
 
     def __repr__(self):
-        return f"<DataSourceConnection(id={self.id}, name={self.name}, source_type={self.source_type})>"
+        return f"<DataSource(id={self.id}, name={self.name}, source_type={self.source_type})>"

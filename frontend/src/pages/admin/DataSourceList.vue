@@ -1,5 +1,5 @@
 <template>
-  <div class="data-source-connection-list">
+  <div class="data-source-list">
     <ListView ref="listViewRef" v-bind="listViewOptions">
       <template #ds_source_type_cell="{ row }">
         <el-tag size="small">{{ sourceTypeLabel(row.source_type) }}</el-tag>

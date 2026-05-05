@@ -4,12 +4,12 @@
 from typing import Any, Dict, Optional, Type
 
 from app.config import settings
-from app.models.data_source_connection import DataSourceConnection
+from app.models.data_source import DataSource
 
 from .base import SecuritiesTrader
 from .qmt_trader import QMTTrader
 
-# 与 DataSourceConnection.source_type 一致
+# 与 DataSource.source_type 一致
 SOURCE_TYPE_QMT = "qmt"
 
 _TRADER_REGISTRY: Dict[str, Type[SecuritiesTrader]] = {
@@ -27,7 +27,7 @@ def get_trader(source_type: str, config: Optional[Dict[str, Any]] = None) -> Sec
     return cls(config or {})
 
 
-def _connection_to_trader_config(conn: DataSourceConnection) -> Dict[str, Any]:
+def _connection_to_trader_config(conn: DataSource) -> Dict[str, Any]:
     """ORM 连接转为 QMT 交易端 config（与数据源连接字段一致）。"""
     return {
         "host": conn.host,
@@ -39,7 +39,7 @@ def _connection_to_trader_config(conn: DataSourceConnection) -> Dict[str, Any]:
     }
 
 
-def get_trader_for_connection(conn: DataSourceConnection) -> SecuritiesTrader:
+def get_trader_for_connection(conn: DataSource) -> SecuritiesTrader:
     """
     根据数据源连接返回交易端实例。
     当前仅 QMT 支持账户/持仓查询。

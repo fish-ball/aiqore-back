@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     DB_PORT: int = 5432
     DB_USER: str = "postgres"
     DB_PASSWORD: str = "postgres"
-    DB_NAME: str = "mydb"
+    DB_NAME: str = "aiqore"
     
     @property
     def DATABASE_URL(self) -> str:

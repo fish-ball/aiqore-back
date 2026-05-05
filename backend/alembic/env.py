@@ -68,10 +68,13 @@ from app.database import Base
 from app.config import settings
 from app.models import (
     Account,
-    Trade,
-    Position,
+    BackTestTask,
+    DataSource,
     Instrument,
+    Position,
     Sector,
+    Strategy,
+    Trade,
 )
 
 # this is the Alembic Config object, which provides

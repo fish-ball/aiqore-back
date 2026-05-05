@@ -11,7 +11,7 @@ alwaysApply: false
 ## 必须遵守
 
 1. **经抽象层访问**：业务逻辑（如 `security_service`、`market_service`、`trade_service`、`sector_service`）不得直接依赖具体数据源（如 `xtquant`/`qmt_service` 单例）。应通过数据源抽象层（如 `app/services/data_source/`）提供的接口或统一入口获取数据。
-2. **连接参数化**：使用 QMT 等需连接的数据源时，应从连接配置（如 `data_source_connections` 模型）或任务/API 传入的 `source_type`、`source_id` 解析出连接实例，不得在业务层写死配置或单例。
+2. **连接参数化**：使用 QMT 等需连接的数据源时，应从连接配置（如 `DataSource` 模型 / `data_source_connections` 表）或任务/API 传入的 `source_type`、`source_id` 解析出连接实例，不得在业务层写死配置或单例。
 3. **新增数据源**：新增聚宽、tushare 等数据源时，在抽象层增加对应适配器并实现统一接口，由统一入口根据 `source_type` 路由到该适配器；不在业务层散落 `if 聚宽 / if tushare` 分支。
 4. **行情源与交易源**：需要“当前行情源”“当前交易驱动源”时，从连接配置中按 `is_quote_source`、`is_trading_source` 等字段或统一配置解析，不写死为某一实现。
 
