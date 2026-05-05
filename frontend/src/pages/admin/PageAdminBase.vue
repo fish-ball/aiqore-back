@@ -56,23 +56,10 @@
         <el-scrollbar class="sidebar-scrollbar" height="100%">
           <el-menu
             :default-active="activeMenu"
-            :default-openeds="['account-trade', 'instruments', 'basic-info']"
+            :default-openeds="['instruments', 'account-trade', 'basic-info']"
             router
             class="sidebar-menu"
           >
-            <el-menu-item index="/dashboard">
-              <el-icon><IconOdometer /></el-icon>
-              <span>仪表盘</span>
-            </el-menu-item>
-            <el-sub-menu index="account-trade">
-              <template #title>
-                <el-icon><Money /></el-icon>
-                <span>账户交易</span>
-              </template>
-              <el-menu-item index="/account">账户管理</el-menu-item>
-              <el-menu-item index="/position">持仓管理</el-menu-item>
-              <el-menu-item index="/trade">交易记录</el-menu-item>
-            </el-sub-menu>
             <el-sub-menu index="instruments">
               <template #title>
                 <el-icon><Goods /></el-icon>
@@ -82,6 +69,15 @@
               <el-menu-item index="/instruments/etf-options">ETF期权</el-menu-item>
               <el-menu-item index="/instruments/futures">期货</el-menu-item>
               <el-menu-item index="/instruments/future-options">期货期权</el-menu-item>
+            </el-sub-menu>
+            <el-sub-menu index="account-trade">
+              <template #title>
+                <el-icon><Money /></el-icon>
+                <span>账户交易</span>
+              </template>
+              <el-menu-item index="/account">账户管理</el-menu-item>
+              <el-menu-item index="/position">持仓管理</el-menu-item>
+              <el-menu-item index="/trade">交易记录</el-menu-item>
             </el-sub-menu>
             <el-sub-menu index="basic-info">
               <template #title>

@@ -10,23 +10,13 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     name: 'admin',
     component: () => import('./admin/PageAdminBase.vue'),
-    redirect: '/dashboard',
+    redirect: '/instruments/stocks',
     meta: {
       title: '管理后台',
       icon: 'monitor',
       order: 0,
     },
     children: [
-      {
-        path: 'dashboard',
-        name: 'admin-dashboard',
-        component: () => import('./admin/Dashboard.vue'),
-        meta: {
-          title: '仪表盘',
-          icon: 'odometer',
-          order: 1,
-        },
-      },
       {
         path: 'account',
         name: 'admin-account-list',
