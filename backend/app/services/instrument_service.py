@@ -11,7 +11,7 @@ from app.models.instrument import (
     InstrumentType,
     infer_asset_class_from_instrument_type,
 )
-from app.services.data_source_qmt_defaults import get_default_qmt_adapter
+from app.services.data_source_service import get_default_qmt_adapter
 from app.services.instrument_exchange_resolve import ensure_exchange_code_for_instrument
 from app.libs.data_source.models.enums import MarketLayer
 

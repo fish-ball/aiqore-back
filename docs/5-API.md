@@ -46,15 +46,6 @@
 | GET | /api/market/kline | K 线/分时（默认读本地 parquet） |
 | GET | /api/market/search | 搜索股票 |
 
-### 分析（/api/analysis）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | /api/analysis/account/{account_id}/summary | 账户汇总 |
-| GET | /api/analysis/account/{account_id}/positions | 持仓分析 |
-| GET | /api/analysis/account/{account_id}/trade-stats | 交易统计 |
-| GET | /api/analysis/account/{account_id}/profit-trend | 盈亏趋势 |
-
 ### 证券（/api/security）
 
 | 方法 | 路径 | 说明 |
@@ -190,41 +181,7 @@
 
 ---
 
-### 三、分析（/api/analysis）
-
-#### GET /api/analysis/account/{account_id}/summary 账户汇总
-
-- **请求**  
-  - 路径参数: `account_id`(int)
-- **响应**  
-  - `data`: `{ account_id, account_name, initial_capital, current_balance, available_balance, market_value, total_asset, total_profit_loss, total_profit_loss_ratio, position_count, trade_count, update_time }`，无账户时为空对象
-
-#### GET /api/analysis/account/{account_id}/positions 持仓分析
-
-- **请求**  
-  - 路径参数: `account_id`(int)
-- **响应**  
-  - `data`: 数组，每项为 `{ symbol, symbol_name, quantity, available_quantity, cost_price, current_price, cost_amount, market_value, profit_loss, profit_loss_ratio, weight }`
-
-#### GET /api/analysis/account/{account_id}/trade-stats 交易统计
-
-- **请求**  
-  - 路径参数: `account_id`(int)  
-  - Query: `start_date`(string, 可选, YYYY-MM-DD), `end_date`(string, 可选, YYYY-MM-DD)
-- **响应**  
-  - `data`: `{ total_trades, buy_trades, sell_trades, total_amount, total_commission, total_tax, buy_amount, sell_amount }`
-
-#### GET /api/analysis/account/{account_id}/profit-trend 盈亏趋势
-
-- **请求**  
-  - 路径参数: `account_id`(int)  
-  - Query: `days`(int, 默认 30)
-- **响应**  
-  - `data`: 数组，每项为 `{ date, daily_profit_loss, cumulative_profit_loss }`
-
----
-
-### 四、证券（/api/security）
+### 三、证券（/api/security）
 
 #### POST /api/security/update 从数据源更新证券（异步）
 
@@ -273,7 +230,7 @@
 
 ---
 
-### 五、数据源连接（/api/data-source）
+### 四、数据源连接（/api/data-source）
 
 #### GET /api/data-source/list 连接列表
 
@@ -349,7 +306,7 @@
 
 ---
 
-### 六、板块（/api/sector）
+### 五、板块（/api/sector）
 
 #### POST /api/sector/sync 从 QMT 同步板块列表
 
@@ -381,7 +338,7 @@
 
 ---
 
-### 七、异步任务状态
+### 六、异步任务状态
 
 任务由 POST /api/security/update 等提交后返回 `task_id`。查询任务状态需对接 Celery 结果后端（如 Redis）或项目内提供的任务查询接口（若有）。常见响应约定：`{ status: "PENDING"|"STARTED"|"SUCCESS"|"FAILURE", result?: ... }`。
 

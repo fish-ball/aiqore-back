@@ -22,8 +22,7 @@ from app.libs.data_source.cache import (
     rebuild_weekly_monthly_from_daily,
 )
 from app.libs.data_source.models.enums import MarketLayer
-from app.services.data_source_resolve import resolve_adapter_config
-from app.services.data_source_instruments import sync_instruments
+from app.services.data_source_service import resolve_adapter_config, sync_instruments
 from app.services.instrument_service import instrument_service
 from app.models.instrument import Instrument, instrument_type_to_market_layer
 from app.utils.task_lock import TaskLock

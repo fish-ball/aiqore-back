@@ -9,7 +9,7 @@ import copy
 from sqlalchemy.orm import Session
 
 from app.models.sector import Sector
-from app.services.data_source_qmt_defaults import get_default_qmt_adapter
+from app.services.data_source_service import get_default_qmt_adapter
 
 logger = logging.getLogger(__name__)
 

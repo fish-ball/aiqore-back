@@ -118,7 +118,7 @@ async def update_single_instrument(body: UpdateOneBody, db: Session = Depends(ge
     从数据源更新单个标的基础信息（同步执行，适用于列表行内更新）
     """
     try:
-        from app.services.data_source_facade import sync_single_instrument
+        from app.services.data_source_service import sync_single_instrument
 
         result = sync_single_instrument(
             db, symbol=body.code.strip(), adapter=body.adapter or "qmt", source_id=body.source_id
@@ -177,7 +177,7 @@ async def list_instruments(
 
         if sector:
             try:
-                from app.services.data_source_facade import get_default_qmt_adapter
+                from app.services.data_source_service import get_default_qmt_adapter
 
                 qmt = get_default_qmt_adapter()
                 sector_list = qmt.get_stock_list_in_sector(sector, market=None)

@@ -266,7 +266,7 @@ async def get_kline(
     """
     from datetime import datetime, timedelta
     from app.libs.data_source.cache import get_daily, get_ticks
-    from app.services.data_source_facade import get_default_qmt_adapter
+    from app.services.data_source_service import get_default_qmt_adapter
     from app.services.instrument_service import instrument_service
     from app.tasks.instrument_tasks import (
         task_update_single_instrument_kdata,
@@ -439,7 +439,7 @@ async def get_ticks(
     - 当 `force_update=true` 时：提交 Celery 任务拉取并写入 parquet，返回 task_id。
     """
     from app.libs.data_source.cache import get_ticks as cache_get_ticks
-    from app.services.data_source_facade import get_default_qmt_adapter
+    from app.services.data_source_service import get_default_qmt_adapter
     from app.services.instrument_service import instrument_service
     from app.tasks.instrument_tasks import task_update_single_instrument_tick_for_date
 

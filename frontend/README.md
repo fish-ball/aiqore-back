@@ -60,8 +60,7 @@ frontend/
 │   ├── api/              # API 接口封装
 │   │   ├── index.js      # Axios 配置
 │   │   ├── trade.js      # 交易相关 API
-│   │   ├── market.js     # 行情相关 API
-│   │   └── analysis.js   # 分析相关 API
+│   │   └── market.js     # 行情相关 API
 │   ├── stores/           # Pinia 状态管理
 │   │   ├── index.js      # Pinia 实例
 │   │   └── account.js    # 账户状态
@@ -70,8 +69,7 @@ frontend/
 │   │   ├── Accounts.vue  # 账户管理
 │   │   ├── Positions.vue # 持仓管理
 │   │   ├── Trades.vue    # 交易记录
-│   │   ├── Market.vue    # 行情查询
-│   │   └── Analysis.vue  # 数据分析
+│   │   └── Market.vue    # 行情查询
 │   ├── router/           # 路由配置
 │   │   └── index.js
 │   ├── App.vue           # 根组件
