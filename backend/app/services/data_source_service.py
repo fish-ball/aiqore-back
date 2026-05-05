@@ -23,6 +23,7 @@ __all__ = [
     "get_default_qmt_adapter",
     "sync_instruments",
     "sync_single_instrument",
+    "sync_sectors",
 ]
 
 
@@ -141,6 +142,32 @@ def sync_instruments(
             "detail": detail,
         })
     return instrument_service.update_instruments_from_data(db, with_details)
+
+
+def sync_sectors(
+    db: Session,
+    adapter: str = "qmt",
+    source_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    从指定数据源同步板块列表到数据库：在此解析连接并构造适配器，再注入 sector_service。
+    解析规则与 sync_instruments 一致。
+    """
+    from app.services.sector_service import sector_service
+
+    key = (adapter or "qmt").strip().lower()
+    config, err = resolve_adapter_config(db, key, source_id)
+    if err is not None:
+        return {
+            "success": False,
+            "message": err,
+            "total": 0,
+            "created": 0,
+            "updated": 0,
+            "errors": 0,
+        }
+    impl = get_adapter(key, config or {})
+    return sector_service.sync_sectors_from_adapter(db, impl, source_key=key)
 
 
 def sync_single_instrument(

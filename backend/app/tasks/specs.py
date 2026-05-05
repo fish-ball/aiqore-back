@@ -379,6 +379,32 @@ _register(
     )
 )
 
+_register(
+    TaskSpec(
+        name="sync_sectors",
+        celery_name="task_sync_sectors",
+        title="同步板块列表",
+        description="从指定数据源拉取板块名称列表并写入数据库，更新证券数量等统计信息。",
+        category="sector",
+        params=[
+            TaskParamSpec(
+                name="adapter",
+                type="string",
+                required=False,
+                default="qmt",
+                description="适配器注册键，例如 qmt。",
+            ),
+            TaskParamSpec(
+                name="source_id",
+                type="integer",
+                required=False,
+                default=None,
+                description="数据源连接 ID，未指定时使用默认连接。",
+            ),
+        ],
+    )
+)
+
 # === 回测任务 ===
 _register(
     TaskSpec(

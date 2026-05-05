@@ -8,8 +8,8 @@ import copy
 
 from sqlalchemy.orm import Session
 
+from app.libs.data_source.adapter.base import SecuritiesDataSourceAdapter
 from app.models.sector import Sector
-from app.services.data_source_service import get_default_qmt_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -56,26 +56,35 @@ def sector_to_public_dict(sector: Sector, *, include_children: bool = False) -> 
 
 
 class SectorService:
-    """板块信息服务"""
+    """板块信息服务（写库逻辑只依赖 SecuritiesDataSourceAdapter，具体实现由调用方注入）。"""
 
-    def __init__(self):
-        self._qmt = None
-
-    @property
-    def qmt(self):
-        """懒加载 QMT 适配器，避免启动时阻塞。"""
-        if self._qmt is None:
-            self._qmt = get_default_qmt_adapter()
-        return self._qmt
-
-    def sync_sectors_from_qmt(self, db: Session) -> Dict[str, Any]:
-        """从 QMT 同步板块列表到数据库（alias = QMT 板块键）。"""
+    def sync_sectors_from_adapter(
+        self,
+        db: Session,
+        adapter: SecuritiesDataSourceAdapter,
+        *,
+        source_key: str,
+    ) -> Dict[str, Any]:
+        """
+        使用已构造的证券数据源适配器将板块列表写入数据库（alias = 数据源板块键）。
+        source_key：写入 sector_meta.sources 的键，与数据源注册名一致（如 qmt、joinquant）。
+        """
+        key = (source_key or "").strip().lower()
+        if not key:
+            return {
+                "success": False,
+                "message": "source_key 不能为空",
+                "total": 0,
+                "created": 0,
+                "updated": 0,
+                "errors": 0,
+            }
         try:
-            sectors = self.qmt.get_sector_list()
+            sectors = adapter.get_sector_list()
             if not sectors:
                 return {
                     "success": False,
-                    "message": "QMT不支持get_sector_list或未返回数据",
+                    "message": "数据源不支持 get_sector_list 或未返回板块数据",
                     "total": 0,
                     "created": 0,
                     "updated": 0,
@@ -122,7 +131,7 @@ class SectorService:
 
                     security_count = 0
                     try:
-                        securities = self.qmt.get_stock_list_in_sector(sector_name)
+                        securities = adapter.get_stock_list(sector=sector_name)
                         if securities:
                             security_count = len(securities)
                     except Exception as e:
@@ -146,7 +155,7 @@ class SectorService:
                         )
                         meta["stats"] = stats
                         sources = dict(meta.get("sources") or {})
-                        sources["qmt"] = {"sector_key": sector_name}
+                        sources[key] = {"sector_key": sector_name}
                         meta["sources"] = sources
 
                         needs = False
@@ -165,7 +174,7 @@ class SectorService:
                                 "last_sync_at": now_iso,
                                 "is_active": 1,
                             },
-                            "sources": {"qmt": {"sector_key": sector_name}},
+                            "sources": {key: {"sector_key": sector_name}},
                         }
                         db.add(
                             Sector(
@@ -246,7 +255,7 @@ class SectorService:
             return []
 
     def get_sector_by_alias(self, db: Session, alias: str) -> Optional[Sector]:
-        """根据唯一 alias 查询（与 QMT 板块键一致）。"""
+        """根据唯一 alias 查询（与数据源侧板块键一致）。"""
         try:
             return db.query(Sector).filter(Sector.alias == alias).first()
         except Exception as e:

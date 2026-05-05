@@ -8,6 +8,7 @@ from urllib.parse import unquote
 from pydantic import BaseModel
 
 from app.database import get_db
+from app.services.data_source_service import sync_sectors as sync_sectors_from_data_source
 from app.services.sector_service import sector_service, sector_to_public_dict, sector_stats
 
 router = APIRouter(prefix="/api/sector", tags=["板块信息"])
@@ -22,13 +23,13 @@ class SectorRemarkBody(BaseModel):
 
 @router.post("/sync")
 async def sync_sectors():
-    """从 QMT 同步板块列表到数据库"""
+    """从配置的默认行情数据源同步板块列表到数据库（默认 qmt 注册实现）。"""
     try:
         from app.database import SessionLocal
 
         db = SessionLocal()
         try:
-            result = sector_service.sync_sectors_from_qmt(db)
+            result = sync_sectors_from_data_source(db, adapter="qmt", source_id=None)
             if not result.get("success"):
                 raise HTTPException(
                     status_code=400,
@@ -116,7 +117,7 @@ async def get_sector(
 ):
     """
     获取板块详情（含 children 摘要）。
-    sector_alias 一般为 QMT 板块键，需 URL 编码。
+    sector_alias 一般为数据源侧板块键，需 URL 编码。
     """
     try:
         alias = unquote(sector_alias).strip()

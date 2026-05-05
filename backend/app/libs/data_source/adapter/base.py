@@ -46,6 +46,13 @@ class SecuritiesDataSourceAdapter(ABC):
         """
         return None
 
+    def get_sector_list(self) -> List[str]:
+        """
+        获取数据源板块名称列表（例如 QMT 的 xtdata.get_sector_list 返回的板块键）。
+        当前数据源不支持板块能力时返回空列表。
+        """
+        return []
+
     def test_connection(self) -> tuple[bool, str]:
         """测试连接是否可用。子类可覆盖；默认返回不支持。"""
         return False, "该类型暂不支持连接测试"

@@ -321,7 +321,7 @@ class QMTAdapter(SecuritiesDataSourceAdapter):
             return []
 
     def get_sector_list(self) -> List[str]:
-        """获取板块列表（供 sector_service 等使用）。"""
+        """获取板块列表：优先 xtdata.get_sector_list，否则使用内置默认板块名列表。"""
         xtdata = self._get_xtdata()
         try:
             if hasattr(xtdata, "get_sector_list"):
