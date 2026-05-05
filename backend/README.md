@@ -1,13 +1,8 @@
 # AIQore 后端（backend）
 
-本目录为 AIQore 项目的 Python 后端根目录。
+Python / FastAPI 根目录：`app/`、迁移 `alembic/`（回测逻辑在 `app/services/backtest` 与 `app/api/backtest`）。
 
-- 代码目录：`app/`
-- 数据库迁移：`alembic/`
-- 回测代码：`backtest/`
-- 辅助脚本：`scripts/`
-
-在本目录下使用 UV 相关命令，例如：
+在 `backend/` 下使用 UV，例如：
 
 ```bash
 uv sync
@@ -15,5 +10,4 @@ uv run python run.py
 uv run alembic upgrade head
 ```
 
-更多整体说明见仓库根目录的 `README.md` 与 `docs/` 文档。
-
+日常启动与数据库任务以仓库根目录 `.vscode/tasks.json` 为准；整体说明见 [docs/README.md](../docs/README.md)。

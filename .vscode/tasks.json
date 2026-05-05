@@ -62,31 +62,16 @@
       }
     },
     {
-      "label": "UV: 初始化数据库",
-      "type": "shell",
-      "command": "uv",
-      "args": ["run", "python", "init_db.py"],
-      "options": {
-        "cwd": "${workspaceFolder}/backend"
-      },
-      "group": "build",
-      "presentation": {
-        "echo": true,
-        "reveal": "always",
-        "focus": false,
-        "panel": "shared",
-        "showReuseMessage": true,
-        "clear": false
-      },
-      "problemMatcher": []
-    },
-    {
       "label": "UV: Alembic 升级数据库",
       "type": "shell",
       "command": "uv",
       "args": ["run", "alembic", "upgrade", "head"],
       "options": {
-        "cwd": "${workspaceFolder}/backend"
+        "cwd": "${workspaceFolder}/backend",
+        "env": {
+          "PYTHONUTF8": "1",
+          "PYTHONIOENCODING": "utf-8"
+        }
       },
       "group": "build",
       "presentation": {
@@ -112,7 +97,11 @@
         "${input:migrationMessage}"
       ],
       "options": {
-        "cwd": "${workspaceFolder}/backend"
+        "cwd": "${workspaceFolder}/backend",
+        "env": {
+          "PYTHONUTF8": "1",
+          "PYTHONIOENCODING": "utf-8"
+        }
       },
       "group": "build",
       "presentation": {

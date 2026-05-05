@@ -84,7 +84,7 @@ uv run python -c "from app.database import SessionLocal; from app.services.secur
 
 QMT 同步时：写主表后写 security_source_qmt，再写交易规则、行情快照与对应类型子表。列表/详情 API 仅查主表；若需子表或 QMT 原始数据，可通过 ORM relationship（如 security.source_qmt、security.quote_snapshot）加载。
 
-建表与迁移见 Alembic 迁移 001、002、003，或 `init_db.py`。
+建表与结构变更见 Alembic 迁移（如 001、002、003 及后续版本），执行 `alembic upgrade head`。
 
 ## 定时更新建议
 

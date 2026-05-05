@@ -10,20 +10,18 @@
    uv sync
    ```
 2. **配置环境（后端）**：在 `backend` 目录下复制 `.env.example` 为 `.env` 并填写
-3. **初始化数据库（后端）**：
+3. **应用数据库迁移（后端）**：
    ```bash
    cd backend
-   uv run python init_db.py
-   # 或
    uv run alembic upgrade head
    ```
+   或在 VS Code 中运行任务「UV: Alembic 升级数据库」。
 4. **启动后端**（默认 http://localhost:8000）：
    ```bash
    cd backend
    uv run python run.py
-   # 或（Windows）
-   start_server.bat
    ```
+   或在 VS Code 中运行任务「UV: 启动 FastAPI 服务器」（见 `.vscode/tasks.json`）。
 5. **启动前端**（默认 http://localhost:3000）：
    ```bash
    cd frontend
@@ -33,9 +31,8 @@
 6. **异步任务（可选）**：先启动 Redis，然后在 `backend` 目录执行：
    ```bash
    uv run celery -A app.celery_app worker --loglevel=info --pool=solo
-   # 或（Windows）
-   start_celery_worker.bat
    ```
+   或运行任务「UV: 启动 Celery Worker」。
 
 API 文档：http://localhost:8000/docs 、 http://localhost:8000/redoc
 
