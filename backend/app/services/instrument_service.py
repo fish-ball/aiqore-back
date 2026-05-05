@@ -17,14 +17,13 @@ from app.models.instrument import (
     InstrumentType,
     infer_asset_class_from_instrument_type,
 )
-from app.services.data_source_service import get_default_qmt_adapter
 from app.libs.data_source.models.enums import MarketLayer
 
 logger = logging.getLogger(__name__)
 
 
-def map_qmt_detail_to_instrument_type(instrument_type: str, sector: str = "") -> InstrumentType:
-    """将 QMT InstrumentType / 板块辅助信息映射为 InstrumentType。"""
+def map_detail_to_instrument_type(instrument_type: str, sector: str = "") -> InstrumentType:
+    """将数据源详情中的 InstrumentType 字段及板块辅助信息映射为 InstrumentType。"""
     if not instrument_type:
         if "基金" in sector:
             return InstrumentType.FUND
@@ -86,15 +85,15 @@ def generate_abbreviation(name: str) -> str:
 def resolve_exchange_code_for_instrument(
     *,
     market: str,
-    qmt_exchange_id: Optional[Any],
+    detail_exchange_id: Optional[Any],
     code: str,
 ) -> Optional[str]:
     """
     解析标的对应的规范 exchange_code。
-    优先级：数据源 ExchangeID（含别名）> 代码后缀 > 现货 market（SH/SZ/BJ）。
+    优先级：详情中的交易所标识 ExchangeID（含别名）> 代码后缀 > 现货 market（SH/SZ/BJ）。
     """
-    if qmt_exchange_id is not None:
-        canonical = normalize_exchange_code(str(qmt_exchange_id).strip())
+    if detail_exchange_id is not None:
+        canonical = normalize_exchange_code(str(detail_exchange_id).strip())
         if canonical and get_exchange_def(canonical):
             return canonical
 
@@ -116,7 +115,7 @@ def resolve_exchange_code_for_instrument(
 def ensure_exchange_code_for_instrument(
     *,
     market: str,
-    qmt_exchange_id: Optional[Any],
+    detail_exchange_id: Optional[Any],
     code: str,
     existing_exchange_code: Optional[str],
 ) -> str:
@@ -124,7 +123,7 @@ def ensure_exchange_code_for_instrument(
     得到可写入主表的 exchange_code：先解析；否则保留已有（若在目录内）；再按现货市场与期货兜底。
     """
     resolved = resolve_exchange_code_for_instrument(
-        market=market, qmt_exchange_id=qmt_exchange_id, code=code
+        market=market, detail_exchange_id=detail_exchange_id, code=code
     )
     if resolved:
         return resolved
@@ -142,16 +141,6 @@ def ensure_exchange_code_for_instrument(
 
 class InstrumentService:
     """标的信息服务。"""
-
-    def __init__(self):
-        self._qmt = None
-
-    @property
-    def qmt(self):
-        """懒加载 QMT 适配器，避免启动时阻塞。"""
-        if self._qmt is None:
-            self._qmt = get_default_qmt_adapter()
-        return self._qmt
 
     def _extract_field_from_detail(self, detail: Dict[str, Any], field: str, default=None):
         """从 detail 字典中提取字段值"""
@@ -210,7 +199,7 @@ class InstrumentService:
                     market_code = sec_data.get("market", "SH" if code.endswith(".SH") else "SZ")
                     instrument_type_raw = self._extract_field_from_detail(detail, "InstrumentType", "")
                     sector = sec_data.get("sector", "")
-                    inst_type = map_qmt_detail_to_instrument_type(instrument_type_raw, sector)
+                    inst_type = map_detail_to_instrument_type(instrument_type_raw, sector)
                     inst_type_val = inst_type.value
                     asset_class_val = infer_asset_class_from_instrument_type(inst_type).value
 
@@ -218,7 +207,7 @@ class InstrumentService:
                     if name and name != code:
                         abbreviation = generate_abbreviation(name)
 
-                    qmt_exchange_code = self._extract_field_from_detail(detail, "ExchangeID")
+                    raw_exchange_id = self._extract_field_from_detail(detail, "ExchangeID")
                     open_date = self._safe_datetime(self._extract_field_from_detail(detail, "OpenDate"))
                     expire_date = self._safe_datetime(self._extract_field_from_detail(detail, "ExpiryDate"))
                     last_price = self._safe_float(self._extract_field_from_detail(detail, "LastPrice"))
@@ -227,7 +216,7 @@ class InstrumentService:
 
                     fk_exchange_code = ensure_exchange_code_for_instrument(
                         market=market_code,
-                        qmt_exchange_id=qmt_exchange_code,
+                        detail_exchange_id=raw_exchange_id,
                         code=code,
                         existing_exchange_code=row.exchange_code if row else None,
                     )

@@ -53,6 +53,17 @@ class SecuritiesDataSourceAdapter(ABC):
         """
         return []
 
+    def get_realtime_quote(self, symbols: List[str]) -> Optional[Dict[str, Any]]:
+        """
+        批量实时行情；返回 symbol -> 行情对象或字典。
+        不支持的数据源返回 None。
+        """
+        return None
+
+    def search_stocks(self, keyword: str) -> List[Any]:
+        """按关键词搜索证券；不支持的数据源返回空列表。"""
+        return []
+
     def test_connection(self) -> tuple[bool, str]:
         """测试连接是否可用。子类可覆盖；默认返回不支持。"""
         return False, "该类型暂不支持连接测试"

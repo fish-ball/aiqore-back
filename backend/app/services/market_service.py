@@ -1,9 +1,11 @@
-"""行情服务"""
+"""行情服务（依赖注入证券数据源适配器抽象）。"""
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 import pandas as pd
 from sqlalchemy.orm import Session
-from app.services.data_source_service import get_default_qmt_adapter
+
+from app.libs.data_source.adapter.base import SecuritiesDataSourceAdapter
+from app.services.data_source_service import get_default_securities_adapter
 from app.services.instrument_service import instrument_service
 from app.models.instrument import parse_market_suffix_from_code
 import logging
@@ -30,50 +32,43 @@ def _quote_name(q: Any) -> str:
 
 
 class MarketService:
-    """行情服务"""
+    """行情服务：所有行情拉取仅通过 SecuritiesDataSourceAdapter。"""
 
-    def __init__(self):
-        self._qmt = None
-
-    @property
-    def qmt(self):
-        """懒加载 QMT 适配器，避免启动时阻塞。"""
-        if self._qmt is None:
-            self._qmt = get_default_qmt_adapter()
-        return self._qmt
+    def __init__(self, quote_adapter: SecuritiesDataSourceAdapter):
+        self._quote_adapter = quote_adapter
 
     def get_realtime_quote(self, symbols: List[str], db: Optional[Session] = None) -> Dict[str, Dict[str, Any]]:
         """
         获取实时行情
-        
+
         Args:
             symbols: 证券代码列表，如 ['000001.SZ', '600000.SH']
             db: 数据库会话（可选，用于获取证券名称）
-            
+
         Returns:
             实时行情字典
         """
         try:
-            quotes = self.qmt.get_realtime_quote(symbols)
+            quotes = self._quote_adapter.get_realtime_quote(symbols)
             if quotes is None:
                 return {}
-            
+
             # 格式化返回数据（Python 3中字符串默认是Unicode）
             result = {}
             for symbol, quote in quotes.items():
                 qd = _as_dict(quote)
-                # 如果QMT返回的名称为空，尝试从数据库获取
+                # 若数据源返回的名称为空，尝试从数据库获取
                 name = str(qd.get("name", "") or "")
                 if not name and db:
                     inst = instrument_service.get_instrument_by_code(db, symbol)
                     if inst:
                         name = inst.name or ""
-                
+
                 pre_close = float(qd.get("pre_close", 0))
                 last_price = float(qd.get("last_price", 0))
                 change = last_price - pre_close
                 change_pct = (change / pre_close * 100) if pre_close > 0 else 0
-                
+
                 result[symbol] = {
                     "symbol": symbol,
                     "name": name or symbol,
@@ -86,47 +81,46 @@ class MarketService:
                     "amount": float(qd.get("amount", 0)),
                     "change": change,
                     "change_percent": change_pct,
-                    "time": qd.get("time", datetime.now().isoformat())
+                    "time": qd.get("time", datetime.now().isoformat()),
                 }
             return result
         except Exception as e:
             logger.error(f"获取实时行情失败: {e}")
             return {}
-    
+
     def get_kline_data(
         self,
         symbol: str,
         period: str = "1d",
         count: int = 100,
         start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        end_date: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         获取K线数据
-        
+
         Args:
             symbol: 证券代码
             period: 周期，'1m', '5m', '15m', '30m', '1h', '1d', '1w', '1M'
             count: 数据条数
             start_date: 开始日期，格式 'YYYY-MM-DD'
             end_date: 结束日期，格式 'YYYY-MM-DD'
-            
+
         Returns:
             K线数据列表
         """
         try:
-            # 转换日期格式为QMT需要的格式
             start_time = None
             end_time = None
             if start_date:
                 start_time = f"{start_date} 00:00:00"
             if end_date:
                 end_time = f"{end_date} 23:59:59"
-            
-            data = self.qmt.get_klines_data(symbol, period, count, start_time, end_time)
+
+            data = self._quote_adapter.get_klines_data(symbol, period, count, start_time, end_time)
             if data is None:
                 return []
-            
+
             # 格式化数据
             result = []
             for item in data:
@@ -141,93 +135,96 @@ class MarketService:
                 else:
                     time_str = str(time_val or "")
 
-                result.append({
-                    "time": time_str,
-                    "date": time_str[:10] if len(time_str) >= 10 else time_str,
-                    "open": float(row.get("open", 0)),
-                    "high": float(row.get("high", 0)),
-                    "low": float(row.get("low", 0)),
-                    "close": float(row.get("close", 0)),
-                    "volume": int(row.get("volume", 0)),
-                    "amount": float(row.get("amount", 0))
-                })
-            
+                result.append(
+                    {
+                        "time": time_str,
+                        "date": time_str[:10] if len(time_str) >= 10 else time_str,
+                        "open": float(row.get("open", 0)),
+                        "high": float(row.get("high", 0)),
+                        "low": float(row.get("low", 0)),
+                        "close": float(row.get("close", 0)),
+                        "volume": int(row.get("volume", 0)),
+                        "amount": float(row.get("amount", 0)),
+                    }
+                )
+
             # 如果指定了日期范围，进行过滤
             if start_date or end_date:
                 df = pd.DataFrame(result)
-                if 'time' in df.columns and len(df) > 0:
-                    df['time'] = pd.to_datetime(df['time'], errors='coerce')
+                if "time" in df.columns and len(df) > 0:
+                    df["time"] = pd.to_datetime(df["time"], errors="coerce")
                     if start_date:
-                        df = df[df['time'] >= pd.to_datetime(start_date)]
+                        df = df[df["time"] >= pd.to_datetime(start_date)]
                     if end_date:
-                        df = df[df['time'] <= pd.to_datetime(end_date)]
-                    result = df.to_dict('records')
-            
+                        df = df[df["time"] <= pd.to_datetime(end_date)]
+                    result = df.to_dict("records")
+
             return result
         except Exception as e:
             logger.error(f"获取K线数据失败: {e}")
             return []
-    
+
     def search_stocks(self, keyword: str, db: Optional[Session] = None) -> List[Dict[str, Any]]:
         """
         搜索股票
-        
+
         Args:
             keyword: 搜索关键词（代码或名称）
             db: 数据库会话（可选，优先从数据库搜索）
-            
+
         Returns:
             股票列表
         """
         try:
             results = []
             symbols_to_fetch_name = []  # 需要获取名称的证券代码列表
-            
+
             # 优先从数据库搜索
             if db:
                 securities = instrument_service.search_instruments(db, keyword, limit=50)
                 for security in securities:
                     name = security.name
                     code = security.code
-                    # 如果数据库中的名称为空或等于代码，标记需要从QMT获取
+                    # 若库中名称为空或等于代码，标记需从行情源补全
                     if not name or name == code or name.strip() == "":
                         symbols_to_fetch_name.append(code)
-                        name = ""  # 暂时设为空，稍后从QMT获取
+                        name = ""
 
-                    results.append({
-                        "code": code,
-                        "name": name,
-                        "market": parse_market_suffix_from_code(code),
-                    })
-            
-            # 如果数据库没有结果，从QMT搜索（Python 3中字符串默认是Unicode）
+                    results.append(
+                        {
+                            "code": code,
+                            "name": name,
+                            "market": parse_market_suffix_from_code(code),
+                        }
+                    )
+
+            # 数据库无结果时走适配器搜索
             if not results:
-                qmt_results = self.qmt.search_stocks(keyword)
-                for stock in qmt_results:
+                adapter_results = self._quote_adapter.search_stocks(keyword)
+                for stock in adapter_results:
                     sd = _as_dict(stock)
                     symbol = sd.get("symbol", "")
                     name = sd.get("name", "")
-                    # 如果QMT返回的名称为空，标记需要获取
                     if not name or name == symbol or name.strip() == "":
                         symbols_to_fetch_name.append(symbol)
                         name = ""
-                    
-                    results.append({
-                        "code": symbol,
-                        "name": name,
-                        "market": sd.get("market", ""),
-                    })
-            
+
+                    results.append(
+                        {
+                            "code": symbol,
+                            "name": name,
+                            "market": sd.get("market", ""),
+                        }
+                    )
+
             # 批量获取缺失的名称（从实时行情）
             if symbols_to_fetch_name:
                 try:
-                    # 分批获取，避免一次请求太多
                     batch_size = 10
                     for i in range(0, len(symbols_to_fetch_name), batch_size):
-                        batch_symbols = symbols_to_fetch_name[i:i+batch_size]
-                        quotes = self.qmt.get_realtime_quote(batch_symbols)
+                        batch_symbols = symbols_to_fetch_name[i : i + batch_size]
+                        quotes = self._quote_adapter.get_realtime_quote(batch_symbols)
                         if quotes:
-                            # 更新结果中的名称（Python 3中字符串默认是Unicode）
                             for result in results:
                                 if not result.get("name") or result["name"] == result["code"]:
                                     code = result["code"]
@@ -236,20 +233,23 @@ class MarketService:
                                         if quote_name and quote_name != code and quote_name.strip():
                                             result["name"] = quote_name
 
-                                    # 如果还是没有名称，尝试从数据库再次获取
                                     if (not result.get("name") or result["name"] == code) and db:
                                         security = instrument_service.get_instrument_by_code(db, code)
-                                        if security and security.name and security.name != code and security.name.strip():
+                                        if (
+                                            security
+                                            and security.name
+                                            and security.name != code
+                                            and security.name.strip()
+                                        ):
                                             result["name"] = security.name
                 except Exception as e:
                     logger.warning(f"获取证券名称失败: {e}")
-            
+
             return results
         except Exception as e:
             logger.error(f"搜索股票失败: {e}")
             return []
 
 
-# 全局行情服务实例
-market_service = MarketService()
-
+# 全局实例：组合根注入默认适配器（具体实现见 data_source_service）
+market_service = MarketService(get_default_securities_adapter())

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-数据源服务：默认 QMT 适配器、连接 config 解析、标的列表/单只同步。
-供 API、Celery、market/instrument/sector 等调用；libs.data_source 原子包不依赖本模块。
+数据源服务：证券数据源适配器工厂、连接 config 解析、标的/板块同步。
+默认单例适配器的具体注册实现由 settings 与本模块内 get_adapter 调用约定；业务服务应依赖 SecuritiesDataSourceAdapter 并由本模块注入。
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.data_source import DataSource
 from app.libs.data_source.adapter import get_adapter
+from app.libs.data_source.adapter.base import SecuritiesDataSourceAdapter
 from app.libs.data_source.adapter.qmt.config import select_qmt_adapter_config
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "default_qmt_config_from_settings",
     "resolve_adapter_config",
+    "get_default_securities_adapter",
     "get_default_qmt_adapter",
     "sync_instruments",
     "sync_single_instrument",
@@ -77,18 +79,25 @@ def resolve_adapter_config(
     return None, f"不支持的 adapter: {adapter}"
 
 
-_default_qmt_adapter = None
+_default_securities_adapter: Optional[SecuritiesDataSourceAdapter] = None
 
 
-def get_default_qmt_adapter():
-    """返回默认 QMT 适配器（使用 settings 配置），供 market/trade/sector/instrument 等使用。"""
-    global _default_qmt_adapter
-    if _default_qmt_adapter is None:
-        _default_qmt_adapter = get_adapter("qmt", {
+def get_default_securities_adapter() -> SecuritiesDataSourceAdapter:
+    """
+    返回进程内单例的默认证券数据源适配器（具体注册实现由 settings / 连接表在 get_adapter 层决定）。
+    """
+    global _default_securities_adapter
+    if _default_securities_adapter is None:
+        _default_securities_adapter = get_adapter("qmt", {
             "xt_quant_path": settings.XT_QUANT_PATH,
             "xt_quant_acct": settings.XT_QUANT_ACCT,
         })
-    return _default_qmt_adapter
+    return _default_securities_adapter
+
+
+def get_default_qmt_adapter() -> SecuritiesDataSourceAdapter:
+    """兼容旧名，等价于 get_default_securities_adapter()。"""
+    return get_default_securities_adapter()
 
 
 def sync_instruments(
