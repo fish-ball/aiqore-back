@@ -8,7 +8,9 @@ from __future__ import annotations
 from app.libs.data_source.models.enums import (
     MarketLayer,
     BarPeriod,
+    DataSourceKey,
 )
+from app.libs.data_source.models.sector import DataSourceSector
 from app.libs.data_source.models.instrument import InstrumentBrief
 from app.libs.data_source.models.kline import KlineBar
 from app.libs.data_source.models.quote import RealtimeQuote
@@ -16,6 +18,8 @@ from app.libs.data_source.models.quote import RealtimeQuote
 __all__ = [
     "MarketLayer",
     "BarPeriod",
+    "DataSourceKey",
+    "DataSourceSector",
     "InstrumentBrief",
     "KlineBar",
     "RealtimeQuote",

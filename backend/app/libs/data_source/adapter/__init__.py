@@ -5,20 +5,20 @@
 """
 from typing import Dict, Any, Optional, Type
 
-from .base import SecuritiesDataSourceAdapter
+from .base import DataSourceAdapter
 from .qmt import QMTAdapter
 from .joinquant import JoinQuantAdapter
 from .tushare import TushareAdapter
 
 # 与 DataSource.source_type 字段取值一致
-_ADAPTER_REGISTRY: Dict[str, Type[SecuritiesDataSourceAdapter]] = {
+_ADAPTER_REGISTRY: Dict[str, Type[DataSourceAdapter]] = {
     "qmt": QMTAdapter,
     "joinquant": JoinQuantAdapter,
     "tushare": TushareAdapter,
 }
 
 
-def get_adapter(source_type: str, config: Optional[Dict[str, Any]] = None) -> SecuritiesDataSourceAdapter:
+def get_adapter(source_type: str, config: Optional[Dict[str, Any]] = None) -> DataSourceAdapter:
     """
     根据 source_type（与 DataSource.source_type 一致）返回对应适配器实例。
     不在 sync 中依赖具体 Adapter 实现，仅通过本方法触发同步能力。
@@ -30,7 +30,7 @@ def get_adapter(source_type: str, config: Optional[Dict[str, Any]] = None) -> Se
 
 
 __all__ = [
-    "SecuritiesDataSourceAdapter",
+    "DataSourceAdapter",
     "get_adapter",
     "QMTAdapter",
     "JoinQuantAdapter",

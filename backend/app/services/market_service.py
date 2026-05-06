@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from app.libs.data_source.adapter.base import SecuritiesDataSourceAdapter
+from app.libs.data_source.adapter.base import DataSourceAdapter
 from app.services.data_source_service import get_default_securities_adapter
 from app.services.instrument_service import instrument_service
 from app.models.instrument import parse_market_suffix_from_code
@@ -32,9 +32,9 @@ def _quote_name(q: Any) -> str:
 
 
 class MarketService:
-    """行情服务：所有行情拉取仅通过 SecuritiesDataSourceAdapter。"""
+    """行情服务：所有行情拉取仅通过 DataSourceAdapter。"""
 
-    def __init__(self, quote_adapter: SecuritiesDataSourceAdapter):
+    def __init__(self, quote_adapter: DataSourceAdapter):
         self._quote_adapter = quote_adapter
 
     def get_realtime_quote(self, symbols: List[str], db: Optional[Session] = None) -> Dict[str, Dict[str, Any]]:

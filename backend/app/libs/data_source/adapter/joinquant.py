@@ -1,11 +1,15 @@
 """聚宽数据源适配器（未实现，返回空）。不依赖 app/FastAPI。"""
 from typing import Any, List, Dict, Optional
 
-from .base import SecuritiesDataSourceAdapter
+from .base import DataSourceAdapter
 
 
-class JoinQuantAdapter(SecuritiesDataSourceAdapter):
+class JoinQuantAdapter(DataSourceAdapter):
     """聚宽占位：后续实现"""
+
+    @property
+    def name(self) -> str:
+        return "joinquant"
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self._config = config or {}

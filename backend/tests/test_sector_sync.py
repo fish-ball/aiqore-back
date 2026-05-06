@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
+from app.libs.data_source.models import DataSourceSector, MarketLayer
 from app.services.data_source_service import sync_sectors
 from app.services.sector_service import sector_service
 
@@ -29,6 +30,7 @@ class TestSectorSyncResolve(unittest.TestCase):
     def test_sync_sectors_no_sectors_no_commit(self, mock_resolve, mock_get_adapter) -> None:
         mock_resolve.return_value = ({}, None)
         impl = MagicMock()
+        impl.name = "joinquant"
         impl.get_sector_list.return_value = []
         mock_get_adapter.return_value = impl
         db = MagicMock()
@@ -40,13 +42,16 @@ class TestSectorSyncResolve(unittest.TestCase):
 class TestSectorServiceAdapterInjection(unittest.TestCase):
     """板块服务只依赖适配器接口。"""
 
-    def test_sync_sectors_from_adapter_rejects_empty_source_key(self) -> None:
+    def test_sync_sectors_from_adapter_rejects_unknown_adapter_name(self) -> None:
         db = MagicMock()
         impl = MagicMock()
-        impl.get_sector_list.return_value = ["沪深A股"]
-        r = sector_service.sync_sectors_from_adapter(db, impl, source_key="  ")
+        impl.name = "unknown_vendor"
+        impl.get_sector_list.return_value = [
+            DataSourceSector(name="x", alias="x", asset_class=MarketLayer.Equity, children=[])
+        ]
+        r = sector_service.sync_sectors_from_adapter(db, impl)
         self.assertFalse(r["success"])
-        self.assertIn("source_key", r["message"])
+        self.assertIn("DataSourceKey", r["message"])
 
 
 class TestDataSourceServiceSyncSectors(unittest.TestCase):
@@ -64,14 +69,15 @@ class TestDataSourceServiceSyncSectors(unittest.TestCase):
         }
         db = MagicMock()
         impl = MagicMock()
+        impl.name = "qmt"
         with patch("app.services.data_source_service.resolve_adapter_config", return_value=({}, None)):
             with patch("app.services.data_source_service.get_adapter", return_value=impl):
                 out = sync_sectors(db, adapter="qmt", source_id=2)
         mock_from_adapter.assert_called_once()
-        call_kw = mock_from_adapter.call_args
-        self.assertIs(call_kw[0][0], db)
-        self.assertIs(call_kw[0][1], impl)
-        self.assertEqual(call_kw[1], {"source_key": "qmt"})
+        call_args = mock_from_adapter.call_args
+        self.assertIs(call_args[0][0], db)
+        self.assertIs(call_args[0][1], impl)
+        self.assertEqual(call_args[1], {})
         self.assertTrue(out["success"])
 
 

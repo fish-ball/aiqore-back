@@ -1,42 +1,44 @@
 """板块信息服务"""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from collections import Counter
 from datetime import datetime
 import logging
-import copy
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from app.libs.data_source.adapter.base import SecuritiesDataSourceAdapter
+from app.libs.data_source.adapter.base import DataSourceAdapter
+from app.libs.data_source.models import DataSourceKey, DataSourceSector, MarketLayer
 from app.models.sector import Sector
 
 logger = logging.getLogger(__name__)
 
 
-def sector_stats(sector: Sector) -> Dict[str, Any]:
-    """读取 metadata.stats（兼容空）。"""
-    raw = sector.sector_meta or {}
-    return dict(raw.get("stats") or {})
+def _count_sector_tree(nodes: List[DataSourceSector]) -> int:
+    """递归统计适配器返回的板块节点总数（含子节点）。"""
+    n = 0
+    for item in nodes:
+        n += 1
+        n += _count_sector_tree(item.children)
+    return n
+
+
+def _asset_class_value(ac: MarketLayer | str) -> str:
+    if isinstance(ac, MarketLayer):
+        return ac.value
+    return str(ac)
 
 
 def sector_to_public_dict(sector: Sector, *, include_children: bool = False) -> Dict[str, Any]:
-    """API 用扁平字典（stats 展开 + 原始 metadata）。"""
-    stats = sector_stats(sector)
-    last_sync = stats.get("last_sync_at")
-    if last_sync is not None and hasattr(last_sync, "isoformat"):
-        last_sync = last_sync.isoformat()
+    """API 用扁平字典。"""
     item: Dict[str, Any] = {
         "id": sector.id,
         "name": sector.name,
         "alias": sector.alias,
+        "source": sector.source,
+        "asset_class": sector.asset_class,
         "parent_id": sector.parent_id,
-        "metadata": sector.sector_meta,
-        "category": stats.get("category"),
-        "market": stats.get("market"),
-        "security_count": stats.get("security_count") or 0,
-        "is_active": stats.get("is_active", 1),
-        "last_sync_at": last_sync,
         "remark": sector.remark,
         "created_at": sector.created_at.isoformat() if sector.created_at else None,
         "updated_at": sector.updated_at.isoformat() if sector.updated_at else None,
@@ -47,6 +49,8 @@ def sector_to_public_dict(sector: Sector, *, include_children: bool = False) -> 
                 "id": c.id,
                 "name": c.name,
                 "alias": c.alias,
+                "source": c.source,
+                "asset_class": c.asset_class,
                 "parent_id": c.parent_id,
                 "remark": c.remark,
             }
@@ -56,32 +60,29 @@ def sector_to_public_dict(sector: Sector, *, include_children: bool = False) -> 
 
 
 class SectorService:
-    """板块信息服务（写库逻辑只依赖 SecuritiesDataSourceAdapter，具体实现由调用方注入）。"""
+    """板块信息服务（写库逻辑依赖 DataSourceAdapter，由调用方注入实现）。"""
 
-    def sync_sectors_from_adapter(
-        self,
-        db: Session,
-        adapter: SecuritiesDataSourceAdapter,
-        *,
-        source_key: str,
-    ) -> Dict[str, Any]:
+    def sync_sectors_from_adapter(self, db: Session, adapter: DataSourceAdapter) -> Dict[str, Any]:
         """
-        使用已构造的证券数据源适配器将板块列表写入数据库（alias = 数据源板块键）。
-        source_key：写入 sector_meta.sources 的键，与数据源注册名一致（如 qmt、joinquant）。
+        使用适配器返回的板块树写入数据库。
+        以 (source, alias) 为联合唯一键，并按 children 维护 parent_id 层级。
         """
-        key = (source_key or "").strip().lower()
-        if not key:
+        try:
+            source_enum = DataSourceKey(adapter.name)
+        except ValueError:
             return {
                 "success": False,
-                "message": "source_key 不能为空",
+                "message": f"适配器 name 不在 DataSourceKey 中: {adapter.name!r}",
                 "total": 0,
                 "created": 0,
                 "updated": 0,
                 "errors": 0,
             }
+
+        source_str = source_enum.value
         try:
-            sectors = adapter.get_sector_list()
-            if not sectors:
+            roots = adapter.get_sector_list()
+            if not roots:
                 return {
                     "success": False,
                     "message": "数据源不支持 get_sector_list 或未返回板块数据",
@@ -95,106 +96,66 @@ class SectorService:
             updated_count = 0
             error_count = 0
 
-            category_keywords = {
-                "股票": ["A股", "B股", "创业板"],
-                "基金": ["基金", "ETF", "LOF"],
-                "债券": ["债券", "转债", "国债", "企业债", "公司债"],
-                "期货": ["期货", "上期所", "大商所", "郑商所", "中金所", "能源中心"],
-                "期权": ["期权"],
-                "指数": ["指数"],
-            }
-
-            def get_category(sector_name: str) -> str:
-                for category, keywords in category_keywords.items():
-                    for keyword in keywords:
-                        if keyword in sector_name:
-                            return category
-                return "其他"
-
-            def get_market(sector_name: str) -> Optional[str]:
-                if "沪市" in sector_name or "上证" in sector_name:
-                    return "SH"
-                if "深市" in sector_name or "深证" in sector_name:
-                    return "SZ"
-                if "北交所" in sector_name or "BJ" in sector_name:
-                    return "BJ"
-                if "沪深" in sector_name:
-                    return None
-                return None
-
-            for sector_name in sectors:
-                if not sector_name or not isinstance(sector_name, str):
-                    continue
-
-                try:
-                    row = db.query(Sector).filter(Sector.alias == sector_name).first()
-
-                    security_count = 0
+            def sync_tree(
+                nodes: List[DataSourceSector],
+                parent_id: Optional[int],
+            ) -> None:
+                nonlocal created_count, updated_count, error_count
+                for node in nodes:
+                    if not node.alias or not isinstance(node.alias, str):
+                        error_count += 1
+                        logger.warning("跳过无效板块节点: %r", node)
+                        continue
                     try:
-                        securities = adapter.get_stock_list(sector=sector_name)
-                        if securities:
-                            security_count = len(securities)
-                    except Exception as e:
-                        logger.debug("获取板块 %s 证券数量失败: %s", sector_name, e)
-
-                    category = get_category(sector_name)
-                    market = get_market(sector_name)
-                    now_iso = datetime.now().isoformat()
-
-                    if row:
-                        meta = copy.deepcopy(row.sector_meta) if row.sector_meta else {}
-                        stats = dict(meta.get("stats") or {})
-                        stats.update(
-                            {
-                                "security_count": security_count,
-                                "category": category,
-                                "market": market,
-                                "last_sync_at": now_iso,
-                                "is_active": stats.get("is_active", 1),
-                            }
+                        row = (
+                            db.query(Sector)
+                            .filter(Sector.source == source_str, Sector.alias == node.alias)
+                            .first()
                         )
-                        meta["stats"] = stats
-                        sources = dict(meta.get("sources") or {})
-                        sources[key] = {"sector_key": sector_name}
-                        meta["sources"] = sources
+                        ac_val = _asset_class_value(node.asset_class)
+                        display_name = (node.name or "").strip() or node.alias
 
-                        needs = False
-                        if row.sector_meta != meta:
-                            row.sector_meta = meta
-                            needs = True
-                        if needs:
-                            row.updated_at = datetime.now()
-                            updated_count += 1
-                    else:
-                        meta = {
-                            "stats": {
-                                "security_count": security_count,
-                                "category": category,
-                                "market": market,
-                                "last_sync_at": now_iso,
-                                "is_active": 1,
-                            },
-                            "sources": {key: {"sector_key": sector_name}},
-                        }
-                        db.add(
-                            Sector(
-                                name=sector_name,
-                                alias=sector_name,
-                                parent_id=None,
-                                sector_meta=meta,
+                        if row:
+                            changed = False
+                            if row.name != display_name:
+                                row.name = display_name
+                                changed = True
+                            if row.asset_class != ac_val:
+                                row.asset_class = ac_val
+                                changed = True
+                            if row.parent_id != parent_id:
+                                row.parent_id = parent_id
+                                changed = True
+                            if changed:
+                                row.updated_at = datetime.now()
+                                updated_count += 1
+                            db.flush()
+                            node_id = row.id
+                        else:
+                            s_new = Sector(
+                                name=display_name,
+                                alias=node.alias,
+                                source=source_str,
+                                asset_class=ac_val,
+                                parent_id=parent_id,
                             )
-                        )
-                        created_count += 1
+                            db.add(s_new)
+                            db.flush()
+                            node_id = s_new.id
+                            created_count += 1
 
-                except Exception as e:
-                    error_count += 1
-                    logger.warning("处理板块 %s 失败: %s", sector_name, e)
+                        sync_tree(node.children, node_id)
+                    except Exception as e:
+                        error_count += 1
+                        logger.warning("处理板块 %s 失败: %s", node.alias, e)
 
+            sync_tree(roots, None)
             db.commit()
 
+            total_nodes = _count_sector_tree(roots)
             logger.info(
-                "板块同步完成: 总计 %s, 新增 %s, 更新 %s, 错误 %s",
-                len(sectors),
+                "板块同步完成: 节点 %s, 新增 %s, 更新 %s, 错误 %s",
+                total_nodes,
                 created_count,
                 updated_count,
                 error_count,
@@ -203,18 +164,15 @@ class SectorService:
             return {
                 "success": True,
                 "message": "同步成功",
-                "total": len(sectors),
+                "total": total_nodes,
                 "created": created_count,
                 "updated": updated_count,
                 "errors": error_count,
             }
 
-        except Exception as e:
+        except Exception:
             db.rollback()
-            logger.error("同步板块失败: %s", e)
-            import traceback
-
-            logger.error(traceback.format_exc())
+            logger.exception("同步板块失败")
             return {
                 "success": False,
                 "message": f"同步失败: {str(e)}",
@@ -227,37 +185,33 @@ class SectorService:
     def get_sectors(
         self,
         db: Session,
-        category: Optional[str] = None,
-        market: Optional[str] = None,
-        is_active: Optional[int] = None,
+        source: Optional[str] = None,
+        asset_class: Optional[str] = None,
     ) -> List[Sector]:
-        """获取板块列表（可选按 metadata.stats 过滤）。"""
+        """获取板块列表（可选按 source、asset_class 过滤）。"""
         try:
-            rows = db.query(Sector).order_by(Sector.alias).all()
-            if category is None and market is None and is_active is None:
-                return rows
-
-            out: List[Sector] = []
-            for s in rows:
-                st = sector_stats(s)
-                if category is not None and st.get("category") != category:
-                    continue
-                if market is not None:
-                    if st.get("market") != market:
-                        continue
-                if is_active is not None:
-                    if int(st.get("is_active", 1)) != int(is_active):
-                        continue
-                out.append(s)
-            return out
+            q = db.query(Sector).order_by(Sector.source, Sector.alias)
+            if source is not None and source != "":
+                q = q.filter(Sector.source == source.strip().lower())
+            if asset_class is not None and asset_class != "":
+                q = q.filter(Sector.asset_class == asset_class.strip())
+            return q.all()
         except Exception as e:
             logger.error("获取板块列表失败: %s", e)
             return []
 
-    def get_sector_by_alias(self, db: Session, alias: str) -> Optional[Sector]:
-        """根据唯一 alias 查询（与数据源侧板块键一致）。"""
+    def get_sector(self, db: Session, source: str, alias: str) -> Optional[Sector]:
+        """按数据源与 alias 查询。"""
         try:
-            return db.query(Sector).filter(Sector.alias == alias).first()
+            key = (source or "").strip().lower()
+            al = (alias or "").strip()
+            if not key or not al:
+                return None
+            return (
+                db.query(Sector)
+                .filter(Sector.source == key, Sector.alias == al)
+                .first()
+            )
         except Exception as e:
             logger.error("获取板块失败: %s", e)
             return None
@@ -270,9 +224,15 @@ class SectorService:
             logger.error("获取板块失败: %s", e)
             return None
 
-    def update_sector_remark(self, db: Session, alias: str, remark: Optional[str]) -> Optional[Sector]:
+    def update_sector_remark(
+        self,
+        db: Session,
+        source: str,
+        alias: str,
+        remark: Optional[str],
+    ) -> Optional[Sector]:
         """更新板块用户备注；remark 可为 None 表示清空。"""
-        row = self.get_sector_by_alias(db, alias)
+        row = self.get_sector(db, source, alias)
         if not row:
             return None
         row.remark = remark
@@ -281,32 +241,20 @@ class SectorService:
         return row
 
     def get_sector_statistics(self, db: Session) -> Dict[str, Any]:
-        """板块汇总统计（基于 metadata.stats）。"""
+        """按 source、asset_class 汇总数量。"""
         try:
             rows = db.query(Sector).all()
-            active_rows = [s for s in rows if int(sector_stats(s).get("is_active", 1)) == 1]
-            total_securities = sum(int(sector_stats(s).get("security_count") or 0) for s in active_rows)
-
-            category_stats: Dict[str, Dict[str, int]] = {}
-            for sector in active_rows:
-                st = sector_stats(sector)
-                cat = st.get("category") or "其他"
-                if cat not in category_stats:
-                    category_stats[cat] = {"count": 0, "securities": 0}
-                category_stats[cat]["count"] += 1
-                category_stats[cat]["securities"] += int(st.get("security_count") or 0)
-
             return {
-                "total_sectors": len(active_rows),
-                "total_securities": total_securities,
-                "category_stats": category_stats,
+                "total_sectors": len(rows),
+                "by_source": dict(Counter(s.source for s in rows)),
+                "by_asset_class": dict(Counter(s.asset_class for s in rows)),
             }
         except Exception as e:
             logger.error("获取板块统计失败: %s", e)
             return {
                 "total_sectors": 0,
-                "total_securities": 0,
-                "category_stats": {},
+                "by_source": {},
+                "by_asset_class": {},
             }
 
 

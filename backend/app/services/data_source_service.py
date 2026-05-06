@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 数据源服务：证券数据源适配器工厂、连接 config 解析、标的/板块同步。
-默认单例适配器的具体注册实现由 settings 与本模块内 get_adapter 调用约定；业务服务应依赖 SecuritiesDataSourceAdapter 并由本模块注入。
+默认单例适配器的具体注册实现由 settings 与本模块内 get_adapter 调用约定；业务服务应依赖 DataSourceAdapter 并由本模块注入。
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.data_source import DataSource
 from app.libs.data_source.adapter import get_adapter
-from app.libs.data_source.adapter.base import SecuritiesDataSourceAdapter
+from app.libs.data_source.adapter.base import DataSourceAdapter
 from app.libs.data_source.adapter.qmt.config import select_qmt_adapter_config
 
 logger = logging.getLogger(__name__)
@@ -79,10 +79,10 @@ def resolve_adapter_config(
     return None, f"不支持的 adapter: {adapter}"
 
 
-_default_securities_adapter: Optional[SecuritiesDataSourceAdapter] = None
+_default_securities_adapter: Optional[DataSourceAdapter] = None
 
 
-def get_default_securities_adapter() -> SecuritiesDataSourceAdapter:
+def get_default_securities_adapter() -> DataSourceAdapter:
     """
     返回进程内单例的默认证券数据源适配器（具体注册实现由 settings / 连接表在 get_adapter 层决定）。
     """
@@ -95,7 +95,7 @@ def get_default_securities_adapter() -> SecuritiesDataSourceAdapter:
     return _default_securities_adapter
 
 
-def get_default_qmt_adapter() -> SecuritiesDataSourceAdapter:
+def get_default_qmt_adapter() -> DataSourceAdapter:
     """兼容旧名，等价于 get_default_securities_adapter()。"""
     return get_default_securities_adapter()
 
@@ -176,7 +176,7 @@ def sync_sectors(
             "errors": 0,
         }
     impl = get_adapter(key, config or {})
-    return sector_service.sync_sectors_from_adapter(db, impl, source_key=key)
+    return sector_service.sync_sectors_from_adapter(db, impl)
 
 
 def sync_single_instrument(

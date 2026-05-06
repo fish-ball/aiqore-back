@@ -7,11 +7,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.libs.data_source.adapter.base import SecuritiesDataSourceAdapter
+from app.libs.data_source.adapter.base import DataSourceAdapter
 from app.libs.data_source.adapter.qmt.core import DEFAULT_SECTORS, ensure_xtdata
 from app.libs.data_source.adapter.qmt.kline_fetch import fetch_klines
 from app.libs.data_source.adapter.qmt.mappings import to_xtdata_time
 from app.libs.data_source.adapter.qmt.native.maintain import download_history_data
+from app.libs.data_source.models import DataSourceSector, MarketLayer
 from app.libs.data_source.models.instrument import InstrumentBrief
 from app.libs.data_source.models.kline import KlineBar
 from app.libs.data_source.models.quote import RealtimeQuote
@@ -19,8 +20,12 @@ from app.libs.data_source.models.quote import RealtimeQuote
 logger = logging.getLogger(__name__)
 
 
-class QMTAdapter(SecuritiesDataSourceAdapter):
+class QMTAdapter(DataSourceAdapter):
     """QMT 适配器：直接调用 xtquant.xtdata。"""
+
+    @property
+    def name(self) -> str:
+        return "qmt"
 
     def __init__(self, config: Dict[str, Any]):
         self._config = config or {}
@@ -320,16 +325,26 @@ class QMTAdapter(SecuritiesDataSourceAdapter):
             logger.error("获取板块 '%s' 证券列表失败: %s", sector, e)
             return []
 
-    def get_sector_list(self) -> List[str]:
-        """获取板块列表：优先 xtdata.get_sector_list，否则使用内置默认板块名列表。"""
+    def get_sector_list(self) -> List[DataSourceSector]:
+        """
+        板块列表：当前为扁平列表，每项无 children；资产类别暂统一为 Equity（后续可按板块细分）。
+        """
         xtdata = self._get_xtdata()
+        names: List[str] = []
         try:
             if hasattr(xtdata, "get_sector_list"):
                 s = xtdata.get_sector_list()
-                return list(s) if s else []
+                if s:
+                    names = list(s)
         except Exception:
             pass
-        return DEFAULT_SECTORS.copy()
+        if not names:
+            names = DEFAULT_SECTORS.copy()
+        return [
+            DataSourceSector(name=n, alias=n, asset_class=MarketLayer.Equity, children=[])
+            for n in names
+            if n
+        ]
 
     def search_stocks(self, keyword: str) -> List[InstrumentBrief]:
         xtdata = self._get_xtdata()

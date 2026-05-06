@@ -6,11 +6,16 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from app.libs.data_source.models import KlineBar
+from app.libs.data_source.models import DataSourceSector, KlineBar
 
 
-class SecuritiesDataSourceAdapter(ABC):
-    """证券数据源适配器抽象基类"""
+class DataSourceAdapter(ABC):
+    """数据源适配器抽象基类（证券 / 行情 / 板块等）。"""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """与 DataSourceKey、get_adapter 注册键一致，例如 qmt。"""
 
     @abstractmethod
     def get_stock_list(self, market: Optional[str] = None, sector: Optional[str] = None) -> List[Any]:
@@ -46,10 +51,9 @@ class SecuritiesDataSourceAdapter(ABC):
         """
         return None
 
-    def get_sector_list(self) -> List[str]:
+    def get_sector_list(self) -> List[DataSourceSector]:
         """
-        获取数据源板块名称列表（例如 QMT 的 xtdata.get_sector_list 返回的板块键）。
-        当前数据源不支持板块能力时返回空列表。
+        获取数据源板块树（根节点列表）；不支持时返回空列表。
         """
         return []
 

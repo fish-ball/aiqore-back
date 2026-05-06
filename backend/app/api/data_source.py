@@ -260,7 +260,7 @@ async def debug_sectors(connection_id: int, db: Session = Depends(get_db)):
     conn = _require_qmt_connection(connection_id, db)
     adapter = get_adapter_for_connection(conn)
     sectors = adapter.get_sector_list()
-    return {"sectors": sectors}
+    return {"sectors": [s.to_public_dict() for s in sectors]}
 
 
 @router.post("/connections/{connection_id}/debug/stocks-in-sector")
