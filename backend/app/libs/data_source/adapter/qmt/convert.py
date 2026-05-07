@@ -52,22 +52,12 @@ def xt_row_to_kline(row: Any) -> KlineBar:
     )
 
 
-def normalize_xt_kline_dataframe(df: Any) -> Any:
-    """
-    迅投 K 线 DataFrame 列名与 ``KlineBar`` / ``cache.KLINE_COLUMNS`` 对齐。
-    文档与实测中结算价字段为 ``settelementPrice``（拼写），统一映射为 ``settle``。
-    """
-    if df is None or not hasattr(df, "columns"):
-        return df
-    cols = getattr(df, "columns", None)
-    if cols is not None and "settelementPrice" in cols and "settle" not in cols:
-        return df.rename(columns={"settelementPrice": "settle"})
-    return df
-
-
 def rows_from_symbol_df(df: Any) -> List[KlineBar]:
-    """从 xtquant 单标的 DataFrame 转为标准 K 线列表。"""
-    df = normalize_xt_kline_dataframe(df)
+    """从 xtquant 单标的 DataFrame 转为标准 K 线列表。结算价列 ``settelementPrice`` 映射为 ``settle``。"""
+    if df is not None and hasattr(df, "columns"):
+        cols = getattr(df, "columns", None)
+        if cols is not None and "settelementPrice" in cols and "settle" not in cols:
+            df = df.rename(columns={"settelementPrice": "settle"})
     return [xt_row_to_kline(row) for _, row in df.iterrows()]
 
 

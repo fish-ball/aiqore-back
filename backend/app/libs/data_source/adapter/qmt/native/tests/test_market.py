@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-native.market.get_market_data_ex：真实 xtdata 冒烟。
-
-通过 ``adapt_xt_get_market_data_ex_kline`` 转为 ``dict[合约, List[KlineBar]]``。
+xtdata.get_market_data_ex 冒烟：经 ``adapt_xt_get_market_data_ex_kline`` 转为 KlineBar。
 
 XT_QUANT_PATH 使用环境变量。无法加载 xtdata 时用例 skip（非失败）。
 
@@ -15,7 +13,6 @@ import unittest
 
 from app.libs.data_source.adapter.qmt.core import reset_xtdata_cache
 from app.libs.data_source.adapter.qmt.convert import adapt_xt_get_market_data_ex_kline
-from app.libs.data_source.adapter.qmt.native.market import get_market_data_ex
 from app.libs.data_source.adapter.qmt.native.tests.xt_test_env import (
     SAMPLE_MARKET_SYMBOLS,
     try_load_xtdata,
@@ -38,11 +35,15 @@ class TestGetMarketDataEx(unittest.TestCase):
         """日线 count=1：适配为按合约分组的 KlineBar 列表，每标至少一根。"""
         for symbol, mkt in SAMPLE_MARKET_SYMBOLS:
             with self.subTest(market=mkt, symbol=symbol):
-                raw = get_market_data_ex(
-                    self._xt,
+                raw = self._xt.get_market_data_ex(
+                    field_list=[],
                     stock_list=[symbol],
                     period="1d",
+                    start_time="",
+                    end_time="",
                     count=1,
+                    dividend_type="none",
+                    fill_data=True,
                 )
                 batch = adapt_xt_get_market_data_ex_kline(
                     raw, expected_symbols=[symbol]
@@ -54,8 +55,7 @@ class TestGetMarketDataEx(unittest.TestCase):
 
     def test_partial_field_list_yields_empty_bars_without_time(self) -> None:
         """仅 open/close 列且无 time 时无法构成 KlineBar，对应空列表。"""
-        raw = get_market_data_ex(
-            self._xt,
+        raw = self._xt.get_market_data_ex(
             field_list=["close", "open"],
             stock_list=["000001.SZ"],
             period="15m",

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-maintain.download_history_data：真实 xtdata 冒烟。
+xtdata.download_history_data 冒烟。
 
 遍历常见 period（与 mappings 中 K 线周期一致，并含 tick）及多市场示例代码（SH/SZ/BJ）。
 XT_QUANT_PATH 使用环境变量。无法加载 xtdata 时用例 skip（非失败）。
@@ -14,7 +14,6 @@ import unittest
 
 from app.libs.data_source.adapter.qmt.core import reset_xtdata_cache
 from app.libs.data_source.adapter.qmt.mappings import BAR_PERIOD_TO_XT
-from app.libs.data_source.adapter.qmt.native.maintain import download_history_data
 from app.libs.data_source.adapter.qmt.native.tests.xt_test_env import (
     SAMPLE_MARKET_SYMBOLS,
     try_load_xtdata,
@@ -46,23 +45,24 @@ class TestDownloadHistoryData(unittest.TestCase):
         for symbol, mkt in SAMPLE_MARKET_SYMBOLS:
             for period in _DAILY_PERIODS:
                 with self.subTest(market=mkt, symbol=symbol, period=period, kind="daily"):
-                    download_history_data(
-                        self._xt, symbol, period, start_time=st_day, end_time=et_day
+                    self._xt.download_history_data(
+                        symbol,
+                        period=period,
+                        start_time=st_day,
+                        end_time=et_day,
                     )
             for period in _INTRADAY_XT_PERIODS:
                 with self.subTest(market=mkt, symbol=symbol, period=period, kind="intraday"):
-                    download_history_data(
-                        self._xt,
+                    self._xt.download_history_data(
                         symbol,
-                        period,
+                        period=period,
                         start_time=st_intra,
                         end_time=et_intra,
                     )
             with self.subTest(market=mkt, symbol=symbol, period="tick", kind="intraday"):
-                download_history_data(
-                    self._xt,
+                self._xt.download_history_data(
                     symbol,
-                    "tick",
+                    period="tick",
                     start_time=st_intra,
                     end_time=et_intra,
                 )

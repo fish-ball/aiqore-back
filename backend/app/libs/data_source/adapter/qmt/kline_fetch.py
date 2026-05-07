@@ -6,7 +6,6 @@ import logging
 from typing import Any, List, Optional
 
 from app.libs.data_source.adapter.qmt.convert import rows_from_symbol_df, xt_row_to_kline
-from app.libs.data_source.adapter.qmt.native.maintain import download_history_data
 from app.libs.data_source.adapter.qmt.mappings import normalize_period_to_xt, to_xtdata_time
 from app.libs.data_source.models.kline import KlineBar
 
@@ -29,16 +28,15 @@ def fetch_klines(
     et = to_xtdata_time(end_time)
     xt_period = normalize_period_to_xt(period)
     try:
-        try:
-            download_history_data(
-                xtdata,
-                symbol,
-                xt_period,
-                start_time=st or "",
-                end_time=et or "",
-            )
-        except Exception as dl_e:
-            logger.warning("download_history_data 失败（继续尝试获取）: %s", dl_e)
+        xtdata.download_history_data(
+            symbol,
+            period=xt_period,
+            start_time=st or "",
+            end_time=et or "",
+        )
+    except Exception as dl_e:
+        logger.warning("download_history_data 失败（继续尝试获取）: %s", dl_e)
+    try:
         data = xtdata.get_market_data(
             stock_list=[symbol],
             period=xt_period,
