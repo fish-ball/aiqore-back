@@ -12,13 +12,6 @@ logger = logging.getLogger(__name__)
 _xtdata = None
 _xtdata_path_loaded: Optional[str] = None
 
-# 预定义板块（与原 qmt 单文件实现一致）
-DEFAULT_SECTORS = [
-    "沪深A股", "沪深B股", "沪深ETF", "深市ETF", "沪市ETF", "沪深基金", "深市基金", "沪市基金",
-    "沪深转债", "沪深债券", "沪市债券", "沪深指数", "沪市指数", "创业板", "上证A股", "上证B股",
-    "上证期权", "上证转债",
-]
-
 
 def ensure_xtdata(xt_quant_path: Optional[str]) -> Any:
     """

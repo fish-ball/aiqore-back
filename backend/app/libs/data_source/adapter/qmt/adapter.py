@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.libs.data_source.adapter.base import DataSourceAdapter
-from app.libs.data_source.adapter.qmt.core import DEFAULT_SECTORS, ensure_xtdata
+from app.libs.data_source.adapter.qmt.core import ensure_xtdata
 from app.libs.data_source.adapter.qmt.kline_fetch import fetch_klines
 from app.libs.data_source.adapter.qmt.mappings import to_xtdata_time
 from app.libs.data_source.adapter.qmt.native.maintain import download_history_data
@@ -233,15 +233,17 @@ class QMTAdapter(DataSourceAdapter):
         all_securities: List[InstrumentBrief] = []
         seen_symbols: set[str] = set()
         sectors: List[str] = []
-        try:
-            if hasattr(xtdata, "get_sector_list"):
-                s = xtdata.get_sector_list()
-                if s:
-                    sectors = list(s)
-        except Exception:
-            pass
-        if not sectors:
-            sectors = DEFAULT_SECTORS
+        s = xtdata.get_sector_list()
+        if s:
+            for n in list(s):
+                if not n or not isinstance(n, str):
+                    continue
+                t = n.strip()
+                if not t or any(
+                    t.startswith(p) for p in ("SW1", "SW2", "SW3", "CSRC1", "CSRC2")
+                ):
+                    continue
+                sectors.append(n)
         for sec_name in sectors:
             try:
                 securities = xtdata.get_stock_list_in_sector(sec_name)
@@ -328,22 +330,24 @@ class QMTAdapter(DataSourceAdapter):
     def get_sector_list(self) -> List[DataSourceSector]:
         """
         板块列表：当前为扁平列表，每项无 children；资产类别暂统一为 Equity（后续可按板块细分）。
+        跳过申万/证监会多级板块键（SW1、SW2、SW3、CSRC1、CSRC2 前缀）。
         """
         xtdata = self._get_xtdata()
+        raw = xtdata.get_sector_list()
         names: List[str] = []
-        try:
-            if hasattr(xtdata, "get_sector_list"):
-                s = xtdata.get_sector_list()
-                if s:
-                    names = list(s)
-        except Exception:
-            pass
-        if not names:
-            names = DEFAULT_SECTORS.copy()
+        if raw:
+            for n in list(raw):
+                if not n or not isinstance(n, str):
+                    continue
+                t = n.strip()
+                if not t or any(
+                    t.startswith(p) for p in ("SW1", "SW2", "SW3", "CSRC1", "CSRC2")
+                ):
+                    continue
+                names.append(n)
         return [
             DataSourceSector(name=n, alias=n, asset_class=MarketLayer.Equity, children=[])
             for n in names
-            if n
         ]
 
     def search_stocks(self, keyword: str) -> List[InstrumentBrief]:

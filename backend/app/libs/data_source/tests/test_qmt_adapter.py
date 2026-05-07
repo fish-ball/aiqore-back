@@ -168,13 +168,12 @@ class TestQMTAdapter(unittest.TestCase):
         self.assertTrue(all(x.asset_class == MarketLayer.Equity for x in out))
 
     @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_sector_list_fallback_default(self, mock_gx) -> None:
-        xt = MagicMock(spec=[])  # 无 get_sector_list
+    def test_get_sector_list_empty_when_xt_returns_empty(self, mock_gx) -> None:
+        xt = MagicMock()
+        xt.get_sector_list.return_value = []
         mock_gx.return_value = xt
         adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        out = adapter.get_sector_list()
-        aliases = [x.alias for x in out]
-        self.assertIn("沪深A股", aliases)
+        self.assertEqual(adapter.get_sector_list(), [])
 
     @patch.object(QMTAdapter, "_get_xtdata")
     def test_get_klines_data_symbol_df(self, mock_gx) -> None:

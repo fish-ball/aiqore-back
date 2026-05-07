@@ -63,7 +63,7 @@ def _query_strategies_page(
 
 
 @router.get("/strategies")
-async def list_strategies_collection(
+def list_strategies_collection(
     page: int = Query(1, ge=1, description="页码（从 1 起）"),
     page_size: int = Query(50, ge=1, le=500, description="每页条数"),
     strategy_type: Optional[str] = Query(None, description="按策略类型筛选"),
@@ -75,7 +75,7 @@ async def list_strategies_collection(
 
 
 @router.get("/list")
-async def list_strategies(
+def list_strategies(
     page: int = Query(1, ge=1, description="页码（从 1 起）"),
     page_size: int = Query(50, ge=1, le=500, description="每页条数"),
     strategy_type: Optional[str] = Query(None, description="按策略类型筛选"),
@@ -87,7 +87,7 @@ async def list_strategies(
 
 
 @router.post("/strategies")
-async def create_strategy(body: StrategyCreate, db: Session = Depends(get_db)):
+def create_strategy(body: StrategyCreate, db: Session = Depends(get_db)):
     """新建策略"""
     if body.strategy_type not in ALLOWED_STRATEGY_TYPES:
         raise HTTPException(
@@ -106,7 +106,7 @@ async def create_strategy(body: StrategyCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/strategies/{strategy_id}")
-async def get_strategy(strategy_id: str, db: Session = Depends(get_db)):
+def get_strategy(strategy_id: str, db: Session = Depends(get_db)):
     """获取单条策略"""
     s = db.query(Strategy).filter(Strategy.id == strategy_id).first()
     if not s:
@@ -115,7 +115,7 @@ async def get_strategy(strategy_id: str, db: Session = Depends(get_db)):
 
 
 @router.put("/strategies/{strategy_id}")
-async def update_strategy(
+def update_strategy(
     strategy_id: str,
     body: StrategyUpdate,
     db: Session = Depends(get_db),
@@ -138,7 +138,7 @@ async def update_strategy(
 
 
 @router.delete("/strategies/{strategy_id}")
-async def delete_strategy(strategy_id: str, db: Session = Depends(get_db)):
+def delete_strategy(strategy_id: str, db: Session = Depends(get_db)):
     """删除策略"""
     s = db.query(Strategy).filter(Strategy.id == strategy_id).first()
     if not s:

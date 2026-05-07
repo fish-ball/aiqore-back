@@ -25,6 +25,24 @@ class TestQMTAdapterGetSectorList(unittest.TestCase):
         self.assertEqual(out[0].children, [])
         xt.get_sector_list.assert_called_once()
 
+    @patch.object(QMTAdapter, "_get_xtdata")
+    def test_get_sector_list_skips_sw_and_csrc_prefixes(self, mock_gx) -> None:
+        """SW1/2/3、CSRC1/2 开头的板块键不进入返回列表。"""
+        xt = MagicMock()
+        xt.get_sector_list.return_value = [
+            "沪深A股",
+            "SW1银行",
+            "SW2机械设备",
+            "SW3xxx",
+            "CSRC1农副食品",
+            "CSRC2foo",
+            "上证50",
+        ]
+        mock_gx.return_value = xt
+        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
+        aliases = [x.alias for x in adapter.get_sector_list()]
+        self.assertEqual(aliases, ["沪深A股", "上证50"])
+
 
 if __name__ == "__main__":
     unittest.main()
