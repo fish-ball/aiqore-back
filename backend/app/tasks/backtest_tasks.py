@@ -9,7 +9,8 @@ from app.celery_app import celery_app
 from app.config import settings
 from app.database import SessionLocal
 from app.models.backtest_task import BackTestTask
-from app.models.instrument import Instrument, instrument_type_to_market_layer
+from app.libs.data_source.cache import instrument_type_to_quote_cache_layer
+from app.models.instrument import Instrument
 from app.libs.backtest.data_loader import load_daily_for_backtest
 from app.libs.backtest.backtrader_engine import BacktraderEngine
 
@@ -42,12 +43,12 @@ def task_run_backtest(self, backtest_task_id: str) -> Dict[str, Any]:
             db.commit()
             return {"success": False, "message": "缺少标的代码"}
 
-        market_layer = instrument_type_to_market_layer(None)
+        market_layer = instrument_type_to_quote_cache_layer(None)
         code_key = (task.instrument_code or symbol).strip()
         if code_key:
             sec = db.query(Instrument).filter(Instrument.code == code_key).first()
             if sec:
-                market_layer = instrument_type_to_market_layer(sec.instrument_type)
+                market_layer = instrument_type_to_quote_cache_layer(sec.instrument_type)
 
         df = load_daily_for_backtest(
             market_layer=market_layer,

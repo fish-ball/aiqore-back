@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
-"""QMT 适配器 get_sector_list：通过 mock xtdata 验证拉取板块列表。"""
+"""QMT 板块：preset_data 成品与 xtdata 备用路径 _get_sector_list_from_xtdata。"""
 from __future__ import annotations
 
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app.libs.data_source.models import MarketLayer
 from app.libs.data_source.adapter.qmt import QMTAdapter
+from app.libs.data_source.adapter.qmt.preset_data import PRESET_SECTOR_ROOTS
+from app.libs.data_source.models import AssetClass, InstrumentType
 
 
-class TestQMTAdapterGetSectorList(unittest.TestCase):
-    """模拟 xtdata.get_sector_list，断言 QMTAdapter 返回 DataSourceSector 扁平列表。"""
+class TestQMTAdapterGetSectorListFromXt(unittest.TestCase):
+    """从 xt 拉取并剔除前缀（备用实现）。"""
 
     @patch.object(QMTAdapter, "_get_xtdata")
     def test_get_sector_list_from_xtdata(self, mock_gx) -> None:
@@ -18,16 +19,16 @@ class TestQMTAdapterGetSectorList(unittest.TestCase):
         xt.get_sector_list.return_value = ["沪深A股", "上证50"]
         mock_gx.return_value = xt
         adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        out = adapter.get_sector_list()
+        out = adapter._get_sector_list_from_xtdata()
         self.assertEqual(len(out), 2)
         self.assertEqual(out[0].alias, "沪深A股")
-        self.assertEqual(out[0].asset_class, MarketLayer.Equity)
+        self.assertEqual(out[0].asset_class, AssetClass.EQUITY)
+        self.assertEqual(out[0].instrument_type, InstrumentType.STOCK)
         self.assertEqual(out[0].children, [])
         xt.get_sector_list.assert_called_once()
 
     @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_sector_list_skips_sw_and_csrc_prefixes(self, mock_gx) -> None:
-        """SW1/2/3、CSRC1/2 开头的板块键不进入返回列表。"""
+    def test_get_sector_list_from_xtdata_skips_sw_and_csrc_prefixes(self, mock_gx) -> None:
         xt = MagicMock()
         xt.get_sector_list.return_value = [
             "沪深A股",
@@ -40,8 +41,21 @@ class TestQMTAdapterGetSectorList(unittest.TestCase):
         ]
         mock_gx.return_value = xt
         adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        aliases = [x.alias for x in adapter.get_sector_list()]
+        aliases = [x.alias for x in adapter._get_sector_list_from_xtdata()]
         self.assertEqual(aliases, ["沪深A股", "上证50"])
+
+
+class TestQMTAdapterPresetData(unittest.TestCase):
+    """get_sector_list 直接返回 preset_data 导出的板块树根列表。"""
+
+    def test_get_sector_list_uses_bundled_preset(self) -> None:
+        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
+        out = adapter.get_sector_list()
+        self.assertIs(out, PRESET_SECTOR_ROOTS)
+        self.assertGreaterEqual(len(out), 1)
+        self.assertEqual(out[0].alias, "沪深A股")
+        self.assertEqual(out[0].asset_class, AssetClass.EQUITY)
+        self.assertEqual(out[0].instrument_type, InstrumentType.STOCK)
 
 
 if __name__ == "__main__":

@@ -7,13 +7,10 @@ import logging
 
 from app.database import get_db
 from app.services.instrument_service import instrument_service
-from app.models.instrument import (
-    Instrument,
-    InstrumentType,
-    instrument_type_to_market_layer,
-    parse_market_suffix_from_code,
-)
-from app.libs.data_source.models.enums import MarketLayer
+from app.libs.data_source.models.enums import InstrumentType
+from app.models.instrument import Instrument, parse_market_suffix_from_code
+from app.libs.data_source.cache import instrument_type_to_quote_cache_layer
+from app.libs.data_source.models.enums import AssetClass
 from app.constants.exchanges import exchange_brief_dict
 from app.utils.task_manager import save_task_info
 
@@ -143,8 +140,9 @@ async def list_instruments(
     page_size: int = Query(100, ge=1, le=500, description="每页条数"),
     market: Optional[str] = Query(None, description="市场后缀 SH/SZ/BJ（按代码后缀筛选）"),
     sector: Optional[str] = Query(None, description="板块名称"),
-    market_layer: Optional[MarketLayer] = Query(
-        None, description="行情三大类筛选：Equity/Future/Option（按 instrument_type 推导）"
+    market_layer: Optional[AssetClass] = Query(
+        None,
+        description="筛选：EQUITY/FUTURE/OPTION 按 instrument_type 桶；COMMODITY/FIXED_INCOME 按 asset_class 列",
     ),
     exchange_code: Optional[str] = Query(None, description="交易所规范代码，如 SSE、SHFE"),
     instrument_type: Optional[str] = Query(
@@ -321,7 +319,7 @@ async def get_instrument(
         }
         from app.libs.data_source.cache import get_metadata_for_instrument
 
-        cat = instrument_type_to_market_layer(inst.instrument_type)
+        cat = instrument_type_to_quote_cache_layer(inst.instrument_type)
         out["metadata"] = get_metadata_for_instrument(cat, inst.code)
 
         return out

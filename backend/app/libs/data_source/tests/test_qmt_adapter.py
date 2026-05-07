@@ -156,24 +156,24 @@ class TestQMTAdapter(unittest.TestCase):
         self.assertEqual(adapter.get_instrument_detail("600000.SH"), {"InstrumentName": "测试"})
 
     @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_sector_list_from_xt(self, mock_gx) -> None:
-        from app.libs.data_source.models import MarketLayer
+    def test_get_sector_list_from_xtdata_flat(self, mock_gx) -> None:
+        from app.libs.data_source.models import AssetClass
 
         xt = MagicMock()
         xt.get_sector_list.return_value = ["A", "B"]
         mock_gx.return_value = xt
         adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        out = adapter.get_sector_list()
+        out = adapter._get_sector_list_from_xtdata()
         self.assertEqual([x.alias for x in out], ["A", "B"])
-        self.assertTrue(all(x.asset_class == MarketLayer.Equity for x in out))
+        self.assertTrue(all(x.asset_class == AssetClass.EQUITY for x in out))
 
     @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_sector_list_empty_when_xt_returns_empty(self, mock_gx) -> None:
+    def test_get_sector_list_from_xtdata_empty_when_xt_returns_empty(self, mock_gx) -> None:
         xt = MagicMock()
         xt.get_sector_list.return_value = []
         mock_gx.return_value = xt
         adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        self.assertEqual(adapter.get_sector_list(), [])
+        self.assertEqual(adapter._get_sector_list_from_xtdata(), [])
 
     @patch.object(QMTAdapter, "_get_xtdata")
     def test_get_klines_data_symbol_df(self, mock_gx) -> None:
@@ -319,11 +319,13 @@ class TestQMTAdapter(unittest.TestCase):
         adapter = QMTAdapter({"xt_quant_path": "/tmp"})
         self.assertIsNone(adapter.get_realtime_quote(["000001.SZ"]))
 
+    @patch.object(QMTAdapter, "_preset_sector_aliases_dfs")
     @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_stock_list_aggregates_sectors(self, mock_gx) -> None:
+    def test_get_stock_list_aggregates_sectors(self, mock_gx, mock_aliases) -> None:
+        mock_aliases.return_value = ["板块一"]
         xt = MagicMock()
-        xt.get_sector_list.return_value = ["板块一"]
         xt.get_stock_list_in_sector.return_value = ["600000.SH"]
+        xt.get_instrument_list.return_value = []
         mock_gx.return_value = xt
         adapter = QMTAdapter({"xt_quant_path": "/tmp"})
         out = adapter.get_stock_list()

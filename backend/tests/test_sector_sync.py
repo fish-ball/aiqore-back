@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app.libs.data_source.models import DataSourceSector, MarketLayer
+from app.libs.data_source.models import AssetClass, DataSourceSector, InstrumentType
 from app.services.data_source_service import sync_sectors
 from app.services.sector_service import sector_service
 
@@ -47,7 +47,13 @@ class TestSectorServiceAdapterInjection(unittest.TestCase):
         impl = MagicMock()
         impl.name = "unknown_vendor"
         impl.get_sector_list.return_value = [
-            DataSourceSector(name="x", alias="x", asset_class=MarketLayer.Equity, children=[])
+            DataSourceSector(
+                name="x",
+                alias="x",
+                asset_class=AssetClass.EQUITY,
+                instrument_type=InstrumentType.STOCK,
+                children=[],
+            )
         ]
         r = sector_service.sync_sectors_from_adapter(db, impl)
         self.assertFalse(r["success"])

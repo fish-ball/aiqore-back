@@ -13,7 +13,8 @@ class Sector(Base):
     - name：显示名称
     - alias：数据源侧板块键（如 QMT get_stock_list_in_sector 入参）；与 source 联合唯一
     - source：数据源键（见 DataSourceKey）
-    - asset_class：资产大类（见 MarketLayer）
+    - asset_class：资产大类（见 AssetClass）
+    - instrument_type：标的类型（见 InstrumentType，与 instruments.instrument_type 枚举值一致）
     - parent / children：树形层级
     """
 
@@ -23,7 +24,13 @@ class Sector(Base):
     name = Column(String(100), nullable=False, index=True, comment="显示名称")
     alias = Column(String(100), nullable=False, index=True, comment="数据源板块键")
     source = Column(String(32), nullable=False, index=True, comment="数据源：qmt / joinquant / tushare")
-    asset_class = Column(String(32), nullable=False, index=True, comment="资产大类：Equity / Future / Option")
+    asset_class = Column(String(32), nullable=False, index=True, comment="资产大类：EQUITY / FUTURE / OPTION 等，与 AssetClass 枚举 value 一致")
+    instrument_type = Column(
+        String(20),
+        nullable=False,
+        index=True,
+        comment="标的类型：STOCK / FUND / INDEX / FUTURE / OPTION / BOND / ETF，与 InstrumentType 枚举 value 一致",
+    )
     parent_id = Column(
         Integer,
         ForeignKey("sectors.id", ondelete="SET NULL"),
@@ -52,6 +59,7 @@ class Sector(Base):
         UniqueConstraint("source", "alias", name="uq_sectors_source_alias"),
         Index("idx_sectors_parent_id", "parent_id"),
         Index("idx_sectors_name", "name"),
+        Index("idx_sectors_instrument_type", "instrument_type"),
     )
 
     def __repr__(self):

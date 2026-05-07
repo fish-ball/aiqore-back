@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.libs.data_source.adapter.base import DataSourceAdapter
-from app.libs.data_source.models import DataSourceKey, DataSourceSector, MarketLayer
+from app.libs.data_source.models import AssetClass, DataSourceKey, DataSourceSector, InstrumentType
 from app.models.sector import Sector
 
 logger = logging.getLogger(__name__)
@@ -24,10 +24,16 @@ def _count_sector_tree(nodes: List[DataSourceSector]) -> int:
     return n
 
 
-def _asset_class_value(ac: MarketLayer | str) -> str:
-    if isinstance(ac, MarketLayer):
+def _asset_class_value(ac: AssetClass | str) -> str:
+    if isinstance(ac, AssetClass):
         return ac.value
     return str(ac)
+
+
+def _instrument_type_value(it: InstrumentType | str) -> str:
+    if isinstance(it, InstrumentType):
+        return it.value
+    return str(it)
 
 
 def sector_to_public_dict(sector: Sector, *, include_children: bool = False) -> Dict[str, Any]:
@@ -38,6 +44,7 @@ def sector_to_public_dict(sector: Sector, *, include_children: bool = False) -> 
         "alias": sector.alias,
         "source": sector.source,
         "asset_class": sector.asset_class,
+        "instrument_type": sector.instrument_type,
         "parent_id": sector.parent_id,
         "remark": sector.remark,
         "created_at": sector.created_at.isoformat() if sector.created_at else None,
@@ -51,6 +58,7 @@ def sector_to_public_dict(sector: Sector, *, include_children: bool = False) -> 
                 "alias": c.alias,
                 "source": c.source,
                 "asset_class": c.asset_class,
+                "instrument_type": c.instrument_type,
                 "parent_id": c.parent_id,
                 "remark": c.remark,
             }
@@ -113,6 +121,7 @@ class SectorService:
                             .first()
                         )
                         ac_val = _asset_class_value(node.asset_class)
+                        it_val = _instrument_type_value(node.instrument_type)
                         display_name = (node.name or "").strip() or node.alias
 
                         if row:
@@ -122,6 +131,9 @@ class SectorService:
                                 changed = True
                             if row.asset_class != ac_val:
                                 row.asset_class = ac_val
+                                changed = True
+                            if row.instrument_type != it_val:
+                                row.instrument_type = it_val
                                 changed = True
                             if row.parent_id != parent_id:
                                 row.parent_id = parent_id
@@ -137,6 +149,7 @@ class SectorService:
                                 alias=node.alias,
                                 source=source_str,
                                 asset_class=ac_val,
+                                instrument_type=it_val,
                                 parent_id=parent_id,
                             )
                             db.add(s_new)
@@ -170,7 +183,7 @@ class SectorService:
                 "errors": error_count,
             }
 
-        except Exception:
+        except Exception as e:
             db.rollback()
             logger.exception("同步板块失败")
             return {
@@ -187,14 +200,17 @@ class SectorService:
         db: Session,
         source: Optional[str] = None,
         asset_class: Optional[str] = None,
+        instrument_type: Optional[str] = None,
     ) -> List[Sector]:
-        """获取板块列表（可选按 source、asset_class 过滤）。"""
+        """获取板块列表（可选按 source、asset_class、instrument_type 过滤）。"""
         try:
             q = db.query(Sector).order_by(Sector.source, Sector.alias)
             if source is not None and source != "":
                 q = q.filter(Sector.source == source.strip().lower())
             if asset_class is not None and asset_class != "":
                 q = q.filter(Sector.asset_class == asset_class.strip())
+            if instrument_type is not None and instrument_type != "":
+                q = q.filter(Sector.instrument_type == instrument_type.strip().upper())
             return q.all()
         except Exception as e:
             logger.error("获取板块列表失败: %s", e)
@@ -248,6 +264,7 @@ class SectorService:
                 "total_sectors": len(rows),
                 "by_source": dict(Counter(s.source for s in rows)),
                 "by_asset_class": dict(Counter(s.asset_class for s in rows)),
+                "by_instrument_type": dict(Counter(s.instrument_type for s in rows)),
             }
         except Exception as e:
             logger.error("获取板块统计失败: %s", e)
@@ -255,6 +272,7 @@ class SectorService:
                 "total_sectors": 0,
                 "by_source": {},
                 "by_asset_class": {},
+                "by_instrument_type": {},
             }
 
 

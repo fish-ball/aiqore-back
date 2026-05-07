@@ -8,8 +8,7 @@ from sqlalchemy.orm import Session
 from app.services.market_service import market_service
 from app.database import get_db
 from app.utils.task_manager import save_task_info
-from app.models.instrument import instrument_type_to_market_layer
-from app.libs.data_source.models.enums import MarketLayer
+from app.libs.data_source.cache import instrument_type_to_quote_cache_layer
 
 router = APIRouter(prefix="/api/market", tags=["行情"])
 
@@ -286,10 +285,10 @@ async def get_kline(
 
     # 日/周/月 K 线
     if period in ("1d", "1w", "1M"):
-        market_layer = MarketLayer.Equity.value
+        market_layer = instrument_type_to_quote_cache_layer(None)
         inst = instrument_service.get_instrument_by_code(db, symbol)
         if inst:
-            market_layer = instrument_type_to_market_layer(inst.instrument_type)
+            market_layer = instrument_type_to_quote_cache_layer(inst.instrument_type)
 
         if force_update:
             task = task_update_single_instrument_kdata.delay(
@@ -344,10 +343,10 @@ async def get_kline(
     # 1 分钟分时（按单日 ticks）
     if period == "1m":
         trade_date = (end_d or start_d or datetime.now().strftime("%Y-%m-%d")) if (start_d or end_d) else datetime.now().strftime("%Y-%m-%d")
-        market_layer = MarketLayer.Equity.value
+        market_layer = instrument_type_to_quote_cache_layer(None)
         inst = instrument_service.get_instrument_by_code(db, symbol)
         if inst:
-            market_layer = instrument_type_to_market_layer(inst.instrument_type)
+            market_layer = instrument_type_to_quote_cache_layer(inst.instrument_type)
 
         if force_update:
             task = task_update_single_instrument_tick_for_date.delay(
@@ -443,10 +442,10 @@ async def get_ticks(
     from app.services.instrument_service import instrument_service
     from app.tasks.instrument_tasks import task_update_single_instrument_tick_for_date
 
-    market_layer = MarketLayer.Equity.value
+    market_layer = instrument_type_to_quote_cache_layer(None)
     inst = instrument_service.get_instrument_by_code(db, symbol)
     if inst:
-        market_layer = instrument_type_to_market_layer(inst.instrument_type)
+        market_layer = instrument_type_to_quote_cache_layer(inst.instrument_type)
 
     if force_update:
         task = task_update_single_instrument_tick_for_date.delay(
@@ -498,10 +497,10 @@ async def get_divid_factors(
     from app.libs.data_source.cache import get_instrument_dir, get_divid_factors_path
     from app.services.instrument_service import instrument_service
 
-    market_layer = MarketLayer.Equity.value
+    market_layer = instrument_type_to_quote_cache_layer(None)
     inst = instrument_service.get_instrument_by_code(db, symbol)
     if inst:
-        market_layer = instrument_type_to_market_layer(inst.instrument_type)
+        market_layer = instrument_type_to_quote_cache_layer(inst.instrument_type)
 
     security_dir = get_instrument_dir(market_layer, symbol)
     path = get_divid_factors_path(security_dir)

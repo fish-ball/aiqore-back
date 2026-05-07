@@ -17,17 +17,32 @@ from app.libs.data_source.cache import (
     get_existing_ticks_dates,
     get_instrument_dir,
     get_divid_factors_path,
+    instrument_type_to_quote_cache_layer,
     read_meta,
     write_meta,
     rebuild_weekly_monthly_from_daily,
 )
-from app.libs.data_source.models.enums import MarketLayer
+from app.libs.data_source.models.enums import AssetClass
 from app.services.data_source_service import resolve_adapter_config, sync_instruments
 from app.services.instrument_service import instrument_service
-from app.models.instrument import Instrument, instrument_type_to_market_layer
+from app.models.instrument import Instrument
 from app.utils.task_lock import TaskLock
 
 logger = logging.getLogger(__name__)
+
+
+def _task_market_layer_to_asset_class(raw: str) -> AssetClass:
+    """Celery 入参 market_layer：兼容 Equity/Future/Option 与 EQUITY/FUTURE/OPTION。"""
+    s = (raw or "").strip()
+    if not s:
+        return AssetClass.EQUITY
+    legacy = {"Equity": AssetClass.EQUITY, "Future": AssetClass.FUTURE, "Option": AssetClass.OPTION}
+    if s in legacy:
+        return legacy[s]
+    try:
+        return AssetClass(s.upper())
+    except ValueError:
+        return AssetClass.EQUITY
 
 
 def _elapsed(t0: float) -> str:
@@ -395,7 +410,7 @@ def _update_single_instrument_all_data_core(
         if not inst:
             return _build_error_result("标的不存在", {"symbol": symbol})
 
-        market_layer = instrument_type_to_market_layer(inst.instrument_type)
+        market_layer = instrument_type_to_quote_cache_layer(inst.instrument_type)
         list_dt = inst.open_date
         if list_dt:
             start_date = list_dt.strftime("%Y-%m-%d")
@@ -547,7 +562,7 @@ def task_update_single_instrument_divid_factors(
             self.update_state(state="SUCCESS", meta={"status": "标的不存在", "result": result})
             return result
 
-        market_layer = instrument_type_to_market_layer(inst.instrument_type)
+        market_layer = instrument_type_to_quote_cache_layer(inst.instrument_type)
 
         impl, err = _resolve_market_adapter(db, adapter, source_id)
         if err is not None:
@@ -631,10 +646,7 @@ def task_update_bulk_instrument_all_data(
         t_batch = time.perf_counter()
         if symbols is None:
             q = db.query(Instrument).filter(Instrument.is_active.is_(True))
-            try:
-                cat = MarketLayer(market_layer)
-            except ValueError:
-                cat = MarketLayer.Equity
+            cat = _task_market_layer_to_asset_class(market_layer)
             q = instrument_service.filter_by_market_layer(q, cat)
             symbols = [r.code for r in q.all()]
 

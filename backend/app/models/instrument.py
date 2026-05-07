@@ -1,33 +1,11 @@
 """标的统一模型 instruments：单表存储，无外扩子表。"""
 from __future__ import annotations
 
-from enum import Enum
-from typing import Optional
-
 from sqlalchemy import Boolean, Column, DateTime, Index, Numeric, String
 from sqlalchemy.sql import func
 
 from app.database import Base
-
-
-class AssetClass(str, Enum):
-    """资产大类（instruments.asset_class）。"""
-
-    EQUITY = "EQUITY"  # 权益类
-    COMMODITY = "COMMODITY"  # 大宗商品
-    FIXED_INCOME = "FIXED_INCOME"  # 固收类
-
-
-class InstrumentType(str, Enum):
-    """标的类型（instruments.instrument_type），细分品种。"""
-
-    STOCK = "STOCK"  # 股票
-    FUND = "FUND"  # 基金
-    INDEX = "INDEX"  # 指数
-    FUTURE = "FUTURE"  # 期货
-    OPTION = "OPTION"  # 期权
-    BOND = "BOND"  # 债券
-    ETF = "ETF"  # ETF 基金
+from app.libs.data_source.models.enums import AssetClass, InstrumentType
 
 
 def parse_market_suffix_from_code(code: str) -> str:
@@ -38,32 +16,15 @@ def parse_market_suffix_from_code(code: str) -> str:
     return parts[-1].upper() if len(parts) == 2 else ""
 
 
-def instrument_type_to_market_layer(instrument_type: Optional[str]) -> str:
-    """
-    instrument_type -> 本地行情缓存目录使用的三大类字符串（Equity/Future/Option）。
-    与 app.libs.data_source.cache 中约定一致。
-    """
-    from app.libs.data_source.models.enums import MarketLayer
-
-    if not instrument_type:
-        return MarketLayer.Equity.value
-    u = instrument_type.upper()
-    if u == InstrumentType.FUTURE.value:
-        return MarketLayer.Future.value
-    if u == InstrumentType.OPTION.value:
-        return MarketLayer.Option.value
-    return MarketLayer.Equity.value
-
-
 def infer_asset_class_from_instrument_type(inst_type: InstrumentType | str) -> AssetClass:
-    """由标的类型推导资产大类。"""
+    """由标的类型推导写入 instruments.asset_class 的大类（与 AssetClass 枚举 value 一致）。"""
     u = inst_type.value if isinstance(inst_type, InstrumentType) else str(inst_type).upper()
     if u == InstrumentType.FUTURE.value:
         return AssetClass.COMMODITY
     if u == InstrumentType.OPTION.value:
         return AssetClass.EQUITY
-    if u == InstrumentType.BOND.value:
-        return AssetClass.FIXED_INCOME
+    if u in (InstrumentType.BOND.value, InstrumentType.CONV_BOND.value, InstrumentType.REPO.value):
+        return AssetClass.DEBT
     return AssetClass.EQUITY
 
 
@@ -83,7 +44,7 @@ class Instrument(Base):
     asset_class = Column(
         String(20),
         nullable=False,
-        comment="资产大类：EQUITY / FIXED_INCOME / COMMODITY",
+        comment="资产大类：与 AssetClass 枚举 value 一致（如 EQUITY、DEBT、COMMODITY）",
     )
     instrument_type = Column(
         String(20),

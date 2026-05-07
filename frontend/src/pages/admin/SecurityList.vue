@@ -139,7 +139,6 @@
                 class="filter-btn"
               >
                 {{ sector.name }}
-                <span class="sector-count">({{ sector.security_count || 0 }})</span>
               </el-button>
             </div>
           </div>
@@ -340,6 +339,7 @@ import { api } from '@iottest/vue-core/src/libs/api'
 import { useDataSourceStore } from '../../stores/dataSource'
 import type { Pagination } from '../../types/common'
 import type { Sector, SectorCategoryGrouped } from '../../types/sector'
+import { sectorGroupLabelFromInstrumentType } from '../../utils/sectorLabels'
 import type { Security, SecurityQuote, SecurityTableRow } from '../../types/security'
 
 const securityListResource = api('instrument/list')
@@ -358,7 +358,8 @@ const CATEGORY_ORDER: Record<string, number> = {
   债券: 3,
   指数: 4,
   期货: 5,
-  期权: 6
+  期权: 6,
+  其他: 99,
 }
 
 const router = useRouter()
@@ -396,7 +397,7 @@ const updateForm = ref<{ market: string; sector: string }>({ market: '', sector:
 const sectorsByCategory = computed<SectorCategoryGrouped>(() => {
   const grouped: SectorCategoryGrouped = {}
   sectors.value.forEach((sector) => {
-    const category = sector.category || '其他'
+    const category = sectorGroupLabelFromInstrumentType(sector.instrument_type)
     if (!grouped[category]) {
       grouped[category] = []
     }
@@ -410,7 +411,9 @@ const sectorsByCategory = computed<SectorCategoryGrouped>(() => {
     })
     .reduce((acc: SectorCategoryGrouped, category) => {
       const list = grouped[category]!
-      acc[category] = list.sort((a, b) => (b.security_count || 0) - (a.security_count || 0))
+      acc[category] = list.sort((a, b) =>
+        (a.name || a.alias || '').localeCompare(b.name || b.alias || '', 'zh-CN'),
+      )
       return acc
     }, {} as SectorCategoryGrouped)
 })
@@ -479,16 +482,21 @@ const sortByAmount = (a: SecurityTableRow, b: SecurityTableRow) => {
 // 获取板块列表
 const fetchSectors = async () => {
   try {
-    const resp = await sectorListResource.get({}, { is_active: 1, page: 1, page_size: 500 })
+    const resp = await sectorListResource.get(
+      {},
+      { source: 'qmt', page: 1, page_size: 500 },
+    )
     const response = resp.data as { results?: Sector[] }
     const items = response?.results || []
     sectors.value = items as Sector[]
     // 按分类排序，主要板块在前
     sectors.value.sort((a, b) => {
-      const orderA = CATEGORY_ORDER[a.category ?? ''] ?? 99
-      const orderB = CATEGORY_ORDER[b.category ?? ''] ?? 99
+      const ca = sectorGroupLabelFromInstrumentType(a.instrument_type)
+      const cb = sectorGroupLabelFromInstrumentType(b.instrument_type)
+      const orderA = CATEGORY_ORDER[ca] ?? 99
+      const orderB = CATEGORY_ORDER[cb] ?? 99
       if (orderA !== orderB) return orderA - orderB
-      return (b.security_count || 0) - (a.security_count || 0)
+      return (a.name || a.alias || '').localeCompare(b.name || b.alias || '', 'zh-CN')
     })
   } catch (error) {
     console.error('获取板块列表失败:', error)
@@ -997,12 +1005,6 @@ onMounted(() => {
   font-size: 12px;
   height: 26px;
   border-radius: 4px;
-}
-
-.filter-btn .sector-count {
-  margin-left: 2px;
-  font-size: 11px;
-  opacity: 0.8;
 }
 
 .filter-actions {

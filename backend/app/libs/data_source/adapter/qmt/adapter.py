@@ -14,7 +14,8 @@ from app.libs.data_source.adapter.base import DataSourceAdapter
 from app.libs.data_source.adapter.qmt.core import ensure_xtdata
 from app.libs.data_source.adapter.qmt.kline_fetch import fetch_klines
 from app.libs.data_source.adapter.qmt.mappings import to_xtdata_time
-from app.libs.data_source.models import DataSourceSector, MarketLayer
+from app.libs.data_source.adapter.qmt.preset_data import PRESET_SECTOR_ROOTS
+from app.libs.data_source.models import AssetClass, DataSourceSector, InstrumentType
 from app.libs.data_source.models.instrument import InstrumentBrief
 from app.libs.data_source.models.kline import KlineBar
 from app.libs.data_source.models.quote import RealtimeQuote
@@ -35,6 +36,16 @@ class QMTAdapter(DataSourceAdapter):
         if code.endswith(".BJ"):
             return "BJ"
         return "SH"
+
+    @staticmethod
+    def _preset_sector_aliases_dfs(nodes: List[DataSourceSector]) -> List[str]:
+        """深度优先收集 alias，与 preset 树结构一致，供 get_stock_list 扫描 QMT 板块键。"""
+        out: List[str] = []
+        for n in nodes:
+            if n.alias:
+                out.append(n.alias)
+            out.extend(QMTAdapter._preset_sector_aliases_dfs(n.children))
+        return out
 
     @staticmethod
     def _sector_keys_filtered(raw: Any) -> List[str]:
@@ -231,8 +242,7 @@ class QMTAdapter(DataSourceAdapter):
         xtdata = self._get_xtdata()
         all_securities: List[InstrumentBrief] = []
         seen_symbols: set[str] = set()
-        sectors = self._sector_keys_filtered(xtdata.get_sector_list())
-        for sec_name in sectors:
+        for sec_name in QMTAdapter._preset_sector_aliases_dfs(PRESET_SECTOR_ROOTS):
             securities = xtdata.get_stock_list_in_sector(sec_name)
             if securities:
                 for sec in securities:
@@ -278,14 +288,24 @@ class QMTAdapter(DataSourceAdapter):
         return result
 
     def get_sector_list(self) -> List[DataSourceSector]:
+        """板块树：直接使用 preset_data 模块导出的成品列表。"""
+        return PRESET_SECTOR_ROOTS
+
+    def _get_sector_list_from_xtdata(self) -> List[DataSourceSector]:
         """
-        板块列表：当前为扁平列表，每项无 children；资产类别暂统一为 Equity（后续可按板块细分）。
-        跳过申万/证监会多级板块键（SW1、SW2、SW3、CSRC1、CSRC2 前缀）。
+        从 xtdata.get_sector_list 拉取并剔除申万/证监会多级键（SW1、SW2、SW3、CSRC1、CSRC2 前缀）。
+        保留备用于导出预设或与 JSON 对照，默认业务路径不走此接口。
         """
         xtdata = self._get_xtdata()
         names = self._sector_keys_filtered(xtdata.get_sector_list())
         return [
-            DataSourceSector(name=n, alias=n, asset_class=MarketLayer.Equity, children=[])
+            DataSourceSector(
+                name=n,
+                alias=n,
+                asset_class=AssetClass.EQUITY,
+                instrument_type=InstrumentType.STOCK,
+                children=[],
+            )
             for n in names
         ]
 

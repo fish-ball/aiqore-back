@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
-from app.libs.data_source.models.enums import MarketLayer
+from app.libs.data_source.models.enums import AssetClass, InstrumentType
 
 
 @dataclass
@@ -14,7 +14,8 @@ class DataSourceSector:
 
     name: str
     alias: str
-    asset_class: MarketLayer
+    asset_class: AssetClass
+    instrument_type: InstrumentType
     children: List[DataSourceSector] = field(default_factory=list)
 
     def to_public_dict(self) -> Dict[str, Any]:
@@ -23,5 +24,6 @@ class DataSourceSector:
             "name": self.name,
             "alias": self.alias,
             "asset_class": self.asset_class.value,
+            "instrument_type": self.instrument_type.value,
             "children": [c.to_public_dict() for c in self.children],
         }

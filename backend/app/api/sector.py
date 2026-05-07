@@ -50,12 +50,17 @@ async def get_sectors(
     page: int = Query(1, ge=1, description="页码（从 1 起）"),
     page_size: int = Query(50, ge=1, le=500, description="每页条数"),
     source: Optional[str] = Query(None, description="数据源：qmt / joinquant / tushare"),
-    asset_class: Optional[str] = Query(None, description="资产大类：Equity / Future / Option"),
+    asset_class: Optional[str] = Query(None, description="资产大类，与 AssetClass.value 一致"),
+    instrument_type: Optional[str] = Query(
+        None, description="标的类型，与 InstrumentType.value 一致（如 STOCK、ETF）"
+    ),
     db: Session = Depends(get_db),
 ):
     """获取板块列表（分页）"""
     try:
-        sectors = sector_service.get_sectors(db, source=source, asset_class=asset_class)
+        sectors = sector_service.get_sectors(
+            db, source=source, asset_class=asset_class, instrument_type=instrument_type
+        )
         items = [sector_to_public_dict(s) for s in sectors]
 
         total = len(items)

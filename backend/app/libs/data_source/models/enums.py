@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""数据源通用枚举：行情分层类别、K 线周期等。"""
+"""数据源通用枚举：资产大类、标的类型、K 线周期等。"""
+
 from __future__ import annotations
 
 from enum import Enum
 
-__all__ = ["MarketLayer", "BarPeriod", "DataSourceKey"]
+__all__ = ["AssetClass", "InstrumentType", "BarPeriod", "DataSourceKey"]
 
 
 class DataSourceKey(str, Enum):
@@ -18,15 +19,33 @@ class DataSourceKey(str, Enum):
     TUSHARE = "tushare"
 
 
-class MarketLayer(str, Enum):
-    """
-    行情与缓存分层用的三大类（非数据库字段）。
-    与 DB instruments.instrument_type 的对应关系见 instrument_type_to_market_layer。
-    """
+class AssetClass(str, Enum):
+    EQUITY = "EQUITY"  # 权益：以公司所有权为核心风险
+    DEBT = "DEBT"  # 债权：以利率和信用为核心风险
+    HYBRID = "HYBRID"  # 混合：债权和权益的组合
+    COMMODITY = "COMMODITY"  # 商品：以实物供需为核心风险
+    CURRENCY = "CURRENCY"  # 货币：汇率与加密货币
+    CRYPTO = "CRYPTO"  # 加密货币：以区块链技术为核心风险
 
-    Equity = "Equity"
-    Future = "Future"
-    Option = "Option"
+
+class InstrumentType(str, Enum):
+    # --- EQUITY 类 ---
+    STOCK = "STOCK"  # 普通股
+    PREFERRED_STOCK = "PREF_STOCK"  # 优先股
+    FUND = "FUND"  # 基金
+    ETF = "ETF"  # 交易所基金
+    INDEX = "INDEX"  # 指数（与 instruments.instrument_type 一致）
+
+    # --- DEBT / HYBRID 类 ---
+    BOND = "BOND"  # 纯债（国债/金融债）
+    CONV_BOND = "CONV_BOND"  # 可转债
+    REPO = "REPO"  # 回购（如 GC001）
+
+    # --- DERIVATIVE 类 ---
+    FUTURE = "FUTURE"  # 期货 Futures
+    OPTION = "OPTION"  # 期权 Options
+    PERP = "PERP"  # 永续合约 Perpetual Futures
+    WARRANT = "WARRANT"  # 权证 Warrants
 
 
 class BarPeriod(str, Enum):

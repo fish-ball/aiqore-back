@@ -5,20 +5,16 @@
         {{ row.name }}
       </el-link>
     </template>
-    <template #sector_category_cell="{ row }">
-      <el-tag :type="getCategoryTagType(row.category)" size="small">
-        {{ row.category || '其他' }}
-      </el-tag>
+    <template #sector_asset_class_cell="{ row }">
+      <el-tag type="info" size="small" effect="plain">{{ assetClassLabel(row.asset_class) }}</el-tag>
     </template>
-    <template #sector_market_cell="{ row }">
+    <template #sector_instrument_type_cell="{ row }">
       <el-tag
-        v-if="row.market"
-        :type="row.market === 'SH' ? 'success' : 'warning'"
+        :type="getGroupTagType(sectorGroupLabelFromInstrumentType(row.instrument_type))"
         size="small"
       >
-        {{ row.market === 'SH' ? '上海' : row.market === 'SZ' ? '深圳' : row.market }}
+        {{ sectorGroupLabelFromInstrumentType(row.instrument_type) }}
       </el-tag>
-      <span v-else style="color: #909399">跨市场</span>
     </template>
   </ListView>
 </template>
@@ -30,6 +26,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 import ListView from '../../components/ListViewNoRouteSync.vue'
 import { api } from '@iottest/vue-core/src/libs/api'
+import {
+  assetClassLabel,
+  sectorGroupLabelFromInstrumentType,
+  ASSET_CLASS_LABELS,
+  INSTRUMENT_TYPE_LABELS,
+} from '../../utils/sectorLabels'
 
 const router = useRouter()
 const listViewRef = ref(null)
@@ -41,18 +43,35 @@ const formatDateValue = (value) => {
   return new Date(value).toLocaleString('zh-CN')
 }
 
-// ElTag 的 type 仅允许 primary/success/info/warning/danger，禁止传空字符串
-const getCategoryTagType = (category) => {
+const getGroupTagType = (category) => {
   const typeMap = {
     股票: 'success',
     基金: 'primary',
+    ETF: 'primary',
     债券: 'warning',
     期货: 'danger',
     期权: 'info',
     指数: 'info',
+    其他: '',
   }
-  return typeMap[category]
+  return typeMap[category] || ''
 }
+
+const assetClassFilterChoices = [
+  { text: '全部', value: '' },
+  ...Object.keys(ASSET_CLASS_LABELS).map((k) => ({
+    text: `${k}（${ASSET_CLASS_LABELS[k]}）`,
+    value: k,
+  })),
+]
+
+const instrumentTypeFilterChoices = [
+  { text: '全部', value: '' },
+  ...Object.keys(INSTRUMENT_TYPE_LABELS).map((k) => ({
+    text: `${k}（${INSTRUMENT_TYPE_LABELS[k]}）`,
+    value: k,
+  })),
+]
 
 const viewSectorSecurities = (sectorAlias) => {
   router.push({
@@ -142,58 +161,61 @@ const listViewOptions = reactive({
     {
       key: 'name',
       label: '显示名称',
-      width: 200,
+      width: 160,
       slotName: 'sector_name_link',
       elTableColumnProps: { sortable: true },
     },
     {
-      key: 'category',
-      label: '分类',
-      width: 100,
-      slotName: 'sector_category',
+      key: 'source',
+      label: '数据源',
+      width: 140,
       elTableColumnProps: { sortable: true },
       filtering: {
         type: 'select',
-        key: 'category',
+        key: 'source',
         choices: [
           { text: '全部', value: '' },
-          { text: '股票', value: '股票' },
-          { text: '基金', value: '基金' },
-          { text: '债券', value: '债券' },
-          { text: '期货', value: '期货' },
-          { text: '期权', value: '期权' },
-          { text: '指数', value: '指数' },
+          { text: 'qmt', value: 'qmt' },
+          { text: 'joinquant', value: 'joinquant' },
+          { text: 'tushare', value: 'tushare' },
         ],
       },
     },
     {
-      key: 'market',
-      label: '市场',
-      width: 100,
-      slotName: 'sector_market',
+      key: 'asset_class',
+      label: '资产大类',
+      width: 140,
+      slotName: 'sector_asset_class',
       elTableColumnProps: { sortable: true },
       filtering: {
         type: 'select',
-        key: 'market',
-        choices: [
-          { text: '全部', value: '' },
-          { text: '上海', value: 'SH' },
-          { text: '深圳', value: 'SZ' },
-          { text: '跨市场', value: '__cross__' },
-        ],
+        key: 'asset_class',
+        choices: assetClassFilterChoices,
       },
     },
     {
-      key: 'security_count',
-      label: '证券数量',
-      width: 120,
-      filter: (value) => value ?? 0,
+      key: 'instrument_type',
+      label: '标的类型',
+      width: 140,
+      slotName: 'sector_instrument_type',
+      elTableColumnProps: { sortable: true },
+      filtering: {
+        type: 'select',
+        key: 'instrument_type',
+        choices: instrumentTypeFilterChoices,
+      },
+    },
+    {
+      key: 'parent_id',
+      label: '父级',
+      width: 88,
+      filter: (value) => (value != null && value !== '' ? value : '--'),
       elTableColumnProps: { sortable: true },
     },
     {
-      key: 'last_sync_at',
-      label: '最后同步',
-      minWidth: 180,
+      key: 'updated_at',
+      label: '最后更新',
+      minWidth: 170,
       filter: (value) => formatDateValue(value),
       elTableColumnProps: { sortable: true },
     },
@@ -231,5 +253,3 @@ const listViewOptions = reactive({
   ],
 })
 </script>
-
-<style scoped></style>

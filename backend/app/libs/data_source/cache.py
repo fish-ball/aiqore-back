@@ -16,6 +16,22 @@ MARKET_LAYER_TO_DIR: Dict[str, str] = {
 }
 DEFAULT_TYPE_DIR = "equity"
 
+
+def instrument_type_to_quote_cache_layer(instrument_type: Optional[str]) -> str:
+    """
+    instrument_type -> 缓存 MARKET_LAYER_TO_DIR 的键（Equity / Future / Option）。
+    与 instruments.instrument_type 取值对应；空或未知按 Equity。
+    """
+    if not instrument_type:
+        return "Equity"
+    u = instrument_type.strip().upper()
+    if u == "FUTURE":
+        return "Future"
+    if u == "OPTION":
+        return "Option"
+    return "Equity"
+
+
 # K 线 parquet 列名（与 KlineBar / 迅投约定一致）；adapter 在 get_klines_data 内完成上游到本列集的转换
 KLINE_COLUMNS: List[str] = [
     "time",

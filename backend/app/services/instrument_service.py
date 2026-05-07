@@ -12,12 +12,9 @@ from app.constants.exchanges import (
     get_exchange_def,
     normalize_exchange_code,
 )
-from app.models.instrument import (
-    Instrument,
-    InstrumentType,
-    infer_asset_class_from_instrument_type,
-)
-from app.libs.data_source.models.enums import MarketLayer
+from app.libs.data_source.models.enums import InstrumentType
+from app.models.instrument import Instrument, infer_asset_class_from_instrument_type
+from app.libs.data_source.models.enums import AssetClass
 
 logger = logging.getLogger(__name__)
 
@@ -352,15 +349,25 @@ class InstrumentService:
             logger.error(f"获取标的列表失败: {e}")
             return []
 
-    def filter_by_market_layer(self, query, layer: MarketLayer):
-        """按行情三大类（Equity/Future/Option）过滤查询。"""
-        if layer == MarketLayer.Future:
+    def filter_by_market_layer(self, query, layer: AssetClass):
+        """
+        按 AssetClass 过滤。
+        EQUITY / FUTURE / OPTION：按 instrument_type 桶（与行情缓存三大类一致）。
+        其余：按 instruments.asset_class 列与枚举 value 匹配。
+        """
+        if layer == AssetClass.FUTURE:
             return query.filter(Instrument.instrument_type == InstrumentType.FUTURE.value)
-        if layer == MarketLayer.Option:
+        if layer == AssetClass.OPTION:
             return query.filter(Instrument.instrument_type == InstrumentType.OPTION.value)
-        return query.filter(
-            Instrument.instrument_type.notin_([InstrumentType.FUTURE.value, InstrumentType.OPTION.value])
-        )
+        if layer == AssetClass.EQUITY:
+            return query.filter(
+                Instrument.instrument_type.notin_([InstrumentType.FUTURE.value, InstrumentType.OPTION.value])
+            )
+        if layer == AssetClass.COMMODITY:
+            return query.filter(Instrument.asset_class == AssetClass.COMMODITY.value)
+        if layer == AssetClass.DEBT:
+            return query.filter(Instrument.asset_class == AssetClass.DEBT.value)
+        return query.filter(Instrument.asset_class == layer.value)
 
 
 instrument_service = InstrumentService()
