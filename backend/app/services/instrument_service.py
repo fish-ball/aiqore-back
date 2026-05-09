@@ -13,6 +13,7 @@ from app.constants.exchanges import (
     normalize_exchange_code,
 )
 from app.libs.data_source.models.enums import InstrumentType
+from app.libs.data_source.models.instrument import DataSourceInstrument
 from app.models.instrument import Instrument, infer_asset_class_from_instrument_type
 from app.libs.data_source.models.enums import AssetClass
 
@@ -139,11 +140,27 @@ def ensure_exchange_code_for_instrument(
 class InstrumentService:
     """标的信息服务。"""
 
-    def _extract_field_from_detail(self, detail: Dict[str, Any], field: str, default=None):
-        """从 detail 字典中提取字段值"""
-        if not detail or not isinstance(detail, dict):
+    def _extract_field_from_detail(self, detail: Any, field: str, default=None):
+        """从 detail（DataSourceInstrument 或旧版 dict）中提取与迅投键名对应的字段值"""
+        if detail is None:
             return default
-        return detail.get(field, default)
+        if isinstance(detail, DataSourceInstrument):
+            if field == "InstrumentName":
+                return detail.name if detail.name else default
+            if field == "InstrumentType":
+                return detail.instrument_type if detail.instrument_type else default
+            if field == "ExchangeID":
+                return detail.exchange_id if detail.exchange_id else default
+            if field == "OpenDate":
+                return detail.open_date if detail.open_date is not None else default
+            if field == "ExpiryDate":
+                return detail.expiry_date if detail.expiry_date is not None else default
+            if field == "LastPrice":
+                return detail.last_price if detail.last_price is not None else default
+            return default
+        if isinstance(detail, dict):
+            return detail.get(field, default)
+        return default
 
     def _safe_float(self, value, default=0.0):
         """安全转换为浮点数"""

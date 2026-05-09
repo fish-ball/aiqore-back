@@ -14,7 +14,7 @@ from app.libs.data_source.adapter.qmt.kline_fetch import fetch_klines
 from app.libs.data_source.adapter.qmt.mappings import to_xtdata_time
 from app.libs.data_source.adapter.qmt.preset_data import PRESET_SECTOR_ROOTS
 from app.libs.data_source.models import AssetClass, DataSourceSector, InstrumentType
-from app.libs.data_source.models.instrument import InstrumentBrief
+from app.libs.data_source.models.instrument import DataSourceInstrument, InstrumentBrief
 from app.libs.data_source.models.kline import KlineBar
 from app.libs.data_source.models.quote import RealtimeQuote
 
@@ -42,7 +42,7 @@ class QMTDataSourceAdapter(DataSourceAdapter):
 
     @staticmethod
     def _preset_sector_aliases_dfs(nodes: List[DataSourceSector]) -> List[str]:
-        """深度优先收集 alias，与 preset 树结构一致，供 get_stock_list 扫描 QMT 板块键。"""
+        """深度优先收集 alias，与 preset 树结构一致，供 get_instrument_list 扫描 QMT 板块键。"""
         out: List[str] = []
         for n in nodes:
             if n.alias:
@@ -118,8 +118,35 @@ class QMTDataSourceAdapter(DataSourceAdapter):
             logger.exception("QMT 连接测试异常")
             return False, str(e)
 
-    def get_instrument_detail(self, symbol: str) -> Optional[Dict[str, Any]]:
-        return self._require_xtdata().get_instrument_detail(symbol)
+    def get_instrument_detail(self, symbol: str) -> Optional[DataSourceInstrument]:
+        raw = self._require_xtdata().get_instrument_detail(symbol)
+        if raw is None or not isinstance(raw, dict):
+            return None
+
+        def _str_field(key: str) -> str:
+            v = raw.get(key)
+            if v is None:
+                return ""
+            return str(v).strip()
+
+        last_price: Optional[float] = None
+        lp = raw.get("LastPrice")
+        if lp is not None:
+            try:
+                last_price = float(lp)
+            except (TypeError, ValueError):
+                last_price = None
+
+        sid = _str_field("InstrumentID")
+        return DataSourceInstrument(
+            symbol=sid or symbol,
+            name=_str_field("InstrumentName"),
+            instrument_type=_str_field("InstrumentType"),
+            exchange_id=_str_field("ExchangeID"),
+            open_date=raw.get("OpenDate"),
+            expiry_date=raw.get("ExpiryDate"),
+            last_price=last_price,
+        )
 
     def get_klines_data(
         self,
@@ -201,11 +228,13 @@ class QMTDataSourceAdapter(DataSourceAdapter):
             quotes = xtdata.get_full_tick(symbols)
             names: Dict[str, str] = {}
             for symbol in symbols:
-                detail = xtdata.get_instrument_detail(symbol)
-                if detail and isinstance(detail, dict):
-                    n = detail.get("InstrumentName", "")
-                    if n:
-                        names[symbol] = n
+                raw_detail = xtdata.get_instrument_detail(symbol)
+                if isinstance(raw_detail, dict):
+                    v = raw_detail.get("InstrumentName")
+                    if v is not None:
+                        nm = str(v).strip()
+                        if nm:
+                            names[symbol] = nm
             result: Dict[str, RealtimeQuote] = {}
             now_iso = datetime.now().isoformat()
             for symbol in symbols:
@@ -253,7 +282,7 @@ class QMTDataSourceAdapter(DataSourceAdapter):
             logger.error("获取实时行情失败: %s", e)
             return None
 
-    def get_stock_list(
+    def get_instrument_list(
         self,
         market: Optional[str] = None,
         sector: Optional[str] = None,
@@ -329,36 +358,6 @@ class QMTDataSourceAdapter(DataSourceAdapter):
             )
             for n in names
         ]
-
-    def search_stocks(self, keyword: str) -> List[InstrumentBrief]:
-        xtdata = self._require_xtdata()
-        all_stocks = self.get_stock_list()
-        results: List[InstrumentBrief] = []
-        keyword_upper = keyword.upper()
-        matched_symbols: List[str] = []
-        for stock in all_stocks:
-            symbol = stock.symbol
-            if keyword_upper in symbol.upper():
-                matched_symbols.append(symbol)
-                results.append(
-                    InstrumentBrief(
-                        symbol=symbol,
-                        name="",
-                        market=stock.market,
-                        sector=stock.sector,
-                    )
-                )
-        if matched_symbols:
-            for symbol in matched_symbols:
-                detail = xtdata.get_instrument_detail(symbol)
-                if detail and isinstance(detail, dict):
-                    n = detail.get("InstrumentName", "")
-                    if n:
-                        for r in results:
-                            if r.symbol == symbol:
-                                r.name = n
-                                break
-        return results[:50]
 
 
 if __name__ == "__main__":

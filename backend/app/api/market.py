@@ -161,7 +161,7 @@ def _search_stocks_via_adapter(
     keyword: str,
     db: Optional[Session] = None,
 ) -> List[Dict[str, Any]]:
-    """数据库优先搜索，必要时走适配器并补全名称。"""
+    """数据库搜索；对缺名称的标的用适配器实时行情等补全名称。"""
     try:
         results: List[Dict[str, Any]] = []
         symbols_to_fetch_name: List[str] = []
@@ -180,24 +180,6 @@ def _search_stocks_via_adapter(
                         "code": code,
                         "name": name,
                         "market": parse_market_suffix_from_code(code),
-                    }
-                )
-
-        if not results:
-            adapter_results = adapter.search_stocks(keyword)
-            for stock in adapter_results:
-                sd = _quote_obj_as_dict(stock)
-                symbol = sd.get("symbol", "")
-                name = sd.get("name", "")
-                if not name or name == symbol or name.strip() == "":
-                    symbols_to_fetch_name.append(symbol)
-                    name = ""
-
-                results.append(
-                    {
-                        "code": symbol,
-                        "name": name,
-                        "market": sd.get("market", ""),
                     }
                 )
 

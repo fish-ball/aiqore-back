@@ -133,12 +133,12 @@ class TestQMTDataSourceAdapter(unittest.TestCase):
         self.assertEqual(res[0].symbol, "600000.SH")
 
     @patch.object(QMTDataSourceAdapter, "get_stock_list_in_sector")
-    def test_get_stock_list_delegates_sector(self, mock_sector) -> None:
+    def test_get_instrument_list_delegates_sector(self, mock_sector) -> None:
         mock_sector.return_value = [InstrumentBrief(symbol="x", market="SH", sector="s")]
         xt = MagicMock()
         with patch(_PATCH_LOAD_XT, return_value=xt):
             adapter = QMTDataSourceAdapter({})
-            out = adapter.get_stock_list(sector="沪深A股")
+            out = adapter.get_instrument_list(sector="沪深A股")
         mock_sector.assert_called_once_with("沪深A股", None)
         self.assertEqual(len(out), 1)
 
@@ -147,7 +147,11 @@ class TestQMTDataSourceAdapter(unittest.TestCase):
         xt.get_instrument_detail.return_value = {"InstrumentName": "测试"}
         with patch(_PATCH_LOAD_XT, return_value=xt):
             adapter = QMTDataSourceAdapter({})
-            self.assertEqual(adapter.get_instrument_detail("600000.SH"), {"InstrumentName": "测试"})
+            got = adapter.get_instrument_detail("600000.SH")
+        self.assertIsNotNone(got)
+        assert got is not None
+        self.assertEqual(got.name, "测试")
+        self.assertEqual(got.symbol, "600000.SH")
 
     def test_get_sector_list_from_xtdata_flat(self) -> None:
         from app.libs.data_source.models import AssetClass
@@ -285,18 +289,6 @@ class TestQMTDataSourceAdapter(unittest.TestCase):
         self.assertEqual(q.name, "平安")
         self.assertEqual(q.last_price, 10.0)
 
-    @patch.object(QMTDataSourceAdapter, "get_stock_list")
-    def test_search_stocks(self, mock_list) -> None:
-        xt = MagicMock(get_instrument_detail=MagicMock(return_value=None))
-        mock_list.return_value = [
-            InstrumentBrief(symbol="600000.SH", market="SH", sector="x"),
-            InstrumentBrief(symbol="000001.SZ", market="SZ", sector="y"),
-        ]
-        with patch(_PATCH_LOAD_XT, return_value=xt):
-            adapter = QMTDataSourceAdapter({})
-            res = adapter.search_stocks("600")
-        self.assertTrue(any(r.symbol == "600000.SH" for r in res))
-
     def test_get_realtime_quote_exception_returns_none(self) -> None:
         xt = MagicMock()
         xt.get_full_tick.side_effect = RuntimeError("net")
@@ -305,14 +297,14 @@ class TestQMTDataSourceAdapter(unittest.TestCase):
             self.assertIsNone(adapter.get_realtime_quote(["000001.SZ"]))
 
     @patch.object(QMTDataSourceAdapter, "_preset_sector_aliases_dfs")
-    def test_get_stock_list_aggregates_sectors(self, mock_aliases) -> None:
+    def test_get_instrument_list_aggregates_sectors(self, mock_aliases) -> None:
         mock_aliases.return_value = ["板块一"]
         xt = MagicMock()
         xt.get_stock_list_in_sector.return_value = ["600000.SH"]
         xt.get_instrument_list.return_value = []
         with patch(_PATCH_LOAD_XT, return_value=xt):
             adapter = QMTDataSourceAdapter({})
-            out = adapter.get_stock_list()
+            out = adapter.get_instrument_list()
         self.assertTrue(any(x.symbol == "600000.SH" for x in out))
 
 

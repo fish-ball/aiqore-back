@@ -238,12 +238,6 @@ class DebugAccountInfoBody(BaseModel):
     account_id: str = Field(..., min_length=1, description="资金账号")
 
 
-class DebugSearchStocksBody(BaseModel):
-    """股票搜索"""
-
-    keyword: str = Field(..., min_length=1, description="关键词（代码或名称）")
-
-
 @router.get("/connections/{connection_id}/debug/sectors")
 async def debug_sectors(connection_id: int, db: Session = Depends(get_db)):
     """[miniQMT] 获取板块列表"""
@@ -276,7 +270,7 @@ async def debug_instrument_detail(
     conn = _require_qmt_connection(connection_id, db)
     adapter = get_adapter(_source_type_public(conn.source_type), dict(conn.config or {}))
     detail = adapter.get_instrument_detail(body.symbol)
-    return {"symbol": body.symbol, "detail": detail}
+    return {"symbol": body.symbol, "detail": detail.model_dump() if detail is not None else None}
 
 
 @router.post("/connections/{connection_id}/debug/market-data")
@@ -314,7 +308,7 @@ async def debug_stock_list(
     """[miniQMT] 获取证券列表（可选 market、sector 过滤）"""
     conn = _require_qmt_connection(connection_id, db)
     adapter = get_adapter(_source_type_public(conn.source_type), dict(conn.config or {}))
-    stocks = adapter.get_stock_list(market=body.market, sector=body.sector)
+    stocks = adapter.get_instrument_list(market=body.market, sector=body.sector)
     return {"stocks": stocks or [], "count": len(stocks or [])}
 
 
@@ -342,16 +336,3 @@ async def debug_account_info(
     trader = get_trader_for_connection(conn)
     info = trader.get_account_info(body.account_id)
     return {"account_id": body.account_id, "info": info}
-
-
-@router.post("/connections/{connection_id}/debug/search-stocks")
-async def debug_search_stocks(
-    connection_id: int,
-    body: DebugSearchStocksBody,
-    db: Session = Depends(get_db),
-):
-    """[miniQMT] 按关键词搜索股票"""
-    conn = _require_qmt_connection(connection_id, db)
-    adapter = get_adapter(_source_type_public(conn.source_type), dict(conn.config or {}))
-    results = adapter.search_stocks(body.keyword)
-    return {"keyword": body.keyword, "stocks": results or [], "count": len(results or [])}

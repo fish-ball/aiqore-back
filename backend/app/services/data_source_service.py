@@ -77,8 +77,8 @@ def sync_instruments(
             "errors": 0,
         }
 
-    securities = impl.get_stock_list(market=market, sector=sector)
-    if not securities:
+    instruments = impl.get_instrument_list(market=market, sector=sector)
+    if not instruments:
         return {
             "success": False,
             "message": "未获取到证券列表",
@@ -87,9 +87,9 @@ def sync_instruments(
             "updated": 0,
             "errors": 0,
         }
-    logger.info("数据源连接 id=%s (%s) 获取到 %s 只证券，开始补全详情并写库", source_id, impl.name, len(securities))
+    logger.info("数据源连接 id=%s (%s) 获取到 %s 只证券，开始补全详情并写库", source_id, impl.name, len(instruments))
     with_details: List[Dict[str, Any]] = []
-    for sec in securities:
+    for sec in instruments:
         row = sec.model_dump() if hasattr(sec, "model_dump") else sec
         symbol = row.get("symbol")
         if not symbol:

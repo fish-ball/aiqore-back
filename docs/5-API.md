@@ -75,7 +75,6 @@
 | POST | /api/data-source/connections/{id}/debug/stock-list | [miniQMT] 证券列表 |
 | POST | /api/data-source/connections/{id}/debug/positions | [miniQMT] 持仓 |
 | POST | /api/data-source/connections/{id}/debug/account-info | [miniQMT] 账户信息 |
-| POST | /api/data-source/connections/{id}/debug/search-stocks | [miniQMT] 搜索股票 |
 
 ### 板块（/api/sector）
 
@@ -300,9 +299,6 @@
 - **POST .../debug/account-info**  
   - Body: `{ account_id: string }`  
   - 响应: `data`: `{ account_id, info }`
-- **POST .../debug/search-stocks**  
-  - Body: `{ keyword: string }`  
-  - 响应: `data`: `{ keyword, stocks, total }`
 
 ---
 

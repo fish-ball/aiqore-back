@@ -12,7 +12,7 @@ from app.libs.data_source.models.enums import (
     InstrumentType,
 )
 from app.libs.data_source.models.sector import DataSourceSector
-from app.libs.data_source.models.instrument import InstrumentBrief
+from app.libs.data_source.models.instrument import DataSourceInstrument, InstrumentBrief
 from app.libs.data_source.models.kline import KlineBar
 from app.libs.data_source.models.quote import RealtimeQuote
 
@@ -23,6 +23,7 @@ __all__ = [
     "DataSourceType",
     "DataSourceSector",
     "InstrumentBrief",
+    "DataSourceInstrument",
     "KlineBar",
     "RealtimeQuote",
 ]

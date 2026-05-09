@@ -94,11 +94,6 @@
                         <el-input v-model="form.account_id_info" placeholder="与 miniQMT 登录账号一致" clearable />
                       </el-form-item>
                     </template>
-                    <template v-else-if="tab.key === 'search-stocks'">
-                      <el-form-item label="关键词" required>
-                        <el-input v-model="form.keyword" placeholder="代码或名称关键词" clearable />
-                      </el-form-item>
-                    </template>
                   </el-form>
                   <el-button type="primary" @click="sendRequest(tab)" :loading="requestLoading">发送请求</el-button>
                 </div>
@@ -153,8 +148,7 @@ const tabs = [
   { key: 'realtime-quote', label: '实时行情' },
   { key: 'stock-list', label: '证券列表' },
   { key: 'positions', label: '持仓查询' },
-  { key: 'account-info', label: '账户信息' },
-  { key: 'search-stocks', label: '股票搜索' }
+  { key: 'account-info', label: '账户信息' }
 ]
 
 const activeTab = ref('test')
@@ -171,8 +165,7 @@ const form = ref({
   market: '',
   sectorStockList: '',
   account_id: '',
-  account_id_info: '',
-  keyword: ''
+  account_id_info: ''
 })
 
 function goBack() {
@@ -225,10 +218,6 @@ async function sendRequest(tab) {
   }
   if (key === 'account-info' && !form.value.account_id_info?.trim()) {
     ElMessage.warning('请填写资金账号')
-    return
-  }
-  if (key === 'search-stocks' && !form.value.keyword?.trim()) {
-    ElMessage.warning('请填写关键词')
     return
   }
 
@@ -294,13 +283,6 @@ async function sendRequest(tab) {
       case 'account-info': {
         const r = await dataSourceConnResource.post({ id, action: 'debug/account-info' }, {
           account_id: form.value.account_id_info.trim(),
-        })
-        data = r.data
-        break
-      }
-      case 'search-stocks': {
-        const r = await dataSourceConnResource.post({ id, action: 'debug/search-stocks' }, {
-          keyword: form.value.keyword.trim(),
         })
         data = r.data
         break
