@@ -11,10 +11,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.libs.data_source.adapter.base import DataSourceAdapter
 from app.models.instrument import parse_market_suffix_from_code
-from app.services.data_source_service import (
-    get_active_data_source,
-    resolve_adapter_for_data_source_id,
-)
+from app.services.data_source_service import resolve_adapter_for_data_source_id
 from app.services.instrument_service import instrument_service
 from app.utils.task_manager import save_task_info
 from app.libs.data_source.cache import instrument_type_to_quote_cache_layer
@@ -29,12 +26,6 @@ def _quote_adapter_or_raise(db: Session, data_source_id: int) -> DataSourceAdapt
     if err:
         raise HTTPException(status_code=400, detail=err)
     return adapter
-
-
-def _require_active_data_source(db: Session, data_source_id: int) -> None:
-    """提交依赖数据源的异步任务前，校验连接存在且启用。"""
-    if get_active_data_source(db, data_source_id) is None:
-        raise HTTPException(status_code=400, detail="数据源不存在或未启用")
 
 
 def _quote_obj_as_dict(obj: Any) -> Dict[str, Any]:
@@ -520,7 +511,6 @@ async def get_kline(
             market_layer = instrument_type_to_quote_cache_layer(inst.instrument_type)
 
         if force_update:
-            _require_active_data_source(db, data_source_id)
             task = task_update_single_instrument_kdata.delay(
                 symbol=symbol,
                 market_layer=market_layer,
@@ -579,7 +569,6 @@ async def get_kline(
             market_layer = instrument_type_to_quote_cache_layer(inst.instrument_type)
 
         if force_update:
-            _require_active_data_source(db, data_source_id)
             task = task_update_single_instrument_tick_for_date.delay(
                 symbol=symbol,
                 trade_date=trade_date,
@@ -679,7 +668,6 @@ async def get_ticks(
         market_layer = instrument_type_to_quote_cache_layer(inst.instrument_type)
 
     if force_update:
-        _require_active_data_source(db, data_source_id)
         task = task_update_single_instrument_tick_for_date.delay(
             symbol=symbol,
             trade_date=trade_date,
