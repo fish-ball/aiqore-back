@@ -23,7 +23,6 @@ CLI 用法（直接运行本文件）：
 import argparse
 from typing import Any
 
-from aiqore_data.providers.miniqmt.core import load_xtdata
 
 
 def get_instrument_type(symbol: str, *, xtdata: Any | None = None) -> str | None:
@@ -51,7 +50,9 @@ def get_instrument_type(symbol: str, *, xtdata: Any | None = None) -> str | None
     - 其他（指数/债券）：`get_instrument_type("000300.SH")`、`get_instrument_type("186511.SH")`
     """
     if xtdata is None:
-        xtdata = load_xtdata()
+        from xtquant import xtdata
+
+        xtdata.enable_hello = False
 
     raw_type = xtdata.get_instrument_type(symbol)
     if raw_type is None:

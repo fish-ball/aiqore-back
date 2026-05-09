@@ -129,8 +129,6 @@ import argparse
 import json
 from typing import Any
 
-from xtquant import xtdata as _default_xtdata
-
 
 def get_instrument_detail(
     symbol: str,
@@ -145,8 +143,11 @@ def get_instrument_detail(
     - `iscomplete` 默认 `False`，用于控制是否返回完整字段。
     - 当标的不存在或未返回详情时返回 `None`。
     """
-    runtime_xtdata = xtdata or _default_xtdata
-    detail = runtime_xtdata.get_instrument_detail(symbol, iscomplete=iscomplete)
+    if not xtdata:
+        from xtquant import xtdata
+
+        xtdata.enable_hello = False
+    detail = xtdata.get_instrument_detail(symbol, iscomplete=iscomplete)
     if not detail:
         return None
     if not isinstance(detail, dict):

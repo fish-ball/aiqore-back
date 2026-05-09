@@ -10,13 +10,14 @@ CLI 用法（直接运行本文件）：
 import argparse
 from typing import Any
 
-from aiqore_data.providers.miniqmt.core import load_xtdata
-
 
 def get_stock_list_in_sector(sector: str, *, xtdata: Any | None = None) -> list[str]:
     """查询指定板块下的证券代码列表。"""
-    runtime_xtdata = xtdata or load_xtdata()
-    symbols = runtime_xtdata.get_stock_list_in_sector(sector)
+    if not xtdata:
+        from xtquant import xtdata
+
+        xtdata.enable_hello = False
+    symbols = xtdata.get_stock_list_in_sector(sector)
     if symbols is None:
         return []
     if not isinstance(symbols, list):

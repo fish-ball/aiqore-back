@@ -16,8 +16,6 @@ from typing import Any
 
 from dateutil import parser as date_parser
 
-from aiqore_data.providers.miniqmt.core import load_xtdata
-
 
 def _normalize_cli_date(value: str) -> str:
     """将 CLI 输入日期智能转换为 YYYYMMDD。"""
@@ -64,10 +62,16 @@ def get_trading_dates(
     print(dates)
     ```
     """
-    runtime_xtdata = xtdata or load_xtdata()
-    normalized_start = _normalize_cli_date(start_time) if start_time else ""
-    normalized_end = _normalize_cli_date(end_time) if end_time else ""
-    return runtime_xtdata.get_trading_dates(market, normalized_start, normalized_end, count)
+    if not xtdata:
+        from xtquant import xtdata
+
+        xtdata.enable_hello = False
+    trading_dates = xtdata.get_trading_dates(market, start_time, end_time, count)
+    if trading_dates is None:
+        return []
+    if not isinstance(trading_dates, list):
+        raise ValueError(f"交易日列表返回格式异常: {type(trading_dates)}")
+    return [str(item) for item in trading_dates]
 
 
 def main() -> None:

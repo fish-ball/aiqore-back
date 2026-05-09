@@ -10,13 +10,14 @@ CLI 用法（直接运行本文件）：
 import argparse
 from typing import Any
 
-from aiqore_data.providers.miniqmt.core import load_xtdata
-
 
 def get_sector_list(*, xtdata: Any | None = None) -> list[str]:
     """查询 miniQMT 可用板块列表。"""
-    runtime_xtdata = xtdata or load_xtdata()
-    sectors = runtime_xtdata.get_sector_list()
+    if not xtdata:
+        from xtquant import xtdata
+
+        xtdata.enable_hello = False
+    sectors = xtdata.get_sector_list()
     if sectors is None:
         return []
     if not isinstance(sectors, list):
@@ -28,16 +29,13 @@ def main() -> None:
     """CLI 入口：查询 miniQMT 板块列表。"""
     parser = argparse.ArgumentParser(
         description="查询 miniQMT 板块列表",
-        epilog=(
-            "调用示例:\n"
-            "  python -m aiqore_data.providers.miniqmt.get_sector_list"
-        ),
+        epilog=("调用示例:\n  python -m aiqore_data.providers.miniqmt.get_sector_list"),
         formatter_class=argparse.RawTextHelpFormatter,
     )
     args = parser.parse_args()
 
     try:
-        sectors = get_sector_list()
+        sectors = get_sector_list(**vars(args))
     except ValueError as exc:
         parser.error(str(exc))
         return
