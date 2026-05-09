@@ -51,8 +51,9 @@ class Settings(BaseSettings):
     QMT_PORT: int = 7709
     QMT_USER: Optional[str] = None
     QMT_PASSWORD: Optional[str] = None
-    XT_QUANT_PATH: str = r"C:\国金证券QMT交易端\userdata_mini"
-    XT_QUANT_ACCT: str = "39271919"
+    # miniQMT userdata_mini 根目录：仅交易端 XtQuantTrader 使用；行情 xtdata 不依赖此项
+    XT_QUANT_PATH: str = r"C:\光大证券金阳光QMT实盘\userdata_mini"
+    XT_QUANT_ACCT: str = "...."
     
     # Redis配置（用于Celery）
     REDIS_HOST: str = "localhost"

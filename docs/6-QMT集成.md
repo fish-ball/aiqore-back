@@ -22,11 +22,11 @@
 
 ### 数据源连接（推荐）
 
-在「数据源连接」管理页（前端 `/data-sources`）或通过 `GET/POST /api/data-source/connections` 增删改 QMT 连接，可配置 host、port、user、password、xt_quant_path、xt_quant_acct，并可将某连接设为「行情源」或「交易驱动源」。证券同步任务可指定 `source_id` 使用某条连接；不指定时使用默认连接（表中第一条启用 QMT 或环境变量回退）。
+在「数据源连接」管理页（前端 `/data-sources`）或通过 `GET/POST /api/data-source/connections` 增删改 QMT 连接。行情侧 `xtdata` 依赖本机已启动的 miniQMT，无需在 config 里配路径。交易侧 `XtQuantTrader` 需要 **userdata_mini 根目录**：可在连接 `config.xt_quant_path` 中填写；若未填，则使用下方环境变量 `XT_QUANT_PATH`。可选填 `xt_quant_acct`。可将某连接设为「行情源」或「交易驱动源」。
 
-### 环境变量（默认/回退）
+### 环境变量（默认交易路径与账号）
 
-当无可用数据源连接记录时，使用 `.env` 或 `app/config.py` 默认值：
+默认 `get_default_qmt_trader()` 及「连接 config 未写路径」时的回退：
 
 ```env
 XT_QUANT_PATH=C:\国金证券QMT交易端\userdata_mini
@@ -94,7 +94,7 @@ QMT 同步时：写主表后写 security_source_qmt，再写交易规则、行�
 
 ## 故障排查
 
-- **无法导入 xtquant**：检查 QMT 是否安装、`XT_QUANT_PATH` 及 Python 路径
+- **无法导入 xtquant**：检查 QMT 是否安装、miniQMT 是否已启动及当前 Python 能否找到 xtquant
 - **股票列表为空**：确认 QMT 与 MiniQMT 已运行、账户配置正确，查看日志
 - **更新慢**：按市场分批（market=SH/SZ）、使用异步任务、仅更新活跃标的
 

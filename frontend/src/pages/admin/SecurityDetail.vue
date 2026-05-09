@@ -36,7 +36,12 @@
         <div class="panel-left-inner">
           <el-tabs v-model="chartTab" class="chart-tabs">
             <el-tab-pane label="分时" name="intraday" lazy>
-              <TickChart v-if="securityDetailLoaded" ref="tickChartRef" :symbol="symbol" :security-detail="securityInfo" />
+              <TickChart
+                v-if="securityDetailLoaded"
+                ref="tickChartRef"
+                :symbol="symbol"
+                :security-detail="securityInfo"
+              />
             </el-tab-pane>
             <el-tab-pane label="日K" name="day" lazy>
               <KlineChart ref="klineDayRef" :symbol="symbol" period="1d" style="height: 100%;" />
@@ -91,7 +96,7 @@ import { ref, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { useDataSourceStore } from '../../stores/dataSource'
+import { useDataSourceStore, DataSourceRequiredError } from '../../stores/dataSource'
 import DividFactorsTable from '../components/diagram/DividFactorsTable.vue'
 import TickChart from '../components/diagram/TickChart.vue'
 import KlineChart from '../components/diagram/KlineChart.vue'
@@ -356,8 +361,13 @@ async function fetchQuote() {
   quoteLoading.value = true
   const s = (props.symbol || '').trim()
   if (!s) { quoteLoading.value = false; return }
+  const dsId = dataSourceStore.currentDataSourceId()
+  if (dsId == null) {
+    quoteLoading.value = false
+    return
+  }
   try {
-    const qResp = await marketQuoteResource.get({}, { symbols: s })
+    const qResp = await marketQuoteResource.get({}, { symbols: s, data_source_id: dsId })
     const quotes = qResp.data
     if (Array.isArray(quotes) && quotes.length > 0) {
       quote.value = quotes[0]
@@ -631,9 +641,11 @@ function buildSubOption(rawData, type, subCache) {
 async function fetchKlineForTab(period, count = 250) {
   const s = (props.symbol || '').trim()
   if (!s) return []
+  const dsId = dataSourceStore.currentDataSourceId()
+  if (dsId == null) return []
   try {
     // 不传 start_date/end_date，后端返回全部 K 线，由前端控制显示范围
-    const kResp = await marketKlineResource.get({}, { symbol: s, period, count })
+    const kResp = await marketKlineResource.get({}, { symbol: s, data_source_id: dsId, period, count })
     const res = kResp.data
     return Array.isArray(res) ? res : []
   } catch (e) {
@@ -994,6 +1006,17 @@ watch(() => props.symbol, async (newVal, oldVal) => {
   await reload()
 }, { immediate: false })
 
+// 顶栏切换数据源后刷新行情与当前图表
+watch(
+  () => dataSourceStore.currentId,
+  async () => {
+    const s = (props.symbol || '').trim()
+    if (!s) return
+    await fetchQuote()
+    await nextTick(refreshCharts)
+  },
+)
+
 // 拖拽调整左侧宽度（结束时写入 localStorage）
 function startResize(e) {
   resizing = true
@@ -1052,7 +1075,7 @@ function goBack() {
 function needAutoFetchData() {
   const s = (props.symbol || '').trim()
   if (!s) return false
-  if (dataSourceStore.list?.length > 0 && dataSourceStore.currentId == null) return false
+  if (dataSourceStore.list?.length > 0 && !dataSourceStore.hasCurrentDataSource) return false
   const meta = securityInfo.value?.metadata
   const hasTicks = meta?.ticks && (meta.ticks.end_date != null || meta.ticks.start_date != null)
   const hasKline = meta?.kline && (meta.kline.end_date != null || meta.kline.start_date != null)
@@ -1066,16 +1089,19 @@ function needAutoFetchData() {
 async function doUpdateData(silent = false) {
   const s = (props.symbol || '').trim()
   if (!s) return
-  const sourceType = dataSourceStore.currentDataSource?.source_type || 'qmt'
-  const sourceId = dataSourceStore.currentId ?? null
-  if (dataSourceStore.list?.length > 0 && !dataSourceStore.currentId) {
-    if (!silent) ElMessage.warning('请先在顶栏选择数据源')
-    return
+  let sourceIdNum = null
+  if (dataSourceStore.list?.length > 0) {
+    if (silent) {
+      sourceIdNum = dataSourceStore.currentDataSourceId()
+      if (sourceIdNum == null) return
+    } else {
+      sourceIdNum = await dataSourceStore.requireDataSourceId()
+    }
   }
+  if (sourceIdNum == null) return
   updateDataLoading.value = true
   try {
-    const udBody = { code: s, source_type: sourceType }
-    if (sourceId != null && sourceId !== '') udBody.source_id = Number(sourceId)
+    const udBody = { code: s, source_id: sourceIdNum }
     const postResp = await securityUpdateDataResource.post({}, udBody)
     const res = postResp.data
     if (res?.hint) {
@@ -1096,7 +1122,8 @@ async function doUpdateData(silent = false) {
       }
     }
   } catch (e) {
-    ElMessage.error(e?.message || '更新数据失败')
+    if (e instanceof DataSourceRequiredError) return
+    ElMessage.error(e instanceof Error ? e.message : '更新数据失败')
   } finally {
     updateDataLoading.value = false
   }

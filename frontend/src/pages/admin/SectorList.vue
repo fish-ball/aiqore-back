@@ -26,6 +26,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 import ListView from '../../components/ListViewNoRouteSync.vue'
 import { api } from '@iottest/vue-core/src/libs/api'
+import { useDataSourceStore } from '../../stores/dataSource'
 import {
   assetClassLabel,
   sectorGroupLabelFromInstrumentType,
@@ -34,6 +35,7 @@ import {
 } from '../../utils/sectorLabels'
 
 const router = useRouter()
+const dataSourceStore = useDataSourceStore()
 const listViewRef = ref(null)
 const sectorSyncResource = api('sector/sync')
 const securityUpdateResource = api('instrument/update')
@@ -89,7 +91,8 @@ const syncSectorSecurities = async (sectorAlias) => {
     if (e === 'cancel') return
     throw e
   }
-  const uResp = await securityUpdateResource.post({}, { source_type: 'qmt', sector: sectorAlias })
+  const sid = await dataSourceStore.requireDataSourceId()
+  const uResp = await securityUpdateResource.post({}, { source_id: sid, sector: sectorAlias })
   const result = uResp.data
   if (result && result.task_id) {
     ElMessage.success('同步任务已提交，请查看任务列表')
@@ -123,14 +126,15 @@ const editSectorRemark = async (item) => {
 
 const syncAllSectors = async (ctx) => {
   try {
-    await ElMessageBox.confirm('确定要从QMT同步板块列表吗？', '确认同步', {
+    await ElMessageBox.confirm('确定要从当前所选数据源同步板块列表吗？', '确认同步', {
       type: 'warning',
     })
   } catch (e) {
     if (e === 'cancel') return
     throw e
   }
-  const resp = await sectorSyncResource.post({}, {})
+  const sid = await dataSourceStore.requireDataSourceId()
+  const resp = await sectorSyncResource.post({}, { source_id: sid })
   const response = resp.data || {}
   ElMessage.success(
     `同步完成: 新增 ${response.created || 0} 个，更新 ${response.updated || 0} 个`,

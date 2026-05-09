@@ -2,15 +2,13 @@
 """
 native 真实 xtdata 冒烟用例共用工具。
 
-XT_QUANT_PATH 使用环境变量；再经 ensure_xtdata 加载。
+需本机已启动 miniQMT，且当前 Python 可 import xtquant。
 """
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Any, Optional, Tuple
 
-from app.libs.data_source.adapter.qmt.core import ensure_xtdata, reset_xtdata_cache
+from app.libs.data_source.adapter.qmt.adapter import QMTDataSourceAdapter
 
 # 上证 / 深证 / 北交所示例代码（多市场覆盖）
 SAMPLE_MARKET_SYMBOLS = (
@@ -20,24 +18,14 @@ SAMPLE_MARKET_SYMBOLS = (
 )
 
 
-def get_xt_quant_path() -> Optional[str]:
-    """测试用 miniQMT 路径：环境变量 XT_QUANT_PATH。"""
-    p = os.environ.get("XT_QUANT_PATH", "").strip()
-    return p or None
-
-
 def try_load_xtdata() -> Tuple[Optional[Any], str]:
     """
     尝试加载 xtdata 实例。
     成功返回 (xt, "")；失败返回 (None, 人类可读原因)，供 SkipTest 使用。
     """
-    path = get_xt_quant_path()
-    if not path:
-        return None, "无 XT_QUANT_PATH（请设置环境变量）"
-    if not Path(path).is_dir():
-        return None, f"路径无效: {path}"
-    reset_xtdata_cache()
-    xt = ensure_xtdata(path)
+    QMTDataSourceAdapter.reset_singleton_for_tests()
+    adapter = QMTDataSourceAdapter({})
+    xt = adapter.xtdata
     if xt is None:
-        return None, "ensure_xtdata 失败（xtquant / miniQMT）"
+        return None, "无法加载 xtquant.xtdata（请启动 miniQMT 并确保已安装 xtquant）"
     return xt, ""

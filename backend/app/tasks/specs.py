@@ -63,18 +63,10 @@ _register(
                 description="板块名称，仅同步指定板块内的证券。",
             ),
             TaskParamSpec(
-                name="adapter",
-                type="string",
-                required=False,
-                default="qmt",
-                description="适配器注册键，例如 qmt。",
-            ),
-            TaskParamSpec(
                 name="source_id",
                 type="integer",
-                required=False,
-                default=None,
-                description="数据源连接 ID，未指定时使用默认连接。",
+                required=True,
+                description="数据源连接 ID（data_sources.id，须启用）。",
             ),
         ],
     )
@@ -95,18 +87,10 @@ _register(
                 description="证券代码，例如 000001.SZ。",
             ),
             TaskParamSpec(
-                name="adapter",
-                type="string",
-                required=False,
-                default="qmt",
-                description="适配器注册键，例如 qmt。",
-            ),
-            TaskParamSpec(
                 name="source_id",
                 type="integer",
-                required=False,
-                default=None,
-                description="数据源连接 ID，未指定时使用默认连接。",
+                required=True,
+                description="数据源连接 ID（data_sources.id，须启用）。",
             ),
             TaskParamSpec(
                 name="force_update",
@@ -160,18 +144,10 @@ _register(
                 description="结束日期，格式 YYYY-MM-DD。",
             ),
             TaskParamSpec(
-                name="adapter",
-                type="string",
-                required=False,
-                default="qmt",
-                description="适配器注册键，例如 qmt。",
-            ),
-            TaskParamSpec(
                 name="source_id",
                 type="integer",
-                required=False,
-                default=None,
-                description="数据源连接 ID，未指定时使用默认连接。",
+                required=True,
+                description="数据源连接 ID（data_sources.id，须启用）。",
             ),
             TaskParamSpec(
                 name="force_update",
@@ -211,18 +187,10 @@ _register(
                 description="证券大类：Equity（权益类）、Future（期货类）、Option（期权类）。",
             ),
             TaskParamSpec(
-                name="adapter",
-                type="string",
-                required=False,
-                default="qmt",
-                description="适配器注册键，例如 qmt。",
-            ),
-            TaskParamSpec(
                 name="source_id",
                 type="integer",
-                required=False,
-                default=None,
-                description="数据源连接 ID，未指定时使用默认连接。",
+                required=True,
+                description="数据源连接 ID（data_sources.id，须启用）。",
             ),
             TaskParamSpec(
                 name="force_update",
@@ -256,18 +224,10 @@ _register(
                 description="证券大类：Equity（权益类）、Future（期货类）、Option（期权类）。",
             ),
             TaskParamSpec(
-                name="adapter",
-                type="string",
-                required=False,
-                default="qmt",
-                description="适配器注册键，例如 qmt。",
-            ),
-            TaskParamSpec(
                 name="source_id",
                 type="integer",
-                required=False,
-                default=None,
-                description="数据源连接 ID，未指定时使用默认连接。",
+                required=True,
+                description="数据源连接 ID（data_sources.id，须启用）。",
             ),
             TaskParamSpec(
                 name="force_update",
@@ -302,18 +262,10 @@ _register(
                 description="待更新的标的代码列表；为空则更新该 market_layer 下全部有效标的。",
             ),
             TaskParamSpec(
-                name="adapter",
-                type="string",
-                required=False,
-                default="qmt",
-                description="适配器注册键，例如 qmt。",
-            ),
-            TaskParamSpec(
                 name="source_id",
                 type="integer",
-                required=False,
-                default=None,
-                description="数据源连接 ID，未指定时使用默认连接。",
+                required=True,
+                description="数据源连接 ID（data_sources.id，须启用）。",
             ),
             TaskParamSpec(
                 name="force_update",
@@ -341,18 +293,10 @@ _register(
                 description="证券代码，例如 000001.SZ。",
             ),
             TaskParamSpec(
-                name="adapter",
-                type="string",
-                required=False,
-                default="qmt",
-                description="适配器注册键，例如 qmt。",
-            ),
-            TaskParamSpec(
                 name="source_id",
                 type="integer",
-                required=False,
-                default=None,
-                description="数据源连接 ID，未指定时使用默认连接。",
+                required=True,
+                description="数据源连接 ID（data_sources.id，须启用）。",
             ),
             TaskParamSpec(
                 name="start_date",
@@ -388,18 +332,10 @@ _register(
         category="sector",
         params=[
             TaskParamSpec(
-                name="adapter",
-                type="string",
-                required=False,
-                default="qmt",
-                description="适配器注册键，例如 qmt。",
-            ),
-            TaskParamSpec(
                 name="source_id",
                 type="integer",
-                required=False,
-                default=None,
-                description="数据源连接 ID，未指定时使用默认连接。",
+                required=True,
+                description="数据源连接 ID（data_sources.id，须启用）。",
             ),
         ],
     )

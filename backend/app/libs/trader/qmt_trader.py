@@ -1,6 +1,6 @@
 """
 miniQMT 交易端：通过 xtquant.xttrader 查询账户资产与持仓。
-config 与数据源相同：xt_quant_path、xt_quant_acct（acct 仅作配置展示，查询时使用入参 account_id）。
+config 需含 xt_quant_path（userdata_mini 根目录）；xt_quant_acct 可选。与行情 xtdata 不同，XtQuantTrader 依赖该路径。
 """
 from __future__ import annotations
 
@@ -35,7 +35,8 @@ class QMTTrader(SecuritiesTrader):
 
     def __init__(self, config: Dict[str, Any]):
         self._config = config or {}
-        self._xt_quant_path = self._config.get("xt_quant_path") or None
+        raw_path = self._config.get("xt_quant_path")
+        self._xt_quant_path = str(raw_path).strip() if raw_path else None
         self._xt_quant_acct = self._config.get("xt_quant_acct") or None
         self._xttrader = None
         self._xttrader_connected = False
@@ -48,7 +49,7 @@ class QMTTrader(SecuritiesTrader):
         """
         base = Path(self._xt_quant_path) if self._xt_quant_path else None
         if not base or not base.is_dir():
-            raise RuntimeError("QMT 路径未配置或不可用")
+            raise RuntimeError("QMT 交易路径未配置或不可用（config.xt_quant_path 或默认 XT_QUANT_PATH）")
 
         try:
             XtQuantTrader, _ = _ensure_xttrader_types()
@@ -58,7 +59,7 @@ class QMTTrader(SecuritiesTrader):
         if self._xttrader is None:
             resolved_session_id = int(time.time()) if session_id is None else int(session_id)
             self._xttrader_session_id = resolved_session_id
-            self._xttrader = XtQuantTrader(self._xt_quant_path, resolved_session_id)
+            self._xttrader = XtQuantTrader(str(base.resolve()), resolved_session_id)
             self._xttrader.start()
             self._xttrader_connected = False
 

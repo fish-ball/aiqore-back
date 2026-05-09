@@ -81,7 +81,7 @@
               size="small"
               @click="openUpdateDialog"
               :loading="updating"
-              :disabled="updating || !dataSourceStore.currentId"
+              :disabled="updating || !dataSourceStore.hasCurrentDataSource"
               v-if="!activeSector"
             >
               <el-icon><IconDownload /></el-icon>
@@ -92,7 +92,7 @@
               size="small"
               @click="updateSectorFromDataSource"
               :loading="updating"
-              :disabled="updating || !dataSourceStore.currentId"
+              :disabled="updating || !dataSourceStore.hasCurrentDataSource"
               v-if="activeSector"
             >
               <el-icon><IconDownload /></el-icon>
@@ -308,7 +308,7 @@
               link
               size="small"
               :loading="updatingSymbol === scope.row.code"
-              :disabled="!dataSourceStore.currentId"
+              :disabled="!dataSourceStore.hasCurrentDataSource"
               @click="updateOneSecurity(scope.row)"
             >
               更新
@@ -336,7 +336,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { api } from '@iottest/vue-core/src/libs/api'
-import { useDataSourceStore } from '../../stores/dataSource'
+import { useDataSourceStore, DataSourceRequiredError } from '../../stores/dataSource'
 import type { Pagination } from '../../types/common'
 import type { Sector, SectorCategoryGrouped } from '../../types/sector'
 import { sectorGroupLabelFromInstrumentType } from '../../utils/sectorLabels'
@@ -519,11 +519,11 @@ const fetchSecurities = async () => {
       params.exchange_code = filterExchangeCode.value
     }
 
-    // 如果选择了板块，添加板块参数
     if (activeSector.value) {
       params.sector = activeSector.value
+      params.data_source_id = await dataSourceStore.requireDataSourceId()
     }
-    
+
     const listResp = await securityListResource.get({}, params)
     const response = listResp.data as { results?: Security[]; count?: number }
     const securities = response.results || []
@@ -534,12 +534,13 @@ const fetchSecurities = async () => {
     // 分批获取实时行情（每批50个，避免URL过长）
     const quotesMap: Record<string, SecurityQuote> = {}
     if (codes.length > 0) {
+      const quoteDs = await dataSourceStore.requireDataSourceId()
       const batchSize = 50
       for (let i = 0; i < codes.length; i += batchSize) {
         const batch = codes.slice(i, i + batchSize)
         const symbolsStr = batch.join(',')
         try {
-          const qResp = await marketQuoteResource.get({}, { symbols: symbolsStr })
+          const qResp = await marketQuoteResource.get({}, { symbols: symbolsStr, data_source_id: quoteDs })
           const quotes = qResp.data as SecurityQuote[] | undefined
           if (Array.isArray(quotes)) {
             quotes.forEach((quote) => {
@@ -551,7 +552,7 @@ const fetchSecurities = async () => {
         }
       }
     }
-    
+
     // 合并数据
     tableData.value = securities.map((security) => {
       const quote: SecurityQuote = quotesMap[security.code] || {}
@@ -577,6 +578,9 @@ const fetchSecurities = async () => {
     
     pagination.value.total = response.count ?? 0
   } catch (error) {
+    if (error instanceof DataSourceRequiredError) {
+      return
+    }
     console.error('获取证券列表失败:', error)
     ElMessage.error('获取证券列表失败')
   } finally {
@@ -600,12 +604,16 @@ const handleSearch = async () => {
 
       // 分批获取行情
       const quotesMap: Record<string, SecurityQuote> = {}
+      const searchDs = await dataSourceStore.requireDataSourceId()
       const batchSize = 50
       for (let i = 0; i < codes.length; i += batchSize) {
         const batch = codes.slice(i, i + batchSize)
         const symbolsStr = batch.join(',')
         try {
-          const qResp = await marketQuoteResource.get({}, { symbols: symbolsStr })
+          const qResp = await marketQuoteResource.get(
+            {},
+            { symbols: symbolsStr, data_source_id: searchDs },
+          )
           const quotes = qResp.data as SecurityQuote[] | undefined
           if (Array.isArray(quotes)) {
             quotes.forEach((quote) => {
@@ -646,6 +654,9 @@ const handleSearch = async () => {
       pagination.value.total = 0
     }
   } catch (error) {
+    if (error instanceof DataSourceRequiredError) {
+      return
+    }
     console.error('搜索失败:', error)
     ElMessage.error('搜索失败')
   } finally {
@@ -750,18 +761,12 @@ const refreshData = () => {
   ElMessage.success('数据已刷新')
 }
 
-const sourceType = () => dataSourceStore.currentDataSource?.source_type || 'qmt'
-const sourceId = () => dataSourceStore.currentId
-
 function resetUpdateForm() {
   updateForm.value = { market: '', sector: '' }
 }
 
-function openUpdateDialog() {
-  if (!dataSourceStore.currentId) {
-    ElMessage.warning('请先在顶栏选择当前数据源')
-    return
-  }
+async function openUpdateDialog() {
+  await dataSourceStore.requireDataSourceId()
   updateForm.value = { market: filterMarket.value || '', sector: '' }
   updateDialogVisible.value = true
 }
@@ -769,11 +774,10 @@ function openUpdateDialog() {
 const submitUpdateTask = async () => {
   updating.value = true
   try {
-    const body: Record<string, unknown> = { source_type: sourceType() }
+    const sid = await dataSourceStore.requireDataSourceId()
+    const body: Record<string, unknown> = { source_id: sid }
     if (updateForm.value.market) body.market = updateForm.value.market
     if (updateForm.value.sector) body.sector = updateForm.value.sector
-    const sid = sourceId()
-    if (sid != null) body.source_id = Number(sid)
     const uResp = await securityUpdateResource.post({}, body)
     const result = uResp.data as { task_id?: string }
     if (result && result.task_id) {
@@ -781,6 +785,7 @@ const submitUpdateTask = async () => {
       ElMessage.success('任务已提交，正在后台处理')
     }
   } catch (error: unknown) {
+    if (error instanceof DataSourceRequiredError) return
     const msg = error instanceof Error ? error.message : '未知错误'
     if (!msg.includes('正在运行中')) {
       ElMessage.error('提交失败: ' + msg)
@@ -792,16 +797,11 @@ const submitUpdateTask = async () => {
 
 const updateSectorFromDataSource = async () => {
   if (!activeSector.value) return
-  if (!dataSourceStore.currentId) {
-    ElMessage.warning('请先在顶栏选择当前数据源')
-    return
-  }
   updating.value = true
   try {
-    const body: Record<string, unknown> = { source_type: sourceType(), sector: activeSector.value }
+    const sid = await dataSourceStore.requireDataSourceId()
+    const body: Record<string, unknown> = { source_id: sid, sector: activeSector.value }
     if (filterMarket.value) body.market = filterMarket.value
-    const sid = sourceId()
-    if (sid != null) body.source_id = Number(sid)
     const uResp = await securityUpdateResource.post({}, body)
     const result = uResp.data as { task_id?: string }
     if (result && result.task_id) {
@@ -812,6 +812,7 @@ const updateSectorFromDataSource = async () => {
       }, 2000)
     }
   } catch (error: unknown) {
+    if (error instanceof DataSourceRequiredError) return
     const msg = error instanceof Error ? error.message : '未知错误'
     if (!msg.includes('正在运行中')) {
       ElMessage.error('同步失败: ' + msg)
@@ -822,15 +823,10 @@ const updateSectorFromDataSource = async () => {
 }
 
 const updateOneSecurity = async (row: SecurityTableRow) => {
-  if (!dataSourceStore.currentId) {
-    ElMessage.warning('请先在顶栏选择当前数据源')
-    return
-  }
   updatingSymbol.value = row.code
   try {
-    const oneBody: Record<string, unknown> = { code: row.code, source_type: sourceType() }
-    const sidOne = sourceId()
-    if (sidOne != null) oneBody.source_id = Number(sidOne)
+    const sidOne = await dataSourceStore.requireDataSourceId()
+    const oneBody: Record<string, unknown> = { code: row.code, source_id: sidOne }
     await securityUpdateOneResource.post({}, oneBody)
     ElMessage.success('已更新 ' + (row.name || row.code))
     const idx = tableData.value.findIndex((r) => r.code === row.code)
@@ -848,6 +844,7 @@ const updateOneSecurity = async (row: SecurityTableRow) => {
       }
     }
   } catch (error: unknown) {
+    if (error instanceof DataSourceRequiredError) return
     const msg = error instanceof Error ? error.message : '未知错误'
     ElMessage.error('更新失败: ' + msg)
   } finally {

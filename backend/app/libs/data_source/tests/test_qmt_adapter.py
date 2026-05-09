@@ -1,25 +1,27 @@
 # -*- coding: utf-8 -*-
 """
-QMT 适配器单元测试：纯函数与 QMTAdapter 行为，xtquant 通过 mock 隔离。
+QMT 适配器单元测试：纯函数与 QMTDataSourceAdapter 行为，xtquant 通过 mock 隔离。
 """
 from __future__ import annotations
 
-import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from app.libs.data_source.adapter.qmt import QMTAdapter
+from app.libs.data_source.adapter import get_adapter
+from app.libs.data_source.adapter.qmt import QMTDataSourceAdapter
 from app.libs.data_source.adapter.qmt.convert import rows_from_symbol_df, xt_row_to_kline
-from app.libs.data_source.adapter.qmt.core import ensure_xtdata, reset_xtdata_cache
 from app.libs.data_source.adapter.qmt.mappings import normalize_period_to_xt, to_xtdata_time
 from app.libs.data_source.models import InstrumentBrief
 
+# _load_xtdata 在适配器内加载 xtquant，测试中 patch 此处
+_PATCH_LOAD_XT = "app.libs.data_source.adapter.qmt.adapter.QMTDataSourceAdapter._load_xtdata"
 
-def reset_qmt_globals() -> None:
-    """重置 xtdata 进程级缓存，避免用例互相污染。"""
-    reset_xtdata_cache()
+
+def reset_qmt_singleton() -> None:
+    """重置 QMT 单例及本实例插入的 sys.path，避免用例互相污染。"""
+    QMTDataSourceAdapter.reset_singleton_for_tests()
 
 
 class TestPureHelpers(unittest.TestCase):
@@ -79,104 +81,93 @@ class TestPureHelpers(unittest.TestCase):
         self.assertEqual(rows[0].close, 1.5)
 
 
-class TestEnsureXtdata(unittest.TestCase):
-    """ensure_xtdata：无有效路径时不加载。"""
+class TestQMTXtdataLoad(unittest.TestCase):
+    """_load_xtdata 返回 None 时适配器不持有 xtdata。"""
 
     def tearDown(self) -> None:
-        reset_qmt_globals()
+        reset_qmt_singleton()
 
-    def test_ensure_xtdata_no_path_returns_none(self) -> None:
-        reset_qmt_globals()
-        self.assertIsNone(ensure_xtdata(None))
-        self.assertIsNone(ensure_xtdata(""))
+    @patch(_PATCH_LOAD_XT, return_value=None)
+    def test_xtdata_none_when_load_returns_none(self, _mock) -> None:
+        reset_qmt_singleton()
+        a = QMTDataSourceAdapter({})
+        self.assertIsNone(a.xtdata)
 
 
-class TestQMTAdapter(unittest.TestCase):
-    """QMTAdapter 方法，默认 patch 掉外部依赖。"""
+class TestQMTDataSourceAdapter(unittest.TestCase):
+    """QMTDataSourceAdapter：config + _load_xtdata（测试中 patch 为 mock xtdata）。"""
 
     def tearDown(self) -> None:
-        reset_qmt_globals()
+        reset_qmt_singleton()
 
-    def test_get_xtdata_raises_when_no_xtquant(self) -> None:
-        reset_qmt_globals()
-        adapter = QMTAdapter({"xt_quant_path": None})
-        with patch("app.libs.data_source.adapter.qmt.adapter.ensure_xtdata", return_value=None):
-            with self.assertRaises(RuntimeError) as ctx:
-                adapter._get_xtdata()
-            self.assertIn("xtquant", str(ctx.exception))
+    @patch(_PATCH_LOAD_XT, return_value=None)
+    def test_require_xtdata_raises_when_none(self, _mock) -> None:
+        adapter = QMTDataSourceAdapter({})
+        with self.assertRaises(RuntimeError) as ctx:
+            adapter._require_xtdata()
+        self.assertIn("xtquant", str(ctx.exception))
 
-    def test_test_connection_bad_path(self) -> None:
-        adapter = QMTAdapter({"xt_quant_path": "/nonexistent/path/xxx"})
+    @patch(_PATCH_LOAD_XT, return_value=None)
+    def test_test_connection_fails_when_xtdata_unavailable(self, _mock) -> None:
+        adapter = QMTDataSourceAdapter({})
         ok, msg = adapter.test_connection()
         self.assertFalse(ok)
-        self.assertIn("路径", msg)
+        self.assertIn("xtquant", msg)
 
-    def test_test_connection_acct_folder_missing(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            adapter = QMTAdapter({"xt_quant_path": tmp, "xt_quant_acct": "99999999"})
-            ok, msg = adapter.test_connection()
-            self.assertFalse(ok)
-            self.assertIn("不存在", msg)
-
-    @patch("app.libs.data_source.adapter.qmt.adapter.ensure_xtdata")
-    def test_test_connection_success(self, mock_ensure) -> None:
+    def test_test_connection_success(self) -> None:
         xt = MagicMock()
         xt.get_sector_list.return_value = ["沪深A股"]
-        mock_ensure.return_value = xt
-        with tempfile.TemporaryDirectory() as tmp:
-            adapter = QMTAdapter({"xt_quant_path": tmp})
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
             ok, msg = adapter.test_connection()
         self.assertTrue(ok)
         self.assertEqual(msg, "连接成功")
 
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_stock_list_in_sector(self, mock_gx) -> None:
+    def test_get_stock_list_in_sector(self) -> None:
         xt = MagicMock()
         xt.get_stock_list_in_sector.return_value = ["600000.SH", "000001.SZ"]
-        mock_gx.return_value = xt
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        res = adapter.get_stock_list_in_sector("沪深A股", market="SH")
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            res = adapter.get_stock_list_in_sector("沪深A股", market="SH")
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].symbol, "600000.SH")
 
-    @patch.object(QMTAdapter, "get_stock_list_in_sector")
+    @patch.object(QMTDataSourceAdapter, "get_stock_list_in_sector")
     def test_get_stock_list_delegates_sector(self, mock_sector) -> None:
         mock_sector.return_value = [InstrumentBrief(symbol="x", market="SH", sector="s")]
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        out = adapter.get_stock_list(sector="沪深A股")
+        xt = MagicMock()
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            out = adapter.get_stock_list(sector="沪深A股")
         mock_sector.assert_called_once_with("沪深A股", None)
         self.assertEqual(len(out), 1)
 
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_instrument_detail(self, mock_gx) -> None:
+    def test_get_instrument_detail(self) -> None:
         xt = MagicMock()
         xt.get_instrument_detail.return_value = {"InstrumentName": "测试"}
-        mock_gx.return_value = xt
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        self.assertEqual(adapter.get_instrument_detail("600000.SH"), {"InstrumentName": "测试"})
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            self.assertEqual(adapter.get_instrument_detail("600000.SH"), {"InstrumentName": "测试"})
 
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_sector_list_from_xtdata_flat(self, mock_gx) -> None:
+    def test_get_sector_list_from_xtdata_flat(self) -> None:
         from app.libs.data_source.models import AssetClass
 
         xt = MagicMock()
         xt.get_sector_list.return_value = ["A", "B"]
-        mock_gx.return_value = xt
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        out = adapter._get_sector_list_from_xtdata()
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            out = adapter._get_sector_list_from_xtdata()
         self.assertEqual([x.alias for x in out], ["A", "B"])
         self.assertTrue(all(x.asset_class == AssetClass.EQUITY for x in out))
 
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_sector_list_from_xtdata_empty_when_xt_returns_empty(self, mock_gx) -> None:
+    def test_get_sector_list_from_xtdata_empty_when_xt_returns_empty(self) -> None:
         xt = MagicMock()
         xt.get_sector_list.return_value = []
-        mock_gx.return_value = xt
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        self.assertEqual(adapter._get_sector_list_from_xtdata(), [])
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            self.assertEqual(adapter._get_sector_list_from_xtdata(), [])
 
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_klines_data_symbol_df(self, mock_gx) -> None:
+    def test_get_klines_data_symbol_df(self) -> None:
         df = pd.DataFrame(
             [
                 {
@@ -196,24 +187,22 @@ class TestQMTAdapter(unittest.TestCase):
         )
         xt = MagicMock()
         xt.get_market_data.return_value = {"000001.SZ": df}
-        mock_gx.return_value = xt
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        rows = adapter.get_klines_data("000001.SZ", period="1d", count=10)
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            rows = adapter.get_klines_data("000001.SZ", period="1d", count=10)
         self.assertIsNotNone(rows)
         assert rows is not None
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].close, 1.0)
 
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_klines_data_exception_returns_none(self, mock_gx) -> None:
+    def test_get_klines_data_exception_returns_none(self) -> None:
         xt = MagicMock()
         xt.get_market_data.side_effect = RuntimeError("boom")
-        mock_gx.return_value = xt
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        self.assertIsNone(adapter.get_klines_data("000001.SZ"))
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            self.assertIsNone(adapter.get_klines_data("000001.SZ"))
 
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_klines_data_multi_field_dict(self, mock_gx) -> None:
+    def test_get_klines_data_multi_field_dict(self) -> None:
         idx = pd.Index(["000001.SZ"])
         time_df = pd.DataFrame({"t0": [1700000000000]}, index=idx)
         open_df = pd.DataFrame({"t0": [10.0]}, index=idx)
@@ -235,48 +224,45 @@ class TestQMTAdapter(unittest.TestCase):
         }
         xt = MagicMock()
         xt.get_market_data.return_value = data
-        mock_gx.return_value = xt
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        rows = adapter.get_klines_data("000001.SZ")
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            rows = adapter.get_klines_data("000001.SZ")
         self.assertIsNotNone(rows)
         assert rows is not None
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].close, 11.0)
 
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_ticks_data_invalid_date(self, mock_gx) -> None:
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        self.assertIsNone(adapter.get_ticks_data("000001.SZ", "2024-1"))
-        mock_gx.assert_not_called()
+    def test_get_ticks_data_invalid_date(self) -> None:
+        xt = MagicMock()
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            self.assertIsNone(adapter.get_ticks_data("000001.SZ", "2024-1"))
+        xt.download_history_data.assert_not_called()
 
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_ticks_data_returns_dataframe(self, mock_gx) -> None:
+    def test_get_ticks_data_returns_dataframe(self) -> None:
         xt = MagicMock()
         df = pd.DataFrame({"a": [1]})
         xt.get_market_data_ex.return_value = {"000001.SZ": df}
-        mock_gx.return_value = xt
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        out = adapter.get_ticks_data("000001.SZ", "2024-01-15")
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            out = adapter.get_ticks_data("000001.SZ", "2024-01-15")
         self.assertTrue(isinstance(out, pd.DataFrame))
 
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_divid_factors_none_when_unsupported(self, mock_gx) -> None:
+    def test_get_divid_factors_none_when_unsupported(self) -> None:
         xt = MagicMock(spec=[])
-        mock_gx.return_value = xt
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        self.assertIsNone(adapter.get_divid_factors("000001.SZ"))
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            self.assertIsNone(adapter.get_divid_factors("000001.SZ"))
 
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_divid_factors_returns_df(self, mock_gx) -> None:
+    def test_get_divid_factors_returns_df(self) -> None:
         xt = MagicMock()
         df = pd.DataFrame({"x": [1]})
         xt.get_divid_factors.return_value = df
-        mock_gx.return_value = xt
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        self.assertIs(adapter.get_divid_factors("000001.SZ", start_time="2024-01-01"), df)
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            self.assertIs(adapter.get_divid_factors("000001.SZ", start_time="2024-01-01"), df)
 
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_realtime_quote(self, mock_gx) -> None:
+    def test_get_realtime_quote(self) -> None:
         xt = MagicMock()
         xt.get_full_tick.return_value = {
             "000001.SZ": {
@@ -290,46 +276,62 @@ class TestQMTAdapter(unittest.TestCase):
             }
         }
         xt.get_instrument_detail.return_value = {"InstrumentName": "平安"}
-        mock_gx.return_value = xt
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        out = adapter.get_realtime_quote(["000001.SZ"])
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            out = adapter.get_realtime_quote(["000001.SZ"])
         self.assertIsNotNone(out)
         assert out is not None
         q = out["000001.SZ"]
         self.assertEqual(q.name, "平安")
         self.assertEqual(q.last_price, 10.0)
 
-    @patch.object(QMTAdapter, "get_stock_list")
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_search_stocks(self, mock_gx, mock_list) -> None:
-        mock_gx.return_value = MagicMock(get_instrument_detail=MagicMock(return_value=None))
+    @patch.object(QMTDataSourceAdapter, "get_stock_list")
+    def test_search_stocks(self, mock_list) -> None:
+        xt = MagicMock(get_instrument_detail=MagicMock(return_value=None))
         mock_list.return_value = [
             InstrumentBrief(symbol="600000.SH", market="SH", sector="x"),
             InstrumentBrief(symbol="000001.SZ", market="SZ", sector="y"),
         ]
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        res = adapter.search_stocks("600")
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            res = adapter.search_stocks("600")
         self.assertTrue(any(r.symbol == "600000.SH" for r in res))
 
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_realtime_quote_exception_returns_none(self, mock_gx) -> None:
+    def test_get_realtime_quote_exception_returns_none(self) -> None:
         xt = MagicMock()
         xt.get_full_tick.side_effect = RuntimeError("net")
-        mock_gx.return_value = xt
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        self.assertIsNone(adapter.get_realtime_quote(["000001.SZ"]))
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            self.assertIsNone(adapter.get_realtime_quote(["000001.SZ"]))
 
-    @patch.object(QMTAdapter, "_preset_sector_aliases_dfs")
-    @patch.object(QMTAdapter, "_get_xtdata")
-    def test_get_stock_list_aggregates_sectors(self, mock_gx, mock_aliases) -> None:
+    @patch.object(QMTDataSourceAdapter, "_preset_sector_aliases_dfs")
+    def test_get_stock_list_aggregates_sectors(self, mock_aliases) -> None:
         mock_aliases.return_value = ["板块一"]
         xt = MagicMock()
         xt.get_stock_list_in_sector.return_value = ["600000.SH"]
         xt.get_instrument_list.return_value = []
-        mock_gx.return_value = xt
-        adapter = QMTAdapter({"xt_quant_path": "/tmp"})
-        out = adapter.get_stock_list()
+        with patch(_PATCH_LOAD_XT, return_value=xt):
+            adapter = QMTDataSourceAdapter({})
+            out = adapter.get_stock_list()
         self.assertTrue(any(x.symbol == "600000.SH" for x in out))
+
+
+class TestGetAdapterQMT(unittest.TestCase):
+    """get_adapter('qmt', config) 与 QMTDataSourceAdapter 单例一致。"""
+
+    def tearDown(self) -> None:
+        reset_qmt_singleton()
+
+    def test_get_adapter_qmt_uses_load_xtdata(self) -> None:
+        reset_qmt_singleton()
+        with patch(_PATCH_LOAD_XT) as mock_load:
+            xt = MagicMock()
+            mock_load.return_value = xt
+            impl = get_adapter("qmt", {})
+            self.assertIsInstance(impl, QMTDataSourceAdapter)
+            self.assertIs(impl.xtdata, xt)
+            mock_load.assert_called_once()
+            self.assertIs(get_adapter("qmt", {}), impl)
 
 
 if __name__ == "__main__":

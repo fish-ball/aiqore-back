@@ -28,15 +28,11 @@ def get_trader(source_type: str, config: Optional[Dict[str, Any]] = None) -> Sec
 
 
 def _connection_to_trader_config(conn: DataSource) -> Dict[str, Any]:
-    """ORM 连接转为 QMT 交易端 config（与数据源连接字段一致）。"""
-    return {
-        "host": conn.host,
-        "port": conn.port,
-        "user": conn.user,
-        "password": conn.password,
-        "xt_quant_path": conn.xt_quant_path,
-        "xt_quant_acct": conn.xt_quant_acct,
-    }
+    """ORM 连接 JSON config 副本；交易需 xt_quant_path，缺省时用 settings.XT_QUANT_PATH。"""
+    cfg = dict(conn.config or {})
+    if not str(cfg.get("xt_quant_path") or "").strip():
+        cfg = {**cfg, "xt_quant_path": settings.XT_QUANT_PATH}
+    return cfg
 
 
 def get_trader_for_connection(conn: DataSource) -> SecuritiesTrader:
@@ -50,7 +46,7 @@ def get_trader_for_connection(conn: DataSource) -> SecuritiesTrader:
 
 
 def get_default_qmt_trader() -> QMTTrader:
-    """进程内单例：使用 settings 的默认 QMT 交易端（与 get_default_qmt_adapter 配置同源）。"""
+    """进程内单例：使用 settings 的默认 QMT 交易端。"""
     global _default_qmt_trader
     if _default_qmt_trader is None:
         _default_qmt_trader = QMTTrader({

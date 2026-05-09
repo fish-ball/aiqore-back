@@ -1,31 +1,38 @@
-"""数据源模型：QMT、聚宽、tushare 等连接配置，支持行情源/交易源角色"""
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text
+# -*- coding: utf-8 -*-
+"""数据源模型：仅行情侧连接；source_type 约束见 libs.data_source.models.enums.DataSourceType。"""
+from __future__ import annotations
+
+from sqlalchemy import Boolean, Column, DateTime, Enum as SAEnum, Integer, JSON, String, Text
 from sqlalchemy.sql import func
+
 from app.database import Base
+from app.libs.data_source.models.enums import DataSourceType
 
 
 class DataSource(Base):
-    """数据源连接配置（QMT 等可参数化，预留聚宽、tushare）"""
+    """行情数据源连接配置（QMT、聚宽、tushare 等）。"""
+
     __tablename__ = "data_sources"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False, comment="显示名称")
-    source_type = Column(String(32), nullable=False, index=True, comment="数据源类型: qmt, joinquant, tushare")
+    source_type = Column(
+        SAEnum(
+            DataSourceType,
+            values_callable=lambda obj: [e.value for e in obj],
+            native_enum=False,
+            length=32,
+        ),
+        nullable=False,
+        index=True,
+        comment="数据源类型：qmt / joinquant / tushare",
+    )
     is_active = Column(Boolean, default=True, nullable=False, comment="是否启用")
-    is_quote_source = Column(Boolean, default=False, nullable=False, comment="是否作为行情源")
-    is_trading_source = Column(Boolean, default=False, nullable=False, comment="是否作为交易驱动源")
-
-    # QMT/miniQMT 专用（source_type=qmt 时使用）。xtquant 本地连接仅用 xt_quant_path、xt_quant_acct；host/port/user/password 为预留
-    host = Column(String(255), nullable=True, comment="预留，miniQMT 本地连接不使用")
-    port = Column(Integer, nullable=True, comment="预留，miniQMT 本地连接不使用")
-    user = Column(String(100), nullable=True, comment="预留")
-    password = Column(String(255), nullable=True, comment="可选，登录在 miniQMT 客户端完成")
-    xt_quant_path = Column(String(500), nullable=True, comment="miniQMT userdata_mini 路径，必填")
-    xt_quant_acct = Column(String(50), nullable=True, comment="资金账号，交易/订阅时使用")
-
+    # default=dict：SQLAlchemy 在每次 INSERT 时调用，得到新的空 dict（不可写 default={}）
+    config = Column(JSON, nullable=False, default=dict, comment="类型相关 JSON 配置字典")
     description = Column(Text, nullable=True, comment="备注")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="更新时间")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<DataSource(id={self.id}, name={self.name}, source_type={self.source_type})>"

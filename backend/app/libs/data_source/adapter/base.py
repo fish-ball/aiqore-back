@@ -15,7 +15,7 @@ class DataSourceAdapter(ABC):
     @property
     @abstractmethod
     def name(self) -> str:
-        """与 DataSourceKey、get_adapter 注册键一致，例如 qmt。"""
+        """与 DataSourceType、get_adapter 注册键一致，例如 qmt。"""
 
     @abstractmethod
     def get_stock_list(self, market: Optional[str] = None, sector: Optional[str] = None) -> List[Any]:

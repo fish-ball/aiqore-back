@@ -1,16 +1,246 @@
 """行情API"""
+import logging
+from datetime import datetime
+
 from fastapi import APIRouter, Query, Depends, HTTPException
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas as pd
 from sqlalchemy.orm import Session
-from app.services.market_service import market_service
 from app.database import get_db
+from app.libs.data_source.adapter.base import DataSourceAdapter
+from app.models.instrument import parse_market_suffix_from_code
+from app.services.data_source_service import (
+    get_active_data_source,
+    resolve_adapter_for_data_source_id,
+)
+from app.services.instrument_service import instrument_service
 from app.utils.task_manager import save_task_info
 from app.libs.data_source.cache import instrument_type_to_quote_cache_layer
 
 router = APIRouter(prefix="/api/market", tags=["行情"])
+logger = logging.getLogger(__name__)
+
+
+def _quote_adapter_or_raise(db: Session, data_source_id: int) -> DataSourceAdapter:
+    """由启用中的数据源连接 id 得到 DataSourceAdapter；失败时 HTTP 400。"""
+    adapter, err = resolve_adapter_for_data_source_id(db, data_source_id)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    return adapter
+
+
+def _require_active_data_source(db: Session, data_source_id: int) -> None:
+    """提交依赖数据源的异步任务前，校验连接存在且启用。"""
+    if get_active_data_source(db, data_source_id) is None:
+        raise HTTPException(status_code=400, detail="数据源不存在或未启用")
+
+
+def _quote_obj_as_dict(obj: Any) -> Dict[str, Any]:
+    """将 Pydantic 模型或 dict 转为 dict。"""
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if isinstance(obj, dict):
+        return obj
+    return {}
+
+
+def _quote_name_from_obj(q: Any) -> str:
+    """从实时行情对象或 dict 取名称。"""
+    if hasattr(q, "model_dump"):
+        return str(q.model_dump().get("name", "") or "")
+    if isinstance(q, dict):
+        return str(q.get("name", "") or "")
+    return ""
+
+
+def _realtime_quotes_formatted(
+    adapter: DataSourceAdapter,
+    symbols: List[str],
+    db: Optional[Session] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """调用适配器拉取实时行情并格式化为接口返回结构。"""
+    try:
+        quotes = adapter.get_realtime_quote(symbols)
+        if quotes is None:
+            return {}
+
+        result: Dict[str, Dict[str, Any]] = {}
+        for symbol, quote in quotes.items():
+            qd = _quote_obj_as_dict(quote)
+            name = str(qd.get("name", "") or "")
+            if not name and db:
+                inst = instrument_service.get_instrument_by_code(db, symbol)
+                if inst:
+                    name = inst.name or ""
+
+            pre_close = float(qd.get("pre_close", 0))
+            last_price = float(qd.get("last_price", 0))
+            change = last_price - pre_close
+            change_pct = (change / pre_close * 100) if pre_close > 0 else 0
+
+            result[symbol] = {
+                "symbol": symbol,
+                "name": name or symbol,
+                "last_price": last_price,
+                "open": float(qd.get("open", 0)),
+                "high": float(qd.get("high", 0)),
+                "low": float(qd.get("low", 0)),
+                "pre_close": pre_close,
+                "volume": int(qd.get("volume", 0)),
+                "amount": float(qd.get("amount", 0)),
+                "change": change,
+                "change_percent": change_pct,
+                "time": qd.get("time", datetime.now().isoformat()),
+            }
+        return result
+    except Exception as e:
+        logger.error("获取实时行情失败: %s", e)
+        return {}
+
+
+def _kline_rows_from_adapter(
+    adapter: DataSourceAdapter,
+    symbol: str,
+    period: str = "1d",
+    count: int = 100,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """调用适配器拉取 K 线并格式化为接口行列表。"""
+    import pandas as pd
+
+    try:
+        start_time = None
+        end_time = None
+        if start_date:
+            start_time = f"{start_date} 00:00:00"
+        if end_date:
+            end_time = f"{end_date} 23:59:59"
+
+        data = adapter.get_klines_data(symbol, period, count, start_time, end_time)
+        if data is None:
+            return []
+
+        result: List[Dict[str, Any]] = []
+        for item in data:
+            row = _quote_obj_as_dict(item)
+            time_val = row.get("time", "")
+            if isinstance(time_val, int):
+                time_str = datetime.fromtimestamp(time_val / 1000).strftime("%Y-%m-%d %H:%M:%S")
+            elif isinstance(time_val, datetime):
+                time_str = time_val.strftime("%Y-%m-%d %H:%M:%S")
+            elif hasattr(time_val, "strftime"):
+                time_str = time_val.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                time_str = str(time_val or "")
+
+            result.append(
+                {
+                    "time": time_str,
+                    "date": time_str[:10] if len(time_str) >= 10 else time_str,
+                    "open": float(row.get("open", 0)),
+                    "high": float(row.get("high", 0)),
+                    "low": float(row.get("low", 0)),
+                    "close": float(row.get("close", 0)),
+                    "volume": int(row.get("volume", 0)),
+                    "amount": float(row.get("amount", 0)),
+                }
+            )
+
+        if start_date or end_date:
+            df = pd.DataFrame(result)
+            if "time" in df.columns and len(df) > 0:
+                df["time"] = pd.to_datetime(df["time"], errors="coerce")
+                if start_date:
+                    df = df[df["time"] >= pd.to_datetime(start_date)]
+                if end_date:
+                    df = df[df["time"] <= pd.to_datetime(end_date)]
+                result = df.to_dict("records")
+
+        return result
+    except Exception as e:
+        logger.error("获取K线数据失败: %s", e)
+        return []
+
+
+def _search_stocks_via_adapter(
+    adapter: DataSourceAdapter,
+    keyword: str,
+    db: Optional[Session] = None,
+) -> List[Dict[str, Any]]:
+    """数据库优先搜索，必要时走适配器并补全名称。"""
+    try:
+        results: List[Dict[str, Any]] = []
+        symbols_to_fetch_name: List[str] = []
+
+        if db:
+            securities = instrument_service.search_instruments(db, keyword, limit=50)
+            for security in securities:
+                name = security.name
+                code = security.code
+                if not name or name == code or name.strip() == "":
+                    symbols_to_fetch_name.append(code)
+                    name = ""
+
+                results.append(
+                    {
+                        "code": code,
+                        "name": name,
+                        "market": parse_market_suffix_from_code(code),
+                    }
+                )
+
+        if not results:
+            adapter_results = adapter.search_stocks(keyword)
+            for stock in adapter_results:
+                sd = _quote_obj_as_dict(stock)
+                symbol = sd.get("symbol", "")
+                name = sd.get("name", "")
+                if not name or name == symbol or name.strip() == "":
+                    symbols_to_fetch_name.append(symbol)
+                    name = ""
+
+                results.append(
+                    {
+                        "code": symbol,
+                        "name": name,
+                        "market": sd.get("market", ""),
+                    }
+                )
+
+        if symbols_to_fetch_name:
+            try:
+                batch_size = 10
+                for i in range(0, len(symbols_to_fetch_name), batch_size):
+                    batch_symbols = symbols_to_fetch_name[i : i + batch_size]
+                    quotes = adapter.get_realtime_quote(batch_symbols)
+                    if quotes:
+                        for result in results:
+                            if not result.get("name") or result["name"] == result["code"]:
+                                code = result["code"]
+                                if code in quotes:
+                                    quote_name = _quote_name_from_obj(quotes[code])
+                                    if quote_name and quote_name != code and quote_name.strip():
+                                        result["name"] = quote_name
+
+                                if (not result.get("name") or result["name"] == code) and db:
+                                    security = instrument_service.get_instrument_by_code(db, code)
+                                    if (
+                                        security
+                                        and security.name
+                                        and security.name != code
+                                        and security.name.strip()
+                                    ):
+                                        result["name"] = security.name
+            except Exception as e:
+                logger.warning("获取证券名称失败: %s", e)
+
+        return results
+    except Exception as e:
+        logger.error("搜索股票失败: %s", e)
+        return []
 
 
 def _load_divid_factors(market_layer: str, symbol: str) -> Optional["pd.DataFrame"]:
@@ -54,8 +284,6 @@ def _build_divid_params_by_date(divid_df: "pd.DataFrame") -> Dict[str, Dict[str,
     同一天多条记录：interest/stockBonus/stockGift/allotNum 求和；allot 金额为 sum(allotPrice*allotNum)。
     返回: { "YYYY-MM-DD": {"interest", "stockBonus", "stockGift", "allotNum", "allotAmount"}, ... }
     """
-    import pandas as pd
-
     if divid_df is None or divid_df.empty:
         return {}
 
@@ -234,7 +462,8 @@ def _aggregate_daily_to_period(
 @router.get("/quote")
 async def get_realtime_quote(
     symbols: str = Query(..., description="证券代码，多个用逗号分隔"),
-    db: Session = Depends(get_db)
+    data_source_id: int = Query(..., ge=1, description="数据源连接 ID（data_sources.id）"),
+    db: Session = Depends(get_db),
 ):
     """
     获取实时行情
@@ -243,13 +472,15 @@ async def get_realtime_quote(
         symbols: 证券代码，如 '000001.SZ,600000.SH'
     """
     symbol_list = [s.strip() for s in symbols.split(",")]
-    quotes = market_service.get_realtime_quote(symbol_list, db)
+    adapter = _quote_adapter_or_raise(db, data_source_id)
+    quotes = _realtime_quotes_formatted(adapter, symbol_list, db)
     return list(quotes.values())
 
 
 @router.get("/kline")
 async def get_kline(
     symbol: str = Query(..., description="证券代码"),
+    data_source_id: int = Query(..., ge=1, description="数据源连接 ID（data_sources.id）"),
     period: str = Query("1d", description="周期：1m, 5m, 15m, 30m, 1h, 1d, 1w, 1M"),
     count: int = Query(100, description="数据条数"),
     adjust_type: str = Query("none", description="复权方式：none=不复权, forward=前复权"),
@@ -265,8 +496,6 @@ async def get_kline(
     """
     from datetime import datetime, timedelta
     from app.libs.data_source.cache import get_daily, get_ticks
-    from app.services.data_source_service import get_default_qmt_adapter
-    from app.services.instrument_service import instrument_service
     from app.tasks.instrument_tasks import (
         task_update_single_instrument_kdata,
         task_update_single_instrument_tick_for_date,
@@ -291,14 +520,14 @@ async def get_kline(
             market_layer = instrument_type_to_quote_cache_layer(inst.instrument_type)
 
         if force_update:
+            _require_active_data_source(db, data_source_id)
             task = task_update_single_instrument_kdata.delay(
                 symbol=symbol,
                 market_layer=market_layer,
                 period=period,
                 start_date=start_d,
                 end_date=end_d,
-                adapter="qmt",
-                source_id=None,
+                source_id=data_source_id,
                 force_update=False,
             )
 
@@ -313,8 +542,7 @@ async def get_kline(
                     "period": period,
                     "start_date": start_d,
                     "end_date": end_d,
-                    "adapter": "qmt",
-                    "source_id": None,
+                    "source_id": data_source_id,
                     "force_update": False,
                 },
             )
@@ -324,7 +552,9 @@ async def get_kline(
                 "status": "PENDING",
             }
 
-        adapter = get_default_qmt_adapter()
+        adapter, _err = resolve_adapter_for_data_source_id(db, data_source_id)
+        if _err:
+            raise HTTPException(status_code=400, detail=_err)
         # 日线：从缓存/数据源读取；周/月：接口层始终根据日线合并返回（自然周、自然月）
         if period == "1d":
             base_daily = get_daily(market_layer, symbol, start_d, end_d, force_update=False, adapter=adapter)
@@ -349,12 +579,12 @@ async def get_kline(
             market_layer = instrument_type_to_quote_cache_layer(inst.instrument_type)
 
         if force_update:
+            _require_active_data_source(db, data_source_id)
             task = task_update_single_instrument_tick_for_date.delay(
                 symbol=symbol,
                 trade_date=trade_date,
                 market_layer=market_layer,
-                adapter="qmt",
-                source_id=None,
+                source_id=data_source_id,
                 force_update=False,
             )
 
@@ -367,8 +597,7 @@ async def get_kline(
                     "symbol": symbol,
                     "trade_date": trade_date,
                     "market_layer": market_layer,
-                    "adapter": "qmt",
-                    "source_id": None,
+                    "source_id": data_source_id,
                     "force_update": False,
                 },
             )
@@ -378,11 +607,14 @@ async def get_kline(
                 "status": "PENDING",
             }
 
-        adapter = get_default_qmt_adapter()
+        adapter, _err = resolve_adapter_for_data_source_id(db, data_source_id)
+        if _err:
+            raise HTTPException(status_code=400, detail=_err)
         data = get_ticks(market_layer, symbol, trade_date, force_update=False, adapter=adapter)
         return data
 
-    data = market_service.get_kline_data(symbol, period, count, start_date, end_date)
+    adapter = _quote_adapter_or_raise(db, data_source_id)
+    data = _kline_rows_from_adapter(adapter, symbol, period, count, start_date, end_date)
     return data
 
 
@@ -428,6 +660,7 @@ def _scalar_to_native(x):
 @router.get("/ticks")
 async def get_ticks(
     symbol: str = Query(..., description="证券代码"),
+    data_source_id: int = Query(..., ge=1, description="数据源连接 ID（data_sources.id）"),
     trade_date: str = Query(..., description="交易日，格式：YYYY-MM-DD 或 YYYYMMDD"),
     force_update: bool = Query(False, description="是否从数据源拉取并更新本地 parquet"),
     db: Session = Depends(get_db),
@@ -438,8 +671,6 @@ async def get_ticks(
     - 当 `force_update=true` 时：提交 Celery 任务拉取并写入 parquet，返回 task_id。
     """
     from app.libs.data_source.cache import get_ticks as cache_get_ticks
-    from app.services.data_source_service import get_default_qmt_adapter
-    from app.services.instrument_service import instrument_service
     from app.tasks.instrument_tasks import task_update_single_instrument_tick_for_date
 
     market_layer = instrument_type_to_quote_cache_layer(None)
@@ -448,12 +679,12 @@ async def get_ticks(
         market_layer = instrument_type_to_quote_cache_layer(inst.instrument_type)
 
     if force_update:
+        _require_active_data_source(db, data_source_id)
         task = task_update_single_instrument_tick_for_date.delay(
             symbol=symbol,
             trade_date=trade_date,
             market_layer=market_layer,
-            adapter="qmt",
-            source_id=None,
+            source_id=data_source_id,
             force_update=False,
         )
 
@@ -466,8 +697,7 @@ async def get_ticks(
                 "symbol": symbol,
                 "trade_date": trade_date,
                 "market_layer": market_layer,
-                "adapter": "qmt",
-                "source_id": None,
+                "source_id": data_source_id,
                 "force_update": False,
             },
         )
@@ -477,7 +707,9 @@ async def get_ticks(
             "status": "PENDING",
         }
 
-    adapter = get_default_qmt_adapter()
+    adapter, _err = resolve_adapter_for_data_source_id(db, data_source_id)
+    if _err:
+        raise HTTPException(status_code=400, detail=_err)
     data = cache_get_ticks(market_layer, symbol, trade_date, force_update=False, adapter=adapter)
     data = _ticks_to_jsonable(data)
     return data
@@ -495,7 +727,6 @@ async def get_divid_factors(
     """
     from pathlib import Path
     from app.libs.data_source.cache import get_instrument_dir, get_divid_factors_path
-    from app.services.instrument_service import instrument_service
 
     market_layer = instrument_type_to_quote_cache_layer(None)
     inst = instrument_service.get_instrument_by_code(db, symbol)
@@ -525,11 +756,13 @@ async def get_divid_factors(
 @router.get("/search")
 async def search_stocks(
     keyword: str = Query(..., description="搜索关键词"),
-    db: Session = Depends(get_db)
+    data_source_id: int = Query(..., ge=1, description="数据源连接 ID（data_sources.id）"),
+    db: Session = Depends(get_db),
 ):
     """
     搜索股票
     """
-    stocks = market_service.search_stocks(keyword, db)
+    adapter = _quote_adapter_or_raise(db, data_source_id)
+    stocks = _search_stocks_via_adapter(adapter, keyword, db)
     return stocks
 

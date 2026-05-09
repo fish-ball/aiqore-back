@@ -237,12 +237,12 @@
 - **请求**  
   - Query: `source_type`(string, 可选), `is_active`(bool, 可选)
 - **响应**  
-  - `data`: `{ items: 连接数组, total }`，每项含 `id, name, source_type, is_active, is_quote_source, is_trading_source, host, port, user, password: null, xt_quant_path, xt_quant_acct, description, created_at, updated_at`
+  - `data`: `{ items: 连接数组, total }`，每项含 `id, name, source_type, is_active, config`（JSON，QMT 可选含 `xt_quant_acct`）、`description, created_at, updated_at` 等
 
 #### POST /api/data-source/connections 新建连接
 
 - **请求**  
-  - Body (JSON): `name`(必填), `source_type`(必填, qmt/joinquant/tushare), `is_active`, `is_quote_source`, `is_trading_source`, `host`, `port`, `user`, `password`, `xt_quant_path`, `xt_quant_acct`, `description`
+  - Body (JSON): `name`(必填), `source_type`(必填, qmt/joinquant/tushare), `is_active`, `config`（对象；QMT 行情依赖本机已启动 miniQMT，可选 `xt_quant_acct`）, `description` 等
 - **响应**  
   - `data`: 连接对象（同上，不含明文 password）
 

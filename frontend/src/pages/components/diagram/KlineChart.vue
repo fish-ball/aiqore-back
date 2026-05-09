@@ -98,8 +98,10 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import * as echarts from 'echarts'
 import { api } from '@iottest/vue-core/src/libs/api'
+import { useDataSourceStore } from '../../../stores/dataSource'
 
 const marketKlineResource = api('market/kline')
+const dataSourceStore = useDataSourceStore()
 const marketDividFactorsResource = api('market/divid-factors')
 
 const props = defineProps({
@@ -988,9 +990,12 @@ function updateIndicator() {
 async function fetchKline(count = 250) {
   const s = (props.symbol || '').trim()
   if (!s) return []
+  const ds = dataSourceStore.currentDataSourceId()
+  if (ds == null) return []
   try {
     const kResp = await marketKlineResource.get({}, {
       symbol: s,
+      data_source_id: ds,
       period: props.period,
       count,
       adjust_type: adjustType.value,
@@ -1006,6 +1011,34 @@ async function fetchKline(count = 250) {
 async function loadKline() {
   loading.value = true
   try {
+    if (dataSourceStore.currentDataSourceId() == null) {
+      data.value = []
+      cache.value = null
+      hoverIndex.value = null
+      await nextTick()
+      if (mainRef.value) {
+        const mainChart = echarts.getInstanceByDom(mainRef.value) || echarts.init(mainRef.value)
+        mainChart.setOption({
+          ...CHART_DARK,
+          title: { text: '请先选择数据源', left: 'center', textStyle: { color: CHART_DARK.textStyle.color } },
+          xAxis: { type: 'category', data: [] },
+          yAxis: { type: 'value' },
+          series: []
+        }, true)
+      }
+      if (subRef.value) {
+        const subChart = echarts.getInstanceByDom(subRef.value) || echarts.init(subRef.value)
+        subChart.setOption({
+          ...CHART_DARK,
+          title: { text: '', left: 'center', textStyle: { color: CHART_DARK.textStyle.color } },
+          xAxis: { type: 'category', data: [] },
+          yAxis: { type: 'value' },
+          series: []
+        }, true)
+      }
+      nextTick(() => resizeCharts())
+      return
+    }
     const arr = await fetchKline(250)
     data.value = arr
     cache.value = buildKlineCache(arr)
@@ -1111,7 +1144,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => props.symbol,
+  () => [props.symbol, dataSourceStore.currentId],
   () => {
     loadDividFactors()
     loadKline()

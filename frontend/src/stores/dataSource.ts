@@ -1,6 +1,16 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { api } from '@iottest/vue-core/src/libs/api'
+
+/** 未选数据源时 requireDataSourceId 抛出，便于 await 后自然中断后续逻辑 */
+export class DataSourceRequiredError extends Error {
+  readonly code = 'NO_DATA_SOURCE_ID' as const
+  constructor() {
+    super('NO_DATA_SOURCE_ID')
+    this.name = 'DataSourceRequiredError'
+  }
+}
 
 type DataSourceId = number
 
@@ -35,6 +45,25 @@ export const useDataSourceStore = defineStore('dataSource', () => {
     if (id == null) return null
     return list.value.find((item) => item.id === id) || null
   })
+
+  /** 当前有效的数据源连接 id（用于 API 的 data_source_id）；无效或未选返回 null */
+  function currentDataSourceId(): DataSourceId | null {
+    const id = currentId.value
+    if (id == null || typeof id !== 'number' || !Number.isFinite(id) || id < 1) return null
+    return id
+  }
+
+  const hasCurrentDataSource = computed(() => currentDataSourceId() != null)
+
+  /**
+   * 需要带 data_source_id 调用接口时使用：有 id 则返回；无 id 时默认提示并抛出 DataSourceRequiredError
+   */
+  async function requireDataSourceId(): Promise<DataSourceId> {
+    const id = currentDataSourceId()
+    if (id != null) return id
+    ElMessage.warning('请先在顶栏选择数据源')
+    throw new DataSourceRequiredError()
+  }
 
   const dataSourceListResource = api('data-source/connections')
 
@@ -81,6 +110,9 @@ export const useDataSourceStore = defineStore('dataSource', () => {
     loading,
     currentId,
     currentDataSource,
+    hasCurrentDataSource,
+    currentDataSourceId,
+    requireDataSourceId,
     fetchList,
     setCurrent
   }

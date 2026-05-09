@@ -5,7 +5,7 @@ from typing import Optional
 import logging
 from urllib.parse import unquote
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.database import get_db
 from app.services.data_source_service import sync_sectors as sync_sectors_from_data_source
@@ -21,15 +21,21 @@ class SectorRemarkBody(BaseModel):
     remark: Optional[str] = None
 
 
+class SectorSyncBody(BaseModel):
+    """从指定数据源连接同步板块"""
+
+    source_id: int = Field(..., ge=1, description="数据源连接 id（data_sources.id）")
+
+
 @router.post("/sync")
-async def sync_sectors():
-    """从配置的默认行情数据源同步板块列表到数据库（默认 qmt 注册实现）。"""
+async def sync_sectors(body: SectorSyncBody):
+    """从指定启用中的数据源连接同步板块列表到数据库。"""
     try:
         from app.database import SessionLocal
 
         db = SessionLocal()
         try:
-            result = sync_sectors_from_data_source(db, adapter="qmt", source_id=None)
+            result = sync_sectors_from_data_source(db, source_id=body.source_id)
             if not result.get("success"):
                 raise HTTPException(
                     status_code=400,

@@ -21,8 +21,8 @@ def _elapsed(t0: float) -> str:
 @celery_app.task(bind=True, name="task_sync_sectors")
 def task_sync_sectors(
     self,
-    adapter: str = "qmt",
-    source_id: Optional[int] = None,
+    *,
+    source_id: int,
 ):
     """从数据源同步板块列表及统计信息到数据库。"""
     task_name = "task_sync_sectors"
@@ -48,7 +48,7 @@ def task_sync_sectors(
     db = SessionLocal()
     try:
         t0 = time.perf_counter()
-        logger.info("板块同步任务: 启动 adapter=%s source_id=%s", adapter, source_id)
+        logger.info("板块同步任务: 启动 source_id=%s", source_id)
         self.update_state(
             state="PROGRESS",
             meta={
@@ -58,7 +58,7 @@ def task_sync_sectors(
             },
         )
 
-        result = sync_sectors(db, adapter=adapter, source_id=source_id)
+        result = sync_sectors(db, source_id=source_id)
         logger.info(
             "板块同步任务: 完成 success=%s total=%s created=%s updated=%s errors=%s 耗时 %s",
             result.get("success"),

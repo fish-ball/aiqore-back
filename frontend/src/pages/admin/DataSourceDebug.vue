@@ -35,7 +35,7 @@
                   <el-form label-width="100px" label-position="top">
                     <template v-if="tab.key === 'test'">
                       <el-form-item label="说明">
-                        <span class="form-hint">检测当前连接是否可用（xtquant 路径与账号）。</span>
+                        <span class="form-hint">检测当前连接是否可用（需本机已启动 miniQMT）。</span>
                       </el-form-item>
                     </template>
                     <template v-else-if="tab.key === 'sectors'">

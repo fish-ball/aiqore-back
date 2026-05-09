@@ -2,6 +2,7 @@
 """app.libs.trader.qmt_trader 单元测试。"""
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app.libs.trader.qmt_trader import QMTTrader
@@ -94,7 +95,7 @@ class TestGetXttraderSession(unittest.TestCase):
             r1 = t._get_xttrader(session_id=42)
             r2 = t._get_xttrader(session_id=999)
             self.assertIs(r1, r2)
-            XtClass.assert_called_once_with(tmp, 42)
+            XtClass.assert_called_once_with(str(Path(tmp).resolve()), 42)
 
     @patch("app.libs.trader.qmt_trader._ensure_xttrader_types")
     @patch("app.libs.trader.qmt_trader.time.time", return_value=1234567890)
@@ -107,7 +108,7 @@ class TestGetXttraderSession(unittest.TestCase):
             inst.connect.return_value = 0
             XtClass.return_value = inst
             t._get_xttrader()
-            XtClass.assert_called_once_with(tmp, 1234567890)
+            XtClass.assert_called_once_with(str(Path(tmp).resolve()), 1234567890)
 
 
 if __name__ == "__main__":

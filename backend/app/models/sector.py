@@ -12,7 +12,7 @@ class Sector(Base):
 
     - name：显示名称
     - alias：数据源侧板块键（如 QMT get_stock_list_in_sector 入参）；与 source 联合唯一
-    - source：数据源键（见 DataSourceKey）
+    - source：数据源类型字符串（见 DataSourceType）
     - asset_class：资产大类（见 AssetClass）
     - instrument_type：标的类型（见 InstrumentType，与 instruments.instrument_type 枚举值一致）
     - parent / children：树形层级

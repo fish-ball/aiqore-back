@@ -11,30 +11,26 @@ from app.services.sector_service import sector_service
 
 
 class TestSectorSyncResolve(unittest.TestCase):
-    """resolve_adapter_config 失败时不构造适配器、不写库。"""
+    """resolve_adapter_for_data_source_id 失败时不构造适配器、不写库。"""
 
-    @patch("app.libs.data_source.adapter.get_adapter")
-    @patch("app.services.data_source_service.resolve_adapter_config")
+    @patch("app.services.data_source_service.resolve_adapter_for_data_source_id")
     def test_sync_sectors_returns_error_when_config_unresolved(
-        self, mock_resolve, mock_get_adapter
+        self, mock_resolve
     ) -> None:
-        mock_resolve.return_value = (None, "未找到 id=1 的启用 QMT 连接")
+        mock_resolve.return_value = (None, "数据源不存在或未启用")
         db = MagicMock()
-        result = sync_sectors(db, adapter="qmt", source_id=1)
+        result = sync_sectors(db, source_id=1)
         self.assertFalse(result["success"])
-        self.assertIn("未找到", result["message"])
-        mock_get_adapter.assert_not_called()
+        self.assertIn("数据源", result["message"])
 
-    @patch("app.libs.data_source.adapter.get_adapter")
-    @patch("app.services.data_source_service.resolve_adapter_config")
-    def test_sync_sectors_no_sectors_no_commit(self, mock_resolve, mock_get_adapter) -> None:
-        mock_resolve.return_value = ({}, None)
+    @patch("app.services.data_source_service.resolve_adapter_for_data_source_id")
+    def test_sync_sectors_no_sectors_no_commit(self, mock_resolve) -> None:
         impl = MagicMock()
         impl.name = "joinquant"
         impl.get_sector_list.return_value = []
-        mock_get_adapter.return_value = impl
+        mock_resolve.return_value = (impl, None)
         db = MagicMock()
-        result = sync_sectors(db, adapter="joinquant")
+        result = sync_sectors(db, source_id=1)
         self.assertFalse(result["success"])
         db.commit.assert_not_called()
 
@@ -57,7 +53,7 @@ class TestSectorServiceAdapterInjection(unittest.TestCase):
         ]
         r = sector_service.sync_sectors_from_adapter(db, impl)
         self.assertFalse(r["success"])
-        self.assertIn("DataSourceKey", r["message"])
+        self.assertIn("DataSourceType", r["message"])
 
 
 class TestDataSourceServiceSyncSectors(unittest.TestCase):
@@ -76,9 +72,11 @@ class TestDataSourceServiceSyncSectors(unittest.TestCase):
         db = MagicMock()
         impl = MagicMock()
         impl.name = "qmt"
-        with patch("app.services.data_source_service.resolve_adapter_config", return_value=({}, None)):
-            with patch("app.services.data_source_service.get_adapter", return_value=impl):
-                out = sync_sectors(db, adapter="qmt", source_id=2)
+        with patch(
+            "app.services.data_source_service.resolve_adapter_for_data_source_id",
+            return_value=(impl, None),
+        ):
+            out = sync_sectors(db, source_id=2)
         mock_from_adapter.assert_called_once()
         call_args = mock_from_adapter.call_args
         self.assertIs(call_args[0][0], db)

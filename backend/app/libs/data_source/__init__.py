@@ -4,6 +4,6 @@
 Celery 任务见 app.tasks.instrument_tasks。
 """
 from app.libs.data_source.adapter import get_adapter
-from app.libs.data_source.adapter.connection import get_adapter_for_connection
+from app.libs.data_source.models.enums import DataSourceType
 
-__all__ = ["get_adapter", "get_adapter_for_connection"]
+__all__ = ["get_adapter", "DataSourceType"]

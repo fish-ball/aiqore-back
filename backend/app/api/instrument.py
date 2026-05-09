@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from typing import Any, Dict, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import logging
 
 from app.database import get_db
@@ -20,24 +20,21 @@ class UpdateInstrumentsBody(BaseModel):
 
     market: Optional[str] = None
     sector: Optional[str] = None
-    adapter: Optional[str] = "qmt"
-    source_id: Optional[int] = None
+    source_id: int = Field(..., ge=1, description="数据源连接 id（data_sources.id）")
 
 
 class UpdateOneBody(BaseModel):
     """从数据源更新单个标的请求体"""
 
     code: str
-    adapter: Optional[str] = "qmt"
-    source_id: Optional[int] = None
+    source_id: int = Field(..., ge=1, description="数据源连接 id（data_sources.id）")
 
 
 class UpdateDataBody(BaseModel):
     """拉取并补全单个标的本地缓存数据请求体"""
 
     code: str
-    adapter: Optional[str] = "qmt"
-    source_id: Optional[int] = None
+    source_id: int = Field(..., ge=1, description="数据源连接 id（data_sources.id）")
 
 
 router = APIRouter(prefix="/api/instrument", tags=["证券信息"])
@@ -80,7 +77,7 @@ async def update_instruments(body: UpdateInstrumentsBody):
             )
 
         task = task_update_bulk_instrument_info.delay(
-            body.market, body.sector, body.adapter or "qmt", body.source_id
+            body.market, body.sector, source_id=body.source_id
         )
 
         save_task_info(
@@ -90,7 +87,6 @@ async def update_instruments(body: UpdateInstrumentsBody):
             params={
                 "market": body.market,
                 "sector": body.sector,
-                "adapter": body.adapter or "qmt",
                 "source_id": body.source_id,
             },
         )
@@ -117,9 +113,7 @@ async def update_single_instrument(body: UpdateOneBody, db: Session = Depends(ge
     try:
         from app.services.data_source_service import sync_single_instrument
 
-        result = sync_single_instrument(
-            db, symbol=body.code.strip(), adapter=body.adapter or "qmt", source_id=body.source_id
-        )
+        result = sync_single_instrument(db, body.code.strip(), body.source_id)
         if result.get("success"):
             return result
         raise HTTPException(
@@ -140,6 +134,11 @@ async def list_instruments(
     page_size: int = Query(100, ge=1, le=500, description="每页条数"),
     market: Optional[str] = Query(None, description="市场后缀 SH/SZ/BJ（按代码后缀筛选）"),
     sector: Optional[str] = Query(None, description="板块名称"),
+    data_source_id: Optional[int] = Query(
+        None,
+        ge=1,
+        description="按板块筛选时必填：数据源连接 ID（data_sources.id）",
+    ),
     market_layer: Optional[AssetClass] = Query(
         None,
         description="筛选：EQUITY/FUTURE/OPTION 按 instrument_type 桶；COMMODITY/FIXED_INCOME 按 asset_class 列",
@@ -174,11 +173,15 @@ async def list_instruments(
             query = instrument_service.filter_by_market_layer(query, market_layer)
 
         if sector:
+            if data_source_id is None:
+                raise HTTPException(status_code=400, detail="按板块筛选时必须提供 data_source_id")
             try:
-                from app.services.data_source_service import get_default_qmt_adapter
+                from app.services.data_source_service import resolve_adapter_for_data_source_id
 
-                qmt = get_default_qmt_adapter()
-                sector_list = qmt.get_stock_list_in_sector(sector, market=None)
+                quote_adapter, ds_err = resolve_adapter_for_data_source_id(db, data_source_id)
+                if ds_err:
+                    raise HTTPException(status_code=400, detail=ds_err)
+                sector_list = quote_adapter.get_stock_list_in_sector(sector, market=None)
                 if sector_list:
                     codes = [s["symbol"] for s in sector_list if s.get("symbol")]
                     if codes:
@@ -187,6 +190,8 @@ async def list_instruments(
                         return {"results": [], "count": 0}
                 else:
                     return {"results": [], "count": 0}
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.warning(f"获取板块 '{sector}' 证券列表失败: {e}")
                 return {"results": [], "count": 0}
@@ -214,7 +219,6 @@ def update_instrument_cache_data(body: UpdateDataBody, db: Session = Depends(get
         from app.utils.task_lock import check_task_lock
 
         code = body.code.strip()
-        adapter = body.adapter or "qmt"
         source_id = body.source_id
 
         sec = instrument_service.get_instrument_by_code(db, code)
@@ -231,7 +235,6 @@ def update_instrument_cache_data(body: UpdateDataBody, db: Session = Depends(get
 
         task = task_update_single_instrument_all_data.delay(
             symbol=code,
-            adapter=adapter,
             source_id=source_id,
             force_update=False,
         )
@@ -242,7 +245,6 @@ def update_instrument_cache_data(body: UpdateDataBody, db: Session = Depends(get
             celery_name="task_update_single_instrument_all_data",
             params={
                 "code": code,
-                "adapter": adapter,
                 "source_id": source_id,
                 "force_update": False,
             },

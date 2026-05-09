@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.libs.data_source.adapter.base import DataSourceAdapter
-from app.libs.data_source.models import AssetClass, DataSourceKey, DataSourceSector, InstrumentType
+from app.libs.data_source.models import AssetClass, DataSourceSector, DataSourceType, InstrumentType
 from app.models.sector import Sector
 
 logger = logging.getLogger(__name__)
@@ -76,11 +76,11 @@ class SectorService:
         以 (source, alias) 为联合唯一键，并按 children 维护 parent_id 层级。
         """
         try:
-            source_enum = DataSourceKey(adapter.name)
+            source_enum = DataSourceType(adapter.name)
         except ValueError:
             return {
                 "success": False,
-                "message": f"适配器 name 不在 DataSourceKey 中: {adapter.name!r}",
+                "message": f"适配器 name 不在 DataSourceType 中: {adapter.name!r}",
                 "total": 0,
                 "created": 0,
                 "updated": 0,

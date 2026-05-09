@@ -8,7 +8,7 @@ from __future__ import annotations
 from app.libs.data_source.models.enums import (
     AssetClass,
     BarPeriod,
-    DataSourceKey,
+    DataSourceType,
     InstrumentType,
 )
 from app.libs.data_source.models.sector import DataSourceSector
@@ -20,7 +20,7 @@ __all__ = [
     "AssetClass",
     "InstrumentType",
     "BarPeriod",
-    "DataSourceKey",
+    "DataSourceType",
     "DataSourceSector",
     "InstrumentBrief",
     "KlineBar",

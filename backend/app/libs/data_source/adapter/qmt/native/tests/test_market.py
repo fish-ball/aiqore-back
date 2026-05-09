@@ -2,7 +2,7 @@
 """
 xtdata.get_market_data_ex 冒烟：经 ``adapt_xt_get_market_data_ex_kline`` 转为 KlineBar。
 
-XT_QUANT_PATH 使用环境变量。无法加载 xtdata 时用例 skip（非失败）。
+需本机已启动 miniQMT。无法加载 xtdata 时用例 skip（非失败）。
 
   cd backend
   python -m unittest app.libs.data_source.adapter.qmt.native.tests.test_market -v
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.libs.data_source.adapter.qmt.core import reset_xtdata_cache
+from app.libs.data_source.adapter.qmt.adapter import QMTDataSourceAdapter
 from app.libs.data_source.adapter.qmt.convert import adapt_xt_get_market_data_ex_kline
 from app.libs.data_source.adapter.qmt.native.tests.xt_test_env import (
     SAMPLE_MARKET_SYMBOLS,
@@ -29,7 +29,7 @@ class TestGetMarketDataEx(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        reset_xtdata_cache()
+        QMTDataSourceAdapter.reset_singleton_for_tests()
 
     def test_daily_count1_adapts_to_kline_batch(self) -> None:
         """日线 count=1：适配为按合约分组的 KlineBar 列表，每标至少一根。"""

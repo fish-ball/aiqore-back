@@ -5,13 +5,12 @@ from __future__ import annotations
 
 from enum import Enum
 
-__all__ = ["AssetClass", "InstrumentType", "BarPeriod", "DataSourceKey"]
+__all__ = ["AssetClass", "InstrumentType", "BarPeriod", "DataSourceType"]
 
 
-class DataSourceKey(str, Enum):
+class DataSourceType(str, Enum):
     """
-    数据源注册键 / 板块表 Sector.source 取值。
-    与 get_adapter 注册名、各适配器 name 属性一致。
+    数据源类型：ORM DataSource.source_type、板块表 Sector.source、get_adapter 注册键、各适配器 name 一致。
     """
 
     QMT = "qmt"

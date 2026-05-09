@@ -3,7 +3,7 @@
 xtdata.download_history_data 冒烟。
 
 遍历常见 period（与 mappings 中 K 线周期一致，并含 tick）及多市场示例代码（SH/SZ/BJ）。
-XT_QUANT_PATH 使用环境变量。无法加载 xtdata 时用例 skip（非失败）。
+需本机已启动 miniQMT。无法加载 xtdata 时用例 skip（非失败）。
 
   cd backend
   python -m unittest app.libs.data_source.adapter.qmt.native.tests.test_maintain -v
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.libs.data_source.adapter.qmt.core import reset_xtdata_cache
+from app.libs.data_source.adapter.qmt.adapter import QMTDataSourceAdapter
 from app.libs.data_source.adapter.qmt.mappings import BAR_PERIOD_TO_XT
 from app.libs.data_source.adapter.qmt.native.tests.xt_test_env import (
     SAMPLE_MARKET_SYMBOLS,
@@ -36,7 +36,7 @@ class TestDownloadHistoryData(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        reset_xtdata_cache()
+        QMTDataSourceAdapter.reset_singleton_for_tests()
 
     def test_download_history_data_periods_and_markets(self) -> None:
         """不同 period 与不同市场后缀组合调用 download_history_data（真实下载）。"""

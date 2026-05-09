@@ -48,12 +48,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { api } from '@iottest/vue-core/src/libs/api'
+import { useDataSourceStore } from '../../../stores/dataSource'
 
 const marketTicksResource = api('market/ticks')
+const dataSourceStore = useDataSourceStore()
 
 const props = defineProps({
   // 证券代码，例如 000001.SZ
@@ -264,9 +266,45 @@ function applyVolChartOption() {
 async function loadIntraday() {
   const s = (props.symbol || '').trim()
   if (!s) return
+  const ds = dataSourceStore.currentDataSourceId()
+  if (ds == null) {
+    fiveLevelRows.value = defaultFiveLevelRows()
+    fiveLevelLastClose.value = null
+    fiveLevelBuyRatio.value = 0.5
+    fiveLevelSellRatio.value = 0.5
+    await nextTick()
+    const priceDom = intradayChartRef.value
+    const volDom = intradayVolRef.value
+    if (priceDom && volDom) {
+      if (!intradayChart) intradayChart = echarts.init(priceDom)
+      intradayChart.setOption({
+        ...CHART_DARK,
+        grid: CHART_GRID,
+        title: { text: '请先选择数据源', left: 'center', textStyle: { color: CHART_DARK.textStyle.color } },
+        xAxis: { type: 'category', data: [], axisLine: CHART_DARK.axisLine, axisLabel: CHART_DARK.axisLabel },
+        yAxis: { type: 'value' },
+        series: [{ type: 'line', data: [] }]
+      }, true)
+      if (!intradayVolChart) intradayVolChart = echarts.init(volDom)
+      intradayVolChart.setOption({
+        ...CHART_DARK,
+        grid: CHART_GRID_VOL,
+        title: { text: '', left: 'center', textStyle: { color: CHART_DARK.textStyle.color } },
+        xAxis: { type: 'category', data: [] },
+        yAxis: { type: 'value', axisLabel: { formatter: formatVolumeAxisLabel, ...CHART_DARK.axisLabel } },
+        series: [{ type: 'bar', data: [] }]
+      }, true)
+    }
+    return
+  }
   try {
     const tradeDate = props.securityDetail?.metadata?.ticks?.end_date || new Date().toISOString().slice(0, 10)
-    const tResp = await marketTicksResource.get({}, { symbol: s, trade_date: tradeDate, force_update: false })
+    const tResp = await marketTicksResource.get({}, {
+      symbol: s,
+      data_source_id: ds,
+      trade_date: tradeDate,
+      force_update: false
+    })
     const data = tResp.data
     const list = Array.isArray(data) ? data : []
     await nextTick()
@@ -496,6 +534,14 @@ function resizeCharts() {
 async function refresh() {
   await loadIntraday()
 }
+
+watch(
+  () => [props.symbol, dataSourceStore.currentId, props.securityDetail],
+  () => {
+    refresh()
+  },
+  { deep: true }
+)
 
 onMounted(async () => {
   window.addEventListener('resize', resizeChartsThrottled)

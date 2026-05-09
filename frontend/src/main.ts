@@ -37,3 +37,12 @@ app.use(VueCore, { config })
 
 // 最后才导入项目 css，确保优先级更高
 import './assets/styles/main.scss'
+
+import { DataSourceRequiredError } from '@/stores/dataSource'
+
+// 顶栏未选数据源时 requireDataSourceId 会抛错；模板里 @click 往往不 await，避免未处理的 Promise 拒绝刷屏
+window.addEventListener('unhandledrejection', (event) => {
+  if (event.reason instanceof DataSourceRequiredError) {
+    event.preventDefault()
+  }
+})

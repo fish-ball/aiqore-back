@@ -4,11 +4,6 @@
       <template #ds_source_type_cell="{ row }">
         <el-tag size="small">{{ sourceTypeLabel(row.source_type) }}</el-tag>
       </template>
-      <template #ds_roles_cell="{ row }">
-        <el-tag v-if="row.is_quote_source" size="small" type="success" style="margin-right: 4px">行情源</el-tag>
-        <el-tag v-if="row.is_trading_source" size="small" type="warning">交易源</el-tag>
-        <span v-if="!row.is_quote_source && !row.is_trading_source">-</span>
-      </template>
       <template #ds_active_cell="{ row }">
         <el-tag :type="row.is_active ? 'success' : 'info'" size="small">{{ row.is_active ? '是' : '否' }}</el-tag>
       </template>
@@ -44,6 +39,16 @@ const formatDate = (v) => {
   return new Date(v).toLocaleString('zh-CN')
 }
 
+/** 列表展示 config：QMT 优先显示资金账号等业务字段 */
+const formatConfigCell = (v) => {
+  if (!v || typeof v !== 'object') return '--'
+  if (v.xt_quant_acct) return `资金账号: ${v.xt_quant_acct}`
+  const keys = Object.keys(v)
+  if (keys.length === 0) return '--'
+  const s = JSON.stringify(v)
+  return s.length > 80 ? `${s.slice(0, 80)}…` : s
+}
+
 function formTitle(sourceType, edit) {
   const typeName = { qmt: 'miniQMT/QMT', joinquant: '聚宽', tushare: 'Tushare' }[sourceType] || sourceType
   return edit ? `编辑${typeName}连接` : `新建${typeName}连接`
@@ -54,15 +59,13 @@ function getEmptyForm(type) {
     name: '',
     source_type: type,
     is_active: true,
-    is_quote_source: false,
-    is_trading_source: false,
     description: '',
     hint: '',
   }
   if (type === 'qmt') {
-    return { ...base, host: '', port: null, user: '', password: '', xt_quant_path: '', xt_quant_acct: '' }
+    return { ...base, hint_qmt: '行情无需配置路径，请保持 miniQMT 客户端已启动。', xt_quant_acct: '' }
   }
-  return base
+  return { ...base, config_json: '{}' }
 }
 
 function buildFields(sourceType) {
@@ -73,11 +76,7 @@ function buildFields(sourceType) {
     required: true,
     placeholder: '显示名称',
   }
-  const switches = [
-    { key: 'is_quote_source', label: '设为行情源', type: 'switch' },
-    { key: 'is_trading_source', label: '设为交易驱动源', type: 'switch' },
-    { key: 'is_active', label: '启用', type: 'switch' },
-  ]
+  const switches = [{ key: 'is_active', label: '启用', type: 'switch' }]
   const desc = {
     key: 'description',
     label: '备注',
@@ -90,16 +89,15 @@ function buildFields(sourceType) {
     return [
       nameField,
       {
-        key: 'xt_quant_path',
-        label: 'xtquant 路径',
-        required: true,
-        placeholder: 'miniQMT 的 userdata_mini 目录，如 C:\\国金证券QMT交易端\\userdata_mini',
+        key: 'hint_qmt',
+        label: '说明',
+        type: 'label',
       },
       {
         key: 'xt_quant_acct',
-        label: '资金账号',
-        required: true,
-        placeholder: '交易/账户同步时使用，与 miniQMT 客户端登录账号一致',
+        label: '资金账号（可选）',
+        required: false,
+        placeholder: '交易调试等使用，写入 config.xt_quant_acct；行情依赖本机已启动的 miniQMT',
       },
       ...switches,
       desc,
@@ -108,6 +106,14 @@ function buildFields(sourceType) {
   if (sourceType === 'joinquant' || sourceType === 'tushare') {
     return [
       nameField,
+      {
+        key: 'config_json',
+        label: '配置 JSON',
+        type: 'text',
+        htmlType: 'textarea',
+        placeholder: '{}',
+        controlProps: { rows: 4 },
+      },
       { key: 'hint', label: '说明', type: 'label' },
       ...switches,
       desc,
@@ -117,26 +123,39 @@ function buildFields(sourceType) {
 }
 
 function mapRowToForm(row) {
+  const cfg = row.config && typeof row.config === 'object' ? row.config : {}
   return {
     id: row.id,
     name: row.name,
     source_type: row.source_type,
     is_active: row.is_active,
-    is_quote_source: row.is_quote_source,
-    is_trading_source: row.is_trading_source,
-    host: row.host || '',
-    port: row.port ?? null,
-    user: row.user || '',
-    password: '',
-    xt_quant_path: row.xt_quant_path || '',
-    xt_quant_acct: row.xt_quant_acct || '',
+    hint_qmt: '行情无需配置路径，请保持 miniQMT 客户端已启动。',
+    xt_quant_acct: cfg.xt_quant_acct || '',
+    config_json: JSON.stringify(cfg && Object.keys(cfg).length ? cfg : {}, null, 2),
     description: row.description || '',
     hint:
       row.source_type === 'joinquant'
-        ? '聚宽需配置 Token / API，后续开放；当前仅保存名称与类型。'
+        ? '聚宽需配置 Token / API，后续开放；可先在 JSON 中预留字段。'
         : row.source_type === 'tushare'
-          ? 'Tushare 需配置 Token，后续开放；当前仅保存名称与类型。'
+          ? 'Tushare 需配置 Token，后续开放；可先在 JSON 中预留字段。'
           : '',
+  }
+}
+
+function buildConfigPayload(validated) {
+  const isQmt = validated.source_type === 'qmt'
+  if (isQmt) {
+    const c = {}
+    const a = validated.xt_quant_acct?.trim()
+    if (a) c.xt_quant_acct = a
+    return c
+  }
+  try {
+    const raw = (validated.config_json || '').trim() || '{}'
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
   }
 }
 
@@ -162,18 +181,11 @@ function openDataSourceFormDialog(item, fields, title) {
           const inst = formVNode?.component
           const validated = await inst?.exposed?.validate()
           if (!validated) return
-          const isQmt = validated.source_type === 'qmt'
           const payload = {
             name: validated.name.trim(),
             source_type: validated.source_type,
             is_active: validated.is_active,
-            is_quote_source: validated.is_quote_source,
-            is_trading_source: validated.is_trading_source,
-            host: isQmt ? (validated.host?.trim() || null) : null,
-            port: isQmt ? (validated.port ?? null) : null,
-            user: isQmt ? (validated.user?.trim() || null) : null,
-            xt_quant_path: isQmt ? (validated.xt_quant_path?.trim() || null) : null,
-            xt_quant_acct: isQmt ? (validated.xt_quant_acct?.trim() || null) : null,
+            config: buildConfigPayload(validated),
             description: validated.description?.trim() || null,
           }
           if (validated.id != null && validated.id !== '') {
@@ -200,10 +212,10 @@ function openDataSourceFormDialog(item, fields, title) {
 async function runCreateForm(type) {
   const item = reactive(getEmptyForm(type))
   if (type === 'joinquant') {
-    item.hint = '聚宽需配置 Token / API，后续开放；当前仅保存名称与类型。'
+    item.hint = '聚宽需配置 Token / API，后续开放；可先在 JSON 中预留字段。'
   }
   if (type === 'tushare') {
-    item.hint = 'Tushare 需配置 Token，后续开放；当前仅保存名称与类型。'
+    item.hint = 'Tushare 需配置 Token，后续开放；可先在 JSON 中预留字段。'
   }
   try {
     await openDataSourceFormDialog(item, buildFields(type), formTitle(type, false))
@@ -263,7 +275,6 @@ const openEdit = (row) => {
 
 const listViewOptions = reactive({
   title: '数据源连接',
-  // 列表由 config 请求 data-source/list；model 与表单/删除等用 data-source/connections
   model: 'data-source/connections',
   options: {
     canCreate: false,
@@ -295,10 +306,11 @@ const listViewOptions = reactive({
       },
     },
     {
-      key: 'is_quote_source',
-      label: '角色',
-      width: 160,
-      slotName: 'ds_roles',
+      key: 'config',
+      label: '配置',
+      minWidth: 200,
+      elTableColumnProps: { showOverflowTooltip: true },
+      filter: (v) => formatConfigCell(v),
     },
     {
       key: 'is_active',
@@ -314,12 +326,6 @@ const listViewOptions = reactive({
           { text: '否', value: 'false' },
         ],
       },
-    },
-    {
-      key: 'host',
-      label: '主机',
-      width: 120,
-      elTableColumnProps: { showOverflowTooltip: true },
     },
     {
       key: 'updated_at',
