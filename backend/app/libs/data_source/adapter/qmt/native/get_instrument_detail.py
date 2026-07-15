@@ -143,7 +143,7 @@ def get_instrument_detail(
     - `iscomplete` 默认 `False`，用于控制是否返回完整字段。
     - 当标的不存在或未返回详情时返回 `None`。
     """
-    if not xtdata:
+    if xtdata is None:
         from xtquant import xtdata
 
         xtdata.enable_hello = False

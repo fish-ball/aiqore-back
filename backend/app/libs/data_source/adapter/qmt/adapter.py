@@ -10,6 +10,8 @@ from typing import Any, ClassVar, Dict, List, Optional
 import pandas as pd
 
 from app.libs.data_source.adapter.base import DataSourceAdapter
+from app.libs.data_source.adapter.qmt import native
+from app.libs.data_source.adapter.qmt.convert import qmt_detail_dict_to_instrument
 from app.libs.data_source.adapter.qmt.kline_fetch import fetch_klines
 from app.libs.data_source.adapter.qmt.mappings import to_xtdata_time
 from app.libs.data_source.adapter.qmt.preset_data import PRESET_SECTOR_ROOTS
@@ -118,35 +120,18 @@ class QMTDataSourceAdapter(DataSourceAdapter):
             logger.exception("QMT 连接测试异常")
             return False, str(e)
 
-    def get_instrument_detail(self, symbol: str) -> Optional[DataSourceInstrument]:
-        raw = self._require_xtdata().get_instrument_detail(symbol)
-        if raw is None or not isinstance(raw, dict):
+    def get_instrument_detail(
+        self,
+        symbol: str,
+        *,
+        iscomplete: bool = False,
+    ) -> Optional[DataSourceInstrument]:
+        """经 qmt.native.get_instrument_detail 拉取详情，不直接调用 xtdata。"""
+        xt = self._require_xtdata()
+        raw = native.get_instrument_detail(symbol, iscomplete=iscomplete, xtdata=xt)
+        if raw is None:
             return None
-
-        def _str_field(key: str) -> str:
-            v = raw.get(key)
-            if v is None:
-                return ""
-            return str(v).strip()
-
-        last_price: Optional[float] = None
-        lp = raw.get("LastPrice")
-        if lp is not None:
-            try:
-                last_price = float(lp)
-            except (TypeError, ValueError):
-                last_price = None
-
-        sid = _str_field("InstrumentID")
-        return DataSourceInstrument(
-            symbol=sid or symbol,
-            name=_str_field("InstrumentName"),
-            instrument_type=_str_field("InstrumentType"),
-            exchange_id=_str_field("ExchangeID"),
-            open_date=raw.get("OpenDate"),
-            expiry_date=raw.get("ExpiryDate"),
-            last_price=last_price,
-        )
+        return qmt_detail_dict_to_instrument(raw, symbol, xtdata=xt)
 
     def get_klines_data(
         self,
@@ -228,7 +213,9 @@ class QMTDataSourceAdapter(DataSourceAdapter):
             quotes = xtdata.get_full_tick(symbols)
             names: Dict[str, str] = {}
             for symbol in symbols:
-                raw_detail = xtdata.get_instrument_detail(symbol)
+                raw_detail = native.get_instrument_detail(
+                    symbol, iscomplete=False, xtdata=xtdata
+                )
                 if isinstance(raw_detail, dict):
                     v = raw_detail.get("InstrumentName")
                     if v is not None:

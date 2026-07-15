@@ -25,7 +25,12 @@ class DataSourceAdapter(ABC):
         """
         raise NotImplementedError("子类必须实现 get_instrument_list")
 
-    def get_instrument_detail(self, symbol: str) -> Optional[DataSourceInstrument]:
+    def get_instrument_detail(
+        self,
+        symbol: str,
+        *,
+        iscomplete: bool = False,
+    ) -> Optional[DataSourceInstrument]:
         """获取标的详细信息，返回统一 DataSourceInstrument；无数据时返回 None。"""
         raise NotImplementedError("子类必须实现 get_instrument_detail")
 

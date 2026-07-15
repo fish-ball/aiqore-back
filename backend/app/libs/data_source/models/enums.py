@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-__all__ = ["AssetClass", "InstrumentType", "BarPeriod", "DataSourceType"]
+__all__ = ["AssetClass", "InstrumentType", "OptionContractKind", "BarPeriod", "DataSourceType"]
 
 
 class DataSourceType(str, Enum):
@@ -25,6 +25,13 @@ class AssetClass(str, Enum):
     COMMODITY = "COMMODITY"  # 商品：以实物供需为核心风险
     CURRENCY = "CURRENCY"  # 货币：汇率与加密货币
     CRYPTO = "CRYPTO"  # 加密货币：以区块链技术为核心风险
+
+
+class OptionContractKind(str, Enum):
+    """期权方向（与迅投 OptionType 数值对应）。"""
+
+    CALL = "CALL"  # 0
+    PUT = "PUT"  # 1
 
 
 class InstrumentType(str, Enum):

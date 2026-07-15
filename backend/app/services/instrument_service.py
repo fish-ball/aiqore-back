@@ -150,15 +150,34 @@ class InstrumentService:
             if field == "InstrumentType":
                 return detail.instrument_type if detail.instrument_type else default
             if field == "ExchangeID":
-                return detail.exchange_id if detail.exchange_id else default
+                if detail.code and "." in detail.code:
+                    ex = detail.code.rsplit(".", 1)[-1].strip().upper()
+                    return ex if ex else default
+                return default
             if field == "OpenDate":
-                return detail.open_date if detail.open_date is not None else default
-            if field == "ExpiryDate":
-                return detail.expiry_date if detail.expiry_date is not None else default
+                od = detail.open_date
+                if od is None:
+                    return default
+                return od.strftime("%Y%m%d")
+            if field in ("ExpiryDate", "ExpireDate"):
+                ed = detail.expire_date
+                if ed is None:
+                    return default
+                return ed.strftime("%Y%m%d")
             if field == "LastPrice":
                 return detail.last_price if detail.last_price is not None else default
             return default
         if isinstance(detail, dict):
+            if field == "ExpiryDate":
+                v = detail.get("ExpiryDate")
+                if v is None:
+                    v = detail.get("ExpireDate")
+                return default if v is None else v
+            if field == "ExpireDate":
+                v = detail.get("ExpireDate")
+                if v is None:
+                    v = detail.get("ExpiryDate")
+                return default if v is None else v
             return detail.get(field, default)
         return default
 

@@ -1,2 +1,7 @@
 # -*- coding: utf-8 -*-
-"""测试与辅助（xt_test_env）；业务代码请对注入的 xtdata 直接调用 download_history_data / get_market_data_ex 等。"""
+"""QMT native 封装：对 xtquant 的薄封装，供适配器等通过 ``native.xxx`` 调用。"""
+
+from .get_instrument_detail import get_instrument_detail
+from .get_instrument_type import get_instrument_type
+
+__all__ = ["get_instrument_detail", "get_instrument_type"]
